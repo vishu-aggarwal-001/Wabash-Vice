@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Wabash Vice — West Lafayette & Lafayette open world</title>
+  <meta name="description" content="A free open-world driving, flying and boating game set in the real West Lafayette and Lafayette, Indiana, built from OpenStreetMap data." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%F0%9F%9A%97%3C/text%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="src/style.css" />
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/" } }
+  </script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- loading -->
+  <div id="loading" class="screen">
+    <div class="logo">WABASH <span>VICE</span></div>
+    <div class="tag">West Lafayette · Lafayette · Indiana</div>
+    <div class="loadtrack"><div id="loadbar"></div></div>
+    <div id="loadmsg">Starting…</div>
+  </div>
+
+  <!-- start -->
+  <div id="start" class="screen" hidden>
+    <div class="logo">WABASH <span>VICE</span></div>
+    <div class="tag">The real West Lafayette &amp; Lafayette — 13,500 real buildings, every street, the Wabash River</div>
+    <button id="play">PLAY</button>
+    <div class="keys">
+      <div><b>WASD</b> move / drive</div><div><b>Mouse</b> look (click to capture)</div>
+      <div><b>F</b> enter / exit vehicle</div><div><b>V</b> spawn any vehicle</div>
+      <div><b>M</b> map + GPS</div><div><b>J</b> start mission at a yellow marker</div>
+      <div><b>Shift</b> run / nitro</div><div><b>Space</b> jump / handbrake</div>
+      <div><b>F1</b> all controls</div><div><b>Esc</b> menu &amp; settings</div>
+    </div>
+    <div class="credit"><a href="index.html" style="color:#cfb991">← Back to the Wabash Vice website</a> · Map data © OpenStreetMap contributors · Not affiliated with Purdue University or Rockstar Games</div>
+  </div>
+
+  <!-- HUD -->
+  <div id="hud" hidden>
+    <div id="topright">
+      <div id="wanted"></div>
+      <div id="money">$0</div>
+      <div id="clock"></div>
+    </div>
+    <div id="bottomleft">
+      <canvas id="minimap" width="220" height="220"></canvas>
+      <div class="bars"><div class="b"><i id="phealth"></i></div><div class="b stam"><i id="pstam"></i></div></div>
+      <div id="loc"><div id="street"></div><div id="district"></div></div>
+    </div>
+    <div id="speedo" hidden>
+      <div id="dial"><div id="spd">0</div><div id="spdunit">mph</div></div>
+      <div id="vname"></div>
+      <div class="hp"><i id="hpbar"></i></div>
+      <div id="aux"></div>
+    </div>
+    <div id="toast"></div>
+    <div id="prompt"></div>
+    <div id="objective"><span id="objtext"></span><span id="objtime"></span></div>
+    <div id="big"><div id="bigtitle"></div><div id="bigsub"></div></div>
+    <div id="fps"></div>
+  </div>
+
+  <!-- full map -->
+  <div id="mapwrap" hidden>
+    <canvas id="bigmap"></canvas>
+    <div class="mapbar">
+      <b>MAP</b> — click anywhere to set a GPS waypoint · drag to pan · scroll to zoom
+      <button id="mapzin">+</button><button id="mapzout">−</button><button id="mapclear">Clear GPS</button><button id="mapclose">Close (M)</button>
+    </div>
+  </div>
+
+  <!-- pause / menus -->
+  <div id="menu" hidden>
+    <div class="panel">
+      <div class="tabs">
+        <button data-tab="vehicles">Vehicles</button>
+        <button data-tab="travel">Fast travel</button>
+        <button data-tab="settings">Settings</button>
+        <button data-tab="controls">Controls</button>
+        <button id="resume">Resume ▶</button>
+      </div>
+      <div class="pane" id="pane-vehicles"><div id="vehgrid"></div></div>
+      <div class="pane" id="pane-travel" hidden>
+        <div id="travel" class="row"></div>
+        <p class="note">Golden Gears found: <b id="gearcount">0/30</b> — they're hidden on streets and rooftops all over town ($500 each).</p>
+        <div class="row"><button id="cancelmission">Cancel mission</button><button id="clearwanted">Pay off the cops ($1,000)</button></div>
+      </div>
+      <div class="pane" id="pane-settings" hidden>
+        <label>Graphics quality
+          <select id="setq"><option value="low">Low (phones, old laptops)</option><option value="medium">Medium</option><option value="high">High</option><option value="ultra">Ultra (gaming PC)</option></select>
+        </label>
+        <label>Volume <input id="setvol" type="range" min="0" max="1" step="0.05" /></label>
+        <label>Mouse sensitivity <input id="setsens" type="range" min="0.3" max="3" step="0.1" /></label>
+        <label>Units <select id="setunits"><option value="mph">mph / feet</option><option value="kmh">km/h / metres</option></select></label>
+        <label>Length of a day (real minutes) <input id="setday" type="number" min="2" max="240" /></label>
+        <label class="check"><input id="setinv" type="checkbox" /> Invert aircraft pitch (↑ = nose up)</label>
+        <p class="note">Hold <b>T</b> to fast-forward time. Your money, gears and settings save automatically in this browser.</p>
+      </div>
+      <div class="pane" id="pane-controls" hidden>
+        <div class="ctrl">
+          <h4>On foot</h4><p><b>WASD</b> move · <b>Shift</b> run · <b>Space</b> jump · <b>F</b> enter vehicle (works on traffic too!) · <b>Mouse</b> look · <b>Scroll</b> zoom · <b>C</b> camera</p>
+          <h4>Cars &amp; bikes</h4><p><b>W/S</b> gas / brake &amp; reverse · <b>A/D</b> steer · <b>Space</b> handbrake (drift) · <b>Shift</b> nitro · <b>H</b> horn · <b>K</b> siren (emergency vehicles) · <b>R</b> radio</p>
+          <h4>Planes</h4><p><b>W/S</b> throttle · <b>A/D</b> roll (steer on the ground) · <b>↓</b> nose up · <b>↑</b> nose down · <b>Q/E</b> rudder · <b>Shift</b> afterburner · <b>Space</b> wheel brakes. Take off: full throttle down the runway, then hold <b>↓</b>. Exit above 12 m to parachute.</p>
+          <h4>Helicopter</h4><p><b>Space</b> climb · <b>Shift</b> or <b>Z</b> descend · <b>W/S</b> tilt forward / back · <b>A/D</b> turn · <b>Q/E</b> strafe. You can land on rooftops.</p>
+          <h4>Boats</h4><p><b>W/S</b> throttle · <b>A/D</b> steer · launch from the Wabash at Tapawingo Park.</p>
+          <h4>Everything else</h4><p><b>M</b> map &amp; GPS · <b>V</b> vehicle spawner · <b>J</b> start mission · <b>T</b> fast-forward time · <b>Esc</b> menu · <b>F1</b> help overlay. Gamepads work too (triggers to drive, Y to enter/exit).</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="help" hidden>
+    <b>Controls</b> — WASD move/drive · F enter/exit · V vehicles · M map · J mission · Shift run/nitro · Space jump/handbrake/climb · Plane: W/S throttle, A/D roll, ↓ nose up, ↑ nose down, Q/E rudder · Heli: Space up, Shift down, W/S tilt, A/D turn, Q/E strafe · C camera · R radio · H horn · T time-lapse · Esc menu
+  </div>
+
+  <!-- touch controls -->
+  <div id="touch" hidden>
+    <div id="stick"><div id="knob"></div></div>
+    <div class="btns">
+      <button data-btn="!enter">F</button>
+      <button data-btn="jump">⤒</button>
+      <button data-btn="down">⤓</button>
+      <button data-btn="boost">⚡</button>
+      <button data-btn="!vehicles">V</button>
+      <button data-btn="!map">M</button>
+      <button data-btn="!mission">J</button>
+      <button data-btn="!camera">C</button>
+    </div>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

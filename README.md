@@ -1,1 +1,152 @@
-# Wabash-Vice
+# 🚗✈️🚤 Wabash Vice
+
+### ▶ [Play it in your browser](https://vishu-aggarwal-001.github.io/Wabash-Vice/)
+
+**An open-world driving, flying and boating game set in the *real* West Lafayette & Lafayette, Indiana.**
+
+Every street, all 13,500 buildings, the Wabash River, the bridges, Purdue's campus, downtown Lafayette and Purdue Airport come from real OpenStreetMap data, at real 1:1 scale (about 6.8 km × 5.5 km). It runs in any modern browser. There's no install and no build step.
+
+> **Status: v0.2, a playable start with a realistic-graphics pass.** It isn't GTA 6. That took a studio of thousands of people about a decade. What it is: a real, working open-world game of your actual hometown that you can keep improving. See the [Roadmap](#roadmap).
+
+---
+
+## ▶️ Play it
+
+### Option 1: run it on your computer (30 seconds)
+You need [Node.js](https://nodejs.org) (any version from 16 up).
+
+```bash
+cd wabash-vice
+npm start
+```
+Then open **http://localhost:3000** and press **Play**. (The game itself is `play.html`; `index.html` is the website.) You don't need `npm install`, because everything is already in the folder.
+
+No Node? Any static web server works, for example `python3 -m http.server 3000`.
+(Opening `index.html` by double-clicking **won't** work, because browsers block loading the map files from `file://`.)
+
+### Option 2: play the online version
+It's hosted free on GitHub Pages: **https://vishu-aggarwal-001.github.io/Wabash-Vice/**
+
+To turn hosting on for a copy of this repo: **Settings → Pages → Build and deployment → Source: “Deploy from a branch” → Branch: `main`, folder `/ (root)` → Save**. It goes live about a minute later at `https://<username>.github.io/<repo-name>/`, and updates every time you push.
+
+---
+
+## 🎮 Controls
+
+| | Keyboard / mouse | Gamepad |
+|---|---|---|
+| Move / drive | **W A S D** | Left stick, RT/LT |
+| Look | **Mouse** (click the game to capture it) or right-drag | Right stick |
+| Enter / exit vehicle | **F** (works on traffic too, i.e. carjacking) | Y |
+| Run / nitro / afterburner | **Shift** | LS click / X |
+| Jump / handbrake / climb | **Space** | A |
+| Spawn any vehicle | **V** | D-pad left |
+| Map + GPS waypoint | **M**, then click the map | Back |
+| Start mission (yellow marker) | **J** | |
+| Camera (chase / far / cockpit) | **C**, scroll to zoom | R-stick click |
+| Horn / siren / radio | **H** / **K** / **R** | D-pad up / – / right |
+| Fast-forward time | hold **T** | |
+| Menu, settings, fast travel | **Esc** | Start |
+| Help overlay | **F1** | |
+
+**Planes:** W/S throttle · A/D roll · **↓ nose up / ↑ nose down** (flight-sim style; you can invert it in Settings) · Q/E rudder · Space wheel brakes.
+*To take off:* hold W until you're past about 60 mph, tap ↓ to lift the nose, then let go and climb. Exit above 12 m and you'll parachute.
+
+**Helicopter:** Space climb · Shift/Z descend · W/S tilt forward/back · A/D turn · Q/E strafe. You can land on any rooftop.
+
+**Phones and tablets:** on-screen joystick and buttons appear automatically (quality defaults to Low).
+
+---
+
+## ✨ What's in v0.1
+
+**The real city**
+- 13,529 buildings from OpenStreetMap footprints, with real heights where they're mapped. Red brick on Purdue's campus, storefronts downtown, pitched-roof houses in the neighbourhoods
+- 10,380 real roads, paths and rail lines with lane markings, sidewalks and real street names on the HUD (“Mitch Daniels Boulevard · Purdue University”)
+- The Wabash River in its real course, with valley terrain (the West Lafayette bluff and Lafayette's gentle rise) and real bridges with railings and piers
+- Purdue Airport's real runways 10/28 and 5/23
+- 27,000 trees (5,500 of them at their real mapped positions), in autumn colours
+- Hand-built landmarks: **Purdue Bell Tower**, **Tippecanoe County Courthouse** dome, a Purdue water tower
+- 8 districts: Purdue University, Downtown Lafayette, Chauncey Village, Wabash Landing, Tapawingo Park, Ross-Ade Stadium, Purdue Airport, Columbian Park
+
+**22 vehicles**: Boilermaker GT, Golden Train Hypercar, sedan, hatchback, muscle car, SUV, pickup, Lafayette PD cruiser, taxi, ambulance, fire engine, CityBus, delivery truck, street bike, dirt bike, bicycle, Skyhawk trainer plane, Boiler Jet, helicopter, speedboat, jet ski and pontoon boat. They have separate physics for cars (drifting, nitro, jumps), bikes (leaning), planes (lift, stall, banked turns), helicopters and boats.
+
+**Living city**: AI traffic driving the real street network on the right-hand side, pedestrians, carjacking, and a **wanted system** (1–5 stars). Cops chase you using GPS routing, a helicopter with a searchlight joins at 3+ stars, and you can get **BUSTED** or lose them.
+
+**Things to do**
+- 5 missions: Boiler Express deliveries, the Ross-Ade Street Race, Purdue Flight School rings, Rooftop Hopper (helicopter), and the Wabash River Run
+- 30 hidden **Golden Gears** ($500 each), some of them on rooftops
+- Stunt-jump cash bonuses, a money counter, GPS routing to any point you click on the map
+- Fast travel, and an auto-save of your money, gears and settings
+
+**Looks and sound** (v0.2 graphics overhaul)
+- **Photo-scanned materials** from Poly Haven: real brick, asphalt with cracks, concrete sidewalks, plaster, metal siding, roofing and grass, all with surface relief (normal maps) and roughness
+- **Reflective glass** windows that mirror the sky, recessed window frames, limestone trim on Purdue's red brick, arched windows downtown
+- **Real leaf canopies** built from photographed leaves, in November colours (green, gold, orange), on bark-textured trunks with branches
+- **Smooth, curved car bodies** with arched wheel wells, 5-spoke alloy rims, clear-coat paint and sky reflections
+- **Ambient occlusion** (soft contact shadows), 4K sun shadows, bloom, a filmic colour grade, atmospheric haze
+- Day/night cycle using Lafayette's real November sun path, sky with clouds, stars and moon
+- Reflective water, lit windows and street lamps at night, headlights
+- Procedural engine, wind, siren, crash and splash sounds, plus **Boiler FM 88.8**, a generative synthwave radio station (press R)
+- 4 graphics presets (Low → Ultra) in Settings
+
+---
+
+## 🗂 Project layout
+
+```
+index.html          the website (landing page)
+play.html           the game page: HUD, menus
+site/img/           website screenshots
+src/main.js         game loop, camera, controls, enter/exit, wasted/busted, saving
+src/world.js        loads the map data and builds terrain, river, roads, bridges, buildings, trees, lamps, landmarks + all collision queries
+src/vehicles.js     vehicle catalogue, procedural 3D models, physics for every vehicle type
+src/player.js       on-foot character (walk/run/jump/swim/ragdoll) and the shared person model
+src/npc.js          traffic, pedestrians, police and the wanted level
+src/missions.js     mission markers, checkpoints, Golden Gears
+src/env.js          sky, sun, moon, stars, clouds, fog, day/night
+src/hud.js          speedometer, minimap, full map, menus
+src/audio.js        all sound (Web Audio, no files) and the radio
+src/input.js        keyboard, mouse, gamepad, touch
+src/textures.js     procedural textures (facades, roads, water…)
+src/fx.js           particles: smoke, tyre smoke, splashes, explosions
+data/               map.json, terrain.bin, ground.jpg (built from OpenStreetMap)
+data/tex/           texture atlases built from Poly Haven photo scans
+tools/              fetch_osm.sh + build_map.py rebuild the map; fetch_textures.sh + build_textures.py rebuild the textures
+vendor/three/       Three.js r180 (bundled so it works offline)
+server.js           zero-dependency local web server
+```
+
+### Rebuild or extend the map
+```bash
+./tools/fetch_osm.sh                    # downloads fresh OpenStreetMap data into osm/
+python3 tools/build_map.py osm data     # needs: pip install numpy scipy pillow
+```
+To make the world bigger (for example out to I-65, or to include Wildcat Creek), widen the bounding box in **both** `tools/fetch_osm.sh` and the `S, W, N, E` line at the top of `tools/build_map.py`. Bigger areas mean longer load times.
+
+---
+
+## 🛣 Roadmap
+
+This is the honest path from v0.1 toward the “better than GTA *at Lafayette*” goal. Each step is a self-contained chunk you (or an AI helper) can do one at a time.
+
+1. **Feel**: suspension bounce, gear sounds, damage deformation, better tyre smoke and skid marks
+1. **Hero assets**: replace the procedural cars and people with real 3D models (e.g. made in Blender, or bought/CC-licensed glTF models). This is the single biggest step toward a GTA look
+2. **Real elevation**: swap the stylized terrain for USGS 3DEP elevation data (free, public domain)
+3. **Building detail**: real roof shapes from OSM `roof:shape`, more facade styles, storefront signs, Purdue limestone trims
+4. **Real landmarks**: detailed models of the Purdue Memorial Union, Ross-Ade Stadium, Mackey Arena, the Engineering Fountain and the bridges' real shapes
+5. **Smarter city**: traffic lights at real intersections, lane changes, buses on real CityBus routes, Purdue students between classes
+6. **Story mode**: characters, cutscenes, a mission chain across both cities
+7. **Weapons and combat** (if you want it), plus garages and buying property
+8. **Graphics ceiling**: SSAO, screen-space reflections, volumetric fog over the Wabash, rain and snow, WebGPU renderer
+9. **Bigger map**: all of Tippecanoe County, then I-65 to Indianapolis
+10. **Multiplayer**: drive around Lafayette with friends (WebSockets)
+
+---
+
+## ⚠️ Notes
+
+- Textures are CC0 (public domain) photo scans from [Poly Haven](https://polyhaven.com). Thank you, Poly Haven!
+- Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), ODbL. Building heights that aren't in OSM are estimated, terrain is stylized, and the river valley shape is approximate.
+- This is a fan project. It is **not** affiliated with or endorsed by Purdue University, the City of Lafayette or West Lafayette, Rockstar Games, or any vehicle maker. All vehicle names are made up.
+- Code is MIT licensed (see `LICENSE`). Three.js is MIT licensed.

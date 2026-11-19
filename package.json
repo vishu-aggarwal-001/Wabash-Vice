@@ -1,0 +1,14 @@
+{
+  "name": "wabash-vice",
+  "version": "0.2.0",
+  "description": "Open-world driving, flying and boating game set in the real West Lafayette & Lafayette, Indiana (Three.js + OpenStreetMap).",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && for f in src/*.js; do node --check $f || exit 1; done",
+    "map": "python3 tools/build_map.py osm data"
+  },
+  "keywords": ["game", "threejs", "open-world", "lafayette", "purdue", "openstreetmap"],
+  "license": "MIT",
+  "devDependencies": { "three": "0.180.0" }
+}

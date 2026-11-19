@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Wabash Vice — open-world game of West Lafayette & Lafayette, Indiana</title>
+  <meta name="description" content="Drive, fly and boat through the real West Lafayette and Lafayette, Indiana: 13,500 real buildings, every street, the Wabash River and Purdue's campus. Free, in your browser." />
+  <meta property="og:title" content="Wabash Vice" />
+  <meta property="og:description" content="An open-world game of the real West Lafayette & Lafayette, Indiana. Play free in your browser." />
+  <meta property="og:image" content="site/img/og.jpg" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%F0%9F%9A%97%3C/text%3E%3C/svg%3E" />
+  <style>
+    :root { --gold: #cfb991; --gold2: #ffd23f; --ink: #0b0c0f; --card: #14161b; --line: #262a31; --text: #e9e6df; --muted: #a39f96; }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--ink); color: var(--text); font: 16px/1.6 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+    a { color: var(--gold); }
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 0 22px; }
+
+    nav { position: fixed; inset: 0 0 auto; z-index: 10; display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; background: linear-gradient(rgba(0,0,0,.7), transparent); }
+    nav .brand { font-weight: 900; font-style: italic; letter-spacing: -.5px; font-size: 20px; color: #fff; text-decoration: none; }
+    nav .brand span { color: var(--gold); }
+    nav .links a { color: #fff; text-decoration: none; margin-left: 22px; font-weight: 600; font-size: 14px; opacity: .85; }
+    nav .links a:hover { opacity: 1; color: var(--gold2); }
+
+    .hero { position: relative; min-height: 100vh; display: flex; align-items: center; background: #000 url(site/img/hero.jpg) center/cover no-repeat; }
+    .hero::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0,0,0,.82) 0%, rgba(0,0,0,.45) 55%, rgba(0,0,0,.1)), linear-gradient(transparent 70%, var(--ink)); }
+    .hero .wrap { position: relative; z-index: 1; padding-top: 80px; padding-bottom: 60px; }
+    .eyebrow { color: var(--gold); font-weight: 700; letter-spacing: 3px; text-transform: uppercase; font-size: 13px; }
+    h1 { font-size: clamp(56px, 11vw, 132px); line-height: .88; margin: 12px 0 18px; font-weight: 900; font-style: italic; letter-spacing: -3px; text-shadow: 0 8px 40px rgba(0,0,0,.6); }
+    h1 span { color: var(--gold); -webkit-text-stroke: 2px #000; }
+    .lede { max-width: 560px; font-size: 19px; color: #ddd; }
+    .cta { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 30px; align-items: center; }
+    .play { display: inline-flex; align-items: center; gap: 12px; background: var(--gold); color: #000; font-weight: 900; font-size: 22px; letter-spacing: 3px; padding: 18px 46px; border-radius: 8px; text-decoration: none; box-shadow: 0 12px 40px rgba(207,185,145,.35); transition: transform .15s, background .15s; }
+    .play:hover { background: var(--gold2); transform: translateY(-2px) scale(1.02); }
+    .ghost { color: #fff; text-decoration: none; font-weight: 600; padding: 16px 22px; border: 1px solid rgba(255,255,255,.35); border-radius: 8px; }
+    .ghost:hover { border-color: var(--gold); color: var(--gold); }
+    .note { margin-top: 16px; font-size: 13px; color: var(--muted); }
+    .stats { display: flex; gap: 34px; margin-top: 46px; flex-wrap: wrap; }
+    .stats b { display: block; font-size: 32px; font-weight: 900; color: #fff; line-height: 1.1; }
+    .stats span { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+
+    section { padding: 90px 0; }
+    h2 { font-size: clamp(30px, 4.5vw, 46px); margin: 0 0 10px; font-weight: 900; letter-spacing: -1px; }
+    .sub { color: var(--muted); max-width: 640px; margin: 0 0 40px; }
+
+    .gallery { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; }
+    .gallery figure { margin: 0; position: relative; overflow: hidden; border-radius: 10px; background: #000; }
+    .gallery img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .4s; }
+    .gallery figure:hover img { transform: scale(1.04); }
+    .gallery figcaption { position: absolute; left: 0; right: 0; bottom: 0; padding: 30px 14px 10px; font-size: 13px; font-weight: 600; background: linear-gradient(transparent, rgba(0,0,0,.85)); }
+    .g1 { grid-column: span 4; aspect-ratio: 16/9; } .g2 { grid-column: span 2; } .g3, .g4, .g5 { grid-column: span 2; aspect-ratio: 16/10; }
+
+    .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 22px; }
+    .card .ic { font-size: 28px; }
+    .card h3 { margin: 8px 0 6px; font-size: 18px; }
+    .card p { margin: 0; color: var(--muted); font-size: 15px; }
+
+    .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+    .controls table { width: 100%; border-collapse: collapse; font-size: 15px; }
+    .controls td { padding: 7px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+    .controls td:first-child { width: 42%; }
+    kbd { display: inline-block; min-width: 26px; text-align: center; padding: 1px 7px; border-radius: 5px; background: #23262c; border: 1px solid #3a3f47; border-bottom-width: 3px; font: 600 13px/1.5 ui-monospace, monospace; color: #fff; margin: 1px 2px 1px 0; }
+
+    .band { background: linear-gradient(180deg, #121419, var(--ink)); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .final { text-align: center; padding: 110px 0; background: linear-gradient(rgba(11,12,15,.75), rgba(11,12,15,.92)), url(site/img/night.jpg) center/cover; }
+    .final .cta { justify-content: center; }
+
+    footer { padding: 40px 0 60px; color: var(--muted); font-size: 13px; text-align: center; }
+    footer a { color: var(--muted); }
+
+    @media (max-width: 760px) {
+      nav .links a:not(.keep) { display: none; }
+      .gallery { grid-template-columns: 1fr; }
+      .gallery figure { grid-column: auto !important; aspect-ratio: 16/10; }
+      .stats { gap: 22px; }
+      section { padding: 64px 0; }
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <a class="brand" href="#">WABASH <span>VICE</span></a>
+    <div class="links">
+      <a href="#screens">Screenshots</a><a href="#features">Features</a><a href="#controls">Controls</a>
+      <a href="https://github.com/vishu-aggarwal-001/Wabash-Vice">GitHub</a><a class="keep" href="play.html">Play ▶</a>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div class="wrap">
+      <div class="eyebrow">West Lafayette · Lafayette · Indiana</div>
+      <h1>WABASH<br /><span>VICE</span></h1>
+      <p class="lede">An open-world driving, flying and boating game set in the <strong>real</strong> Greater Lafayette. Every street, every building, the Wabash River and Purdue's campus, at real scale. Free, right in your browser.</p>
+      <div class="cta">
+        <a class="play" href="play.html">▶ PLAY NOW</a>
+        <a class="ghost" href="#screens">See screenshots</a>
+      </div>
+      <div class="note">Works best on a laptop or desktop with Chrome, Edge or Firefox. First load downloads about 20 MB.</div>
+      <div class="stats">
+        <div><b>13,529</b><span>real buildings</span></div>
+        <div><b>10,380</b><span>real streets &amp; paths</span></div>
+        <div><b>22</b><span>vehicles</span></div>
+        <div><b>27,000</b><span>trees</span></div>
+      </div>
+    </div>
+  </header>
+
+  <section id="screens">
+    <div class="wrap">
+      <h2>Your town. Your rules.</h2>
+      <p class="sub">Built from OpenStreetMap data, so the streets are where they really are. Drive down Mitch Daniels Boulevard, fly a plane out of Purdue Airport, or race a speedboat up the Wabash under every bridge.</p>
+      <div class="gallery">
+        <figure class="g1"><img src="site/img/aerial.jpg" alt="Aerial view of Purdue and the Wabash River at golden hour" loading="lazy" /><figcaption>Golden hour over the Wabash, looking toward downtown Lafayette</figcaption></figure>
+        <figure class="g2"><img src="site/img/night.jpg" alt="Police cruiser at night downtown" loading="lazy" /><figcaption>Downtown at night: the courthouse dome</figcaption></figure>
+        <figure class="g3"><img src="site/img/street.jpg" alt="Sports car on Mitch Daniels Boulevard" loading="lazy" /><figcaption>The Boilermaker GT on Mitch Daniels Blvd</figcaption></figure>
+        <figure class="g4"><img src="site/img/brick.jpg" alt="Purdue red brick building" loading="lazy" /><figcaption>Photo-scanned Purdue brick at Stewart Center</figcaption></figure>
+        <figure class="g5"><img src="site/img/map.jpg" alt="In-game map with GPS route" loading="lazy" /><figcaption>Click anywhere on the map for GPS directions</figcaption></figure>
+      </div>
+    </div>
+  </section>
+
+  <section id="features" class="band">
+    <div class="wrap">
+      <h2>What's in the game</h2>
+      <p class="sub">Version 0.2. It's an early, growing game, and it already has a lot to do.</p>
+      <div class="features">
+        <div class="card"><div class="ic">🏙️</div><h3>The real city</h3><p>13,500 real building footprints, real street names on your HUD, the river valley, the bridges, and hand-built landmarks: the Purdue Bell Tower and the Tippecanoe County Courthouse.</p></div>
+        <div class="card"><div class="ic">🚗</div><h3>22 vehicles</h3><p>Sports cars, a hypercar, police cruiser, CityBus, fire engine, motorcycles, a bicycle, a trainer plane, a jet, a helicopter, a speedboat, a jet ski and a pontoon boat.</p></div>
+        <div class="card"><div class="ic">🚨</div><h3>Wanted level</h3><p>Steal a car or cause chaos and the Lafayette PD come after you. Five stars, a helicopter with a searchlight, and you can get BUSTED.</p></div>
+        <div class="card"><div class="ic">🏁</div><h3>Missions</h3><p>Deliveries, a street race from Ross-Ade, Purdue Flight School rings, rooftop helicopter landings and the Wabash River Run.</p></div>
+        <div class="card"><div class="ic">⚙️</div><h3>30 Golden Gears</h3><p>Hidden on streets and rooftops all over town, worth $500 each. Plus cash bonuses for stunt jumps.</p></div>
+        <div class="card"><div class="ic">🌇</div><h3>Day &amp; night</h3><p>Lafayette's real November sun path, real-time shadows, reflective glass, lit windows and street lamps at night, autumn trees.</p></div>
+        <div class="card"><div class="ic">📻</div><h3>Boiler FM 88.8</h3><p>A built-in synthwave radio station, plus engine, siren and crash sounds. No downloads, it's all generated live.</p></div>
+        <div class="card"><div class="ic">🎮</div><h3>Play anywhere</h3><p>Keyboard and mouse, gamepad, or touch controls on phones and tablets. Four graphics levels, from Low to Ultra.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="controls">
+    <div class="wrap">
+      <h2>Controls</h2>
+      <p class="sub">Press <kbd>F1</kbd> in the game any time to see these again.</p>
+      <div class="controls">
+        <div class="card"><table>
+          <tr><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></td><td>Move / drive</td></tr>
+          <tr><td>Mouse</td><td>Look around (click the game first)</td></tr>
+          <tr><td><kbd>F</kbd></td><td>Get in / out of a vehicle</td></tr>
+          <tr><td><kbd>V</kbd></td><td>Spawn any vehicle</td></tr>
+          <tr><td><kbd>M</kbd></td><td>Map and GPS</td></tr>
+          <tr><td><kbd>J</kbd></td><td>Start a mission at a yellow marker</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>Menu, settings, fast travel</td></tr>
+        </table></div>
+        <div class="card"><table>
+          <tr><td><kbd>Shift</kbd></td><td>Run / nitro / afterburner</td></tr>
+          <tr><td><kbd>Space</kbd></td><td>Jump / handbrake / helicopter up</td></tr>
+          <tr><td><kbd>↓</kbd> <kbd>↑</kbd></td><td>Plane nose up / down</td></tr>
+          <tr><td><kbd>Q</kbd> <kbd>E</kbd></td><td>Rudder / helicopter strafe</td></tr>
+          <tr><td><kbd>C</kbd></td><td>Change camera</td></tr>
+          <tr><td><kbd>R</kbd> <kbd>H</kbd> <kbd>K</kbd></td><td>Radio, horn, siren</td></tr>
+          <tr><td><kbd>T</kbd> (hold)</td><td>Fast-forward time</td></tr>
+        </table></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="final">
+    <div class="wrap">
+      <h2>Ready to hit State Street?</h2>
+      <p class="sub" style="margin: 0 auto 30px">No install, no account. Just play.</p>
+      <div class="cta"><a class="play" href="play.html">▶ PLAY NOW</a><a class="ghost" href="https://github.com/vishu-aggarwal-001/Wabash-Vice">View the code</a></div>
+    </div>
+  </section>
+
+  <footer>
+    Made by <a href="https://vishu-aggarwal-001.github.io/">Vishu Aggarwal</a> · Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> · Textures from <a href="https://polyhaven.com">Poly Haven</a> (CC0) · Built with <a href="https://threejs.org">Three.js</a><br />
+    A fan project. Not affiliated with Purdue University, the cities of Lafayette or West Lafayette, or Rockstar Games.
+  </footer>
+</body>
+</html>
