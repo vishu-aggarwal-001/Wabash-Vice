@@ -4,8 +4,9 @@ import { Sky } from 'three/addons/objects/Sky.js';
 import * as TX from './textures.js';
 
 export class Environment {
-  constructor(scene, renderer, quality) {
+  constructor(scene, renderer, quality, weather = 'clear') {
     this.scene = scene; this.renderer = renderer; this.quality = quality;
+    this.weather = weather; this.grey = weather === 'clear' ? 0 : 1;
     this.hours = 16.5;            // start in the late afternoon (golden hour soon)
     this.daySeconds = 24 * 60;    // one in-game day = 24 real minutes
     this.night = 0;
@@ -108,11 +109,21 @@ export class Environment {
     this.hemi.intensity = 0.2 + 0.35 * (1 - this.night);
     this.hemi.color.setHSL(0.58, 0.5, 0.35 + 0.4 * (1 - this.night));
     this.hemi.groundColor.setHSL(0.22, 0.3, 0.12 + 0.18 * (1 - this.night));
+    // overcast / snow: a soft grey sky — weak sun, strong skylight, thick haze
+    const G = this.grey, snow = this.weather === 'snow';
+    if (G > 0) {
+      this.sun.intensity *= snow ? 0.32 : 0.42;
+      this.sun.color.lerp(new THREE.Color(0xdfe6ee), 0.6);
+      this.hemi.intensity += (snow ? 0.75 : 0.55) * (1 - this.night);
+      this.hemi.color.setHSL(0.6, 0.12, 0.45 + 0.4 * (1 - this.night));
+      this.hemi.groundColor.setHSL(0.6, 0.08, (snow ? 0.32 : 0.16) + 0.2 * (1 - this.night));
+    }
+    this.sky.visible = G < 0.5; this.clouds.visible = G < 0.5;
 
-    const day = new THREE.Color(0xa9c0d8), dusk = new THREE.Color(0xd9a27a), nightC = new THREE.Color(0x0b1220);
-    const fog = day.clone().lerp(dusk, golden).lerp(nightC, this.night);
+    const day = G ? new THREE.Color(snow ? 0xc9d0d8 : 0xaab3bd) : new THREE.Color(0xa9c0d8), dusk = new THREE.Color(G ? 0x9a9aa2 : 0xd9a27a), nightC = new THREE.Color(G ? 0x15181e : 0x0b1220);
+    const fog = day.clone().lerp(dusk, golden * (G ? 0.3 : 1)).lerp(nightC, this.night);
     this.scene.fog.color.copy(fog);
-    this.scene.fog.density = this.fogBase * (1 + golden * 0.25 + this.night * 0.4);
+    this.scene.fog.density = this.fogBase * (1 + golden * 0.25 + this.night * 0.4) * (snow ? 2.6 : G ? 1.5 : 1);
     this.renderer.setClearColor(fog);
     this.renderer.toneMappingExposure = 0.55 + 0.25 * (1 - this.night) + this.night * 0.35;
 
@@ -131,6 +142,7 @@ export class Environment {
       const eu = this.envSky.material.uniforms;
       for (const k of ['turbidity', 'rayleigh', 'mieCoefficient', 'mieDirectionalG']) eu[k].value = u[k].value;
       eu.sunPosition.value.copy(dir);
+      if (this.grey) { eu.turbidity.value = 20; eu.rayleigh.value = 0.4; eu.mieCoefficient.value = 0.05; }
       if (this.envMap) this.envMap.dispose();
       this.envMap = this.pmrem.fromScene(this.envScene).texture;
       this.scene.environment = this.envMap;

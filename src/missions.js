@@ -75,6 +75,8 @@ export class Missions {
 
   start(m) {
     const g = this.g;
+    if (g.story?.active) { g.hud.toast('Finish your story mission first', 'warn'); return; }
+    if (g.jobs?.active) g.jobs.end(true);
     if (!this.vehicleOk(m.need, g.vehicle)) {
       if (g.vehicle) g.exitVehicle(true);
       const yaw = m.id === 'flight' ? g.runwaySpawn.yaw : m.id === 'river' ? g.riverYaw(g.boatLaunch[1]) : g.camYaw;

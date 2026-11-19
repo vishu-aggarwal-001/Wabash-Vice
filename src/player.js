@@ -79,15 +79,46 @@ export function animate(rig, mode, phase, blend = 1) {
   R.hips.position.y += (hipY - R.hips.position.y) * k;
 }
 
+// Fallback when the skinned models can't load: the old procedural figure behind the same interface.
+export class LegacyHuman {
+  constructor(opts = {}) { this.mesh = makePerson(opts); this.rig = this.mesh.userData.rig; this.phase = 0; this.punchT = 0; this.kickT = 0; }
+  update(dt, mode, speed = 0) {
+    this.phase += dt * (speed * 2.4 + 1);
+    const m = mode === 'drive' ? 'sit' : mode === 'cower' || mode === 'hands_up' || mode === 'wave' ? 'idle' : mode;
+    animate(this.rig, m, this.phase, dt * 12);
+    if (this.punchT > 0) { this.punchT -= dt; this.rig.ra.rotation.x = -1.5 * Math.sin(Math.min(1, 1 - this.punchT / 0.42) * Math.PI); }
+    if (this.kickT > 0) this.kickT -= dt;
+  }
+  punch() { if (this.punchT <= 0) { this.punchT = 0.42; return true; } return false; }
+  kick() { if (this.kickT <= 0) { this.kickT = 0.55; return true; } return false; }
+  get attacking() { return this.punchT > 0 || this.kickT > 0; }
+}
+export function makeHuman(people, kind = 'man', opts = {}) {
+  if (people?.ok) { try { return people.make(kind, opts); } catch (e) { console.warn(e); } }
+  const legacy = { player: { shirt: 0xcfb991, pants: 0x1b1b1b, skin: 0xd8a47f, hair: 0x1a1208 }, cop: { shirt: 0x1d2a4a, pants: 0x141a2c, cap: 0x141a2c }, medic: { shirt: 0xe8eef5, pants: 0x2c3d63 } }[kind] || {};
+  return new LegacyHuman(legacy);
+}
+
 export class Player {
-  constructor(world, scene) {
+  constructor(world, scene, people) {
     this.world = world;
-    this.mesh = makePerson({ shirt: 0xcfb991, pants: 0x1b1b1b, skin: 0xd8a47f, hair: 0x1a1208 });
+    this.char = makeHuman(people, 'player');
+    this.mesh = this.char.mesh;
     scene.add(this.mesh);
     this.pos = new THREE.Vector3(); this.vel = new THREE.Vector3();
-    this.yaw = 0; this.onGround = true; this.swimming = false; this.hp = 100; this.stamina = 1;
+    this.yaw = 0; this.onGround = true; this.swimming = false; this.hp = 100; this.armor = 0; this.stamina = 1; this.medkits = 2;
     this.phase = 0; this.mode = 'idle'; this.vehicle = null; this.down = 0; this.jumpHeld = false;
     this.events = [];
+  }
+  // swap the whole character (uniform for jobs) while keeping position and state
+  setOutfit(people, kind) {
+    if (this.outfit === kind || (!this.outfit && kind === 'player')) return;
+    this.outfit = kind;
+    const old = this.mesh, parent = old.parent;
+    this.char = makeHuman(people, kind);
+    this.mesh = this.char.mesh;
+    this.mesh.position.copy(old.position); this.mesh.rotation.copy(old.rotation); this.mesh.visible = old.visible;
+    if (parent) { parent.add(this.mesh); parent.remove(old); }
   }
   place(x, z, y = null) {
     const g = this.world.groundAt(x, z, y);
@@ -97,8 +128,17 @@ export class Player {
   knock(v) {
     if (this.down > 0) return;
     this.vel.copy(v).setY(Math.max(4, v.length() * 0.35));
-    this.down = 2.5; this.hp -= Math.min(60, v.length() * 2.5);
+    this.down = 2.5; this.hurt(Math.min(60, v.length() * 2.5));
+  }
+  // armour soaks up damage first
+  hurt(n) {
+    const a = Math.min(this.armor, n * 0.7);
+    this.armor -= a; this.hp -= n - a;
     this.events.push('hurt');
+  }
+  useMedkit() {
+    if (this.medkits <= 0 || this.hp >= 100) return false;
+    this.medkits--; this.hp = Math.min(100, this.hp + 50); return true;
   }
   update(dt, input, camYaw) {
     this.events.length = 0;
@@ -144,7 +184,7 @@ export class Player {
     this.pos.x = res.x; this.pos.z = res.z;
     const g2 = w.groundAt(this.pos.x, this.pos.z, this.pos.y, 0.7);
     if (this.pos.y <= g2.y) {
-      if (this.vel.y < -15) { this.hp -= (-this.vel.y - 15) * 9; this.events.push('hurt'); }
+      if (this.vel.y < -15) { this.hurt((-this.vel.y - 15) * 9); }
       this.pos.y = g2.y; this.vel.y = Math.max(0, this.vel.y); this.onGround = true;
     } else if (this.onGround && this.pos.y - g2.y < 0.5 && this.vel.y <= 0) {
       this.pos.y = g2.y; this.vel.y = 0;
@@ -152,8 +192,15 @@ export class Player {
     // animation
     const hs = Math.hypot(this.vel.x, this.vel.z);
     this.phase += dt * (hs * 2.4 + 1);
-    this.mode = this.down > 0 ? 'down' : this.swimming ? 'swim' : !this.onGround ? 'jump' : hs > 4.2 ? 'run' : hs > 0.4 ? 'walk' : 'idle';
-    animate(this.mesh.userData.rig, this.mode, this.phase, dt * 12);
+    this.mode = this.down > 0 ? 'down' : this.swimming ? 'swim' : !this.onGround && this.airT > 0.12 ? 'jump' : hs > 4.2 ? 'run' : hs > 0.4 ? 'walk' : 'idle';
+    this.airT = this.onGround ? 0 : (this.airT || 0) + dt;
+    // fists: punch (click / Q), kick (E)
+    if (this.down <= 0 && !this.swimming) {
+      if (input.punch && this.char.punch()) this.events.push('punch');
+      if (input.kick && this.char.kick()) this.events.push('kick');
+    }
+    if (this.char.attacking) { this.vel.x *= 0.85; this.vel.z *= 0.85; }
+    this.char.update(dt, this.mode, hs);
     this.mesh.position.copy(this.pos);
     this.mesh.rotation.set(0, this.yaw, 0);
   }

@@ -109,6 +109,27 @@ export class Audio {
   }
   crash(intensity) { this.oneShot('lowpass', Math.min(0.9, 0.15 + intensity * 0.03), 0.35 + Math.min(0.6, intensity * 0.02), 900); this.oneShot('highpass', Math.min(0.4, intensity * 0.015), 0.25, 3000); }
   splash() { this.oneShot('bandpass', 0.5, 0.9, 1200); }
+  whoosh() { this.oneShot('bandpass', 0.12, 0.18, 1800); }
+  punch(dmg = 20) { this.oneShot('lowpass', 0.45 + dmg * 0.006, 0.14, 420); this.oneShot('bandpass', 0.18, 0.06, 2400); }
+  // two-tone phone ring / radio chirp for dispatcher calls
+  ring() {
+    if (!this.ctx) return;
+    const C = this.ctx, t = C.currentTime;
+    for (let i = 0; i < 4; i++) for (const f of [1320, 1660]) {
+      const o = C.createOscillator(), g = C.createGain();
+      o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(0, t + i * 0.12); g.gain.linearRampToValueAtTime(0.06, t + i * 0.12 + 0.01); g.gain.setTargetAtTime(0, t + i * 0.12 + 0.08, 0.02);
+      o.connect(g); g.connect(this.master); o.start(t + i * 0.12); o.stop(t + i * 0.12 + 0.2);
+    }
+  }
+  radioChirp() {
+    if (!this.ctx) return;
+    const C = this.ctx, t = C.currentTime, o = C.createOscillator(), g = C.createGain();
+    o.type = 'square'; o.frequency.setValueAtTime(1900, t); o.frequency.setValueAtTime(1400, t + 0.07);
+    g.gain.setValueAtTime(0.04, t); g.gain.setTargetAtTime(0, t + 0.14, 0.02);
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t + 0.3);
+    this.oneShot('bandpass', 0.05, 0.25, 2600);
+  }
   explosion() { this.oneShot('lowpass', 1, 2.2, 260); this.oneShot('lowpass', 0.6, 0.8, 1200); }
   horn(pos, vol = 0.25) {
     if (!this.ctx) return;

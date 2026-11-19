@@ -1,6 +1,6 @@
 {
   "name": "wabash-vice",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Open-world driving, flying and boating game set in the real West Lafayette & Lafayette, Indiana (Three.js + OpenStreetMap).",
   "private": true,
   "scripts": {

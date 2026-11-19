@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>char lab</title>
+<script type="importmap">{ "imports": { "three": "../vendor/three/three.module.js", "three/addons/": "../vendor/three/addons/" } }</script>
+<style>body{margin:0;background:#888}</style></head>
+<body><canvas id="c" width="1280" height="720"></canvas>
+<script type="module">
+// Developer tool: loads the character models + clips and renders a lineup.
+// Also used once to extract the animation clips into data/chars/anims.json (window.extract()).
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { People } from '../src/people.js';
+const L = new GLTFLoader();
+window.extract = async (files) => {
+  const out = { _rest: null };
+  for (const f of files) {
+    const g = await L.loadAsync(f);
+    g.scene.updateMatrixWorld(true);
+    if (!out._rest) {
+      // source skeleton rest pose: world rotations + hierarchy order, used to retarget onto other rigs
+      const rest = []; const q = new THREE.Quaternion();
+      g.scene.traverse((o) => { if (o.isBone) { o.getWorldQuaternion(q); rest.push([o.name.replace('mixamorig:', ''), o.parent.isBone ? o.parent.name.replace('mixamorig:', '') : null, q.toArray().map(x => +x.toFixed(6))]); } });
+      out._rest = rest;
+    }
+    for (const clip of g.animations) {
+      if (/sad_pose|sneak_pose|TPose/i.test(clip.name)) continue;
+      const tracks = [];
+      for (const t of clip.tracks) {
+        let [node, prop] = t.name.split('.');
+        node = node.replace('mixamorig:', '').replace('mixamorig', '');
+        if (prop === 'scale') continue;
+        if (prop === 'position') {
+          if (node !== 'Hips') continue;
+          // keep only the vertical bob, as a delta from the first frame, in metres (source rigs are in cm)
+          const v = Array.from(t.values), y0 = v[1];
+          const vals = []; for (let i = 0; i < v.length; i += 3) vals.push(0, (v[i + 1] - y0) * 0.01, 0);
+          tracks.push({ name: 'Hips.bob', times: Array.from(t.times), values: vals });
+          continue;
+        }
+        tracks.push({ name: node + '.' + prop, times: Array.from(t.times).map(x => +x.toFixed(4)), values: Array.from(t.values).map(x => +x.toFixed(4)) });
+      }
+      out[f.split('/').pop().replace('.glb', '') + ':' + clip.name] = { duration: clip.duration, tracks };
+    }
+  }
+  return JSON.stringify(out);
+};
+const r = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true, preserveDrawingBuffer: true });
+r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping;
+r.shadowMap.enabled = true;
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x9fb4c8);
+const cam = new THREE.PerspectiveCamera(35, 1280 / 720, 0.1, 100);
+scene.add(new THREE.HemisphereLight(0xcfe3ff, 0x5a4a3a, 1.2));
+const sun = new THREE.DirectionalLight(0xffffff, 2.5); sun.position.set(3, 6, 4); sun.castShadow = true; scene.add(sun);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshStandardMaterial({ color: 0x777777 })); ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+window.THREE = THREE; window.scene = scene; window.cam = cam;
+window.people = new People();
+window.ready = people.load('../').then(() => true);
+window.render = () => { r.render(scene, cam); return document.getElementById('c').toDataURL('image/png'); };
+</script></body></html>

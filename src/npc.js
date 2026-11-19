@@ -2,7 +2,8 @@
 // and the Lafayette PD (wanted level, chases, helicopter, busted).
 import * as THREE from 'three';
 import { Vehicle, CATALOG } from './vehicles.js';
-import { makePerson, animate } from './player.js';
+import { makeHuman } from './player.js';
+import { Actor } from './actors.js';
 
 const TRAFFIC_TYPES = ['sedan', 'sedan', 'sedan', 'hatch', 'hatch', 'suv', 'suv', 'pickup', 'pickup', 'taxi', 'bus', 'truck', 'muscle', 'gt', 'sportbike', 'police'];
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -125,6 +126,12 @@ export class Traffic {
         const ahead = dx * fx + dz * fz, side = Math.abs(dx * fz - dz * fx);
         if (ahead > 0 && ahead < 22 && side < 2.6) target = Math.min(target, Math.max(0, (ahead - 7) * 0.9), sp + (ahead - 9) * 0.4);
       };
+      // traffic lights: stop at the line on red (and on yellow if there's room)
+      const sig = w.lights?.has(c.b) ? w.signal(c.b, c.a) : 0;
+      if (sig) {
+        const toLine = c.len - c.t - 11;
+        if (toLine > -1 && (sig === 2 || toLine > c.speed * 1.2)) target = Math.min(target, Math.max(0, toLine * 0.7));
+      }
       for (const o of this.cars) if (o !== c) check(o.v.pos.x, o.v.pos.z, o.ai ? o.speed : 0);
       if (playerVeh) check(playerVeh.pos.x, playerVeh.pos.z, playerVeh.speed * 0.5);
       else if (player) check(player.pos.x, player.pos.z, 0);
@@ -182,9 +189,11 @@ export class Traffic {
     if (a < 0) return;
     const nb = this.w.gAdj[a];
     const b = nb[Math.floor(Math.random() * nb.length)];
-    const mesh = makePerson();
+    const r = Math.random();
+    const char = makeHuman(this.g.people, r < 0.3 ? 'woman' : 'man');
+    const mesh = char.mesh;
     this.g.scene.add(mesh);
-    const p = { mesh, a, b, t: Math.random() * 10, side: Math.random() < 0.5 ? 1 : -1, speed: 1.1 + Math.random() * 0.6, phase: Math.random() * 6, pos: new THREE.Vector3(), vel: new THREE.Vector3(), yaw: 0, down: 0, flee: 0, fly: false };
+    const p = { char, mesh, hp: 100, a, b, t: Math.random() * 10, side: Math.random() < 0.5 ? 1 : -1, speed: 1.1 + Math.random() * 0.6, phase: Math.random() * 6, pos: new THREE.Vector3(), vel: new THREE.Vector3(), yaw: 0, down: 0, flee: 0, fly: false };
     const A = this.w.gNodes[a], B = this.w.gNodes[b];
     p.len = Math.max(0.1, Math.hypot(B[0] - A[0], B[2] - A[2]));
     this.peds.push(p);
@@ -195,20 +204,26 @@ export class Traffic {
     for (let i = this.peds.length - 1; i >= 0; i--) {
       const p = this.peds[i];
       if (Math.hypot(p.pos.x - focus.x, p.pos.z - focus.z) > 230 && p.pos.lengthSq() > 0) { this.g.scene.remove(p.mesh); this.peds.splice(i, 1); continue; }
-      const rig = p.mesh.userData.rig;
+      const pd = Math.hypot(p.pos.x - focus.x, p.pos.z - focus.z);
+      p.mesh.visible = pd < 140;
+      // animation level-of-detail: far people animate at a lower rate
+      p.animAcc = (p.animAcc || 0) + dt;
+      const animNow = pd < 45 || (p.animAcc > (pd < 90 ? 0.05 : 0.12));
+      const anim = (mode, speed) => { if (animNow && p.mesh.visible) { p.char.update(p.animAcc, mode, speed); p.animAcc = 0; } };
       if (p.fly || p.down > 0) {
         if (p.fly) {
           p.vel.y -= 9.81 * dt; p.pos.addScaledVector(p.vel, dt);
           const gy = w.groundAt(p.pos.x, p.pos.z, p.pos.y).y;
           if (p.pos.y <= gy) { p.pos.y = gy; p.fly = false; p.vel.set(0, 0, 0); }
         } else p.down -= dt;
-        if (p.down <= 0 && !p.fly) { p.flee = 8; p.mesh.rotation.x = 0; }
-        animate(rig, 'down', 0, dt * 10);
+        if (p.down <= 0 && !p.fly) { p.flee = 8; p.mesh.rotation.x = 0; p.dead = false; p.hp = Math.max(p.hp, 40); }
+        anim(p.dead ? 'down' : 'down', 0);
         p.mesh.position.copy(p.pos);
         continue;
       }
       const A = w.gNodes[p.a], B = w.gNodes[p.b];
-      const sp = p.flee > 0 ? 5.5 : p.speed;
+      p.cower = Math.max(0, (p.cower || 0) - dt);
+      const sp = p.cower > 0 ? 0 : p.flee > 0 ? 5.5 : p.speed;
       p.flee = Math.max(0, p.flee - dt);
       p.t += sp * dt;
       if (p.t >= p.len) {
@@ -228,7 +243,7 @@ export class Traffic {
       const wy = Math.atan2(dx, dz);
       p.yaw += wrap(wy - p.yaw) * Math.min(1, dt * 5);
       p.phase += dt * sp * 2.4;
-      animate(rig, p.flee > 0 ? 'run' : 'walk', p.phase, dt * 10);
+      anim(p.cower > 0 ? 'cower' : p.flee > 0 ? 'run' : 'walk', p.cower > 0 ? 0 : sp);
       p.mesh.position.copy(p.pos); p.mesh.rotation.y = p.yaw;
       // hit by the player's vehicle
       if (pv && !pv.airborne) {
@@ -236,13 +251,24 @@ export class Traffic {
         if (d < pv.radius + 0.9 + pv.spec.L * 0.2 && Math.abs(p.pos.y - pv.pos.y) < 2) {
           const s = pv.speed;
           if (s > 3) {
-            p.fly = true; p.down = 4;
+            p.fly = true; p.down = s > 14 ? 30 : 4; p.dead = s > 14;
             p.vel.copy(pv.vel).multiplyScalar(0.7); p.vel.y = 3 + s * 0.25;
             this.g.onPedHit(p, s);
           } else { p.pos.x += ddx / d * 0.5; p.pos.z += ddz / d * 0.5; p.flee = 6; }
         }
       }
     }
+  }
+
+  // a punched / kicked pedestrian staggers, falls if hurt enough, and everyone nearby panics
+  hitPed(p, dx, dz, dmg) {
+    p.pos.x += dx * 0.4; p.pos.z += dz * 0.4;
+    if (p.hp <= 0 || dmg > 30 || Math.random() < 0.35) {
+      p.fly = true; p.down = p.hp <= 0 ? 30 : 3; p.dead = p.hp <= 0;
+      p.vel.set(dx * 3, 2.2, dz * 3);
+      if (p.dead) this.g.hud.toast('Knocked out cold', 'warn');
+    } else { p.flee = 8; }
+    for (const o of this.peds) if (o !== p && o.pos.distanceTo(p.pos) < 25) { if (Math.random() < 0.3) o.cower = 3 + Math.random() * 3; else o.flee = 8; }
   }
 
   nearestCar(pos, r = 5) {
@@ -272,6 +298,7 @@ export class Police {
   }
   clear() {
     this.wanted = 0;
+    for (const c of this.foot || []) { c.mode = 'goto'; c.target = c.car ? c.car.pos : c.pos.clone(); c.hostile = false; c.leaving = true; }
     for (const u of this.units) { u.v.sirenOn = false; u.leaving = true; }
     if (this.heli) { this.g.scene.remove(this.heli.v.mesh); this.heli = null; }
   }
@@ -320,6 +347,7 @@ export class Police {
     for (let i = this.units.length - 1; i >= 0; i--) {
       const u = this.units[i], v = u.v;
       const dx = target.x - v.pos.x, dz = target.z - v.pos.z, dist = Math.hypot(dx, dz);
+      if (u.footed) { seen = seen || dist < 150; continue; }
       if (u.leaving || v.dead) {
         if (dist > 350 || v.dead && dist > 150) { this.g.scene.remove(v.mesh); this.units.splice(i, 1); continue; }
         v.update(dt, { throttle: 0, steer: 0, handbrake: true }, this.g.fx);
@@ -355,8 +383,33 @@ export class Police {
       // cop cars bump each other / traffic
       for (const c of this.g.traffic.cars) this.g.traffic.contact(v, c);
     }
+    // officers get out and chase you on foot when you're on foot nearby
+    this.foot ||= [];
+    if (!playerVeh && this.wanted > 0) {
+      for (const u of this.units) {
+        if (u.leaving || u.footed || u.v.dead) continue;
+        if (u.v.pos.distanceTo(target) < 26 && u.v.speed < 6) {
+          u.footed = true; u.v.sirenOn = true;
+          const side = new THREE.Vector3(Math.cos(u.v.yaw), 0, -Math.sin(u.v.yaw)).multiplyScalar(1.6);
+          const c = new Actor(this.g, 'cop', u.v.pos.x + side.x, u.v.pos.z + side.z, { mode: 'fight', hostile: true, hp: 120, dmg: 5, runSpeed: 6.2 });
+          c.cop = true; c.car = u.v; c.unit = u;
+          this.foot.push(c);
+          u.parkedFor = 0;
+        }
+      }
+    }
+    for (let i = this.foot.length - 1; i >= 0; i--) {
+      const c = this.foot[i];
+      if (c.removed) { this.foot.splice(i, 1); continue; }
+      const far = c.pos.distanceTo(target) > 160;
+      if ((c.leaving && c.car && c.pos.distanceTo(c.car.pos) < 2.5) || far || (c.isDown && c.down > 50)) { c.remove(); this.foot.splice(i, 1); if (c.unit) c.unit.footed = false; continue; }
+      if (playerVeh && !c.leaving && c.car && !c.car.dead) { c.mode = 'goto'; c.target = c.car.pos; c.after = 'idle'; c.onArrive = () => { c.remove(); if (c.unit) c.unit.footed = false; }; }
+      else if (!playerVeh && this.wanted > 0 && c.mode !== 'fight' && !c.leaving) { c.mode = 'fight'; c.onArrive = null; }
+    }
+    // a unit whose officer is out on foot stays parked
+    for (const u of this.units) if (u.footed) { u.v.update(dt, { throttle: 0, steer: 0, handbrake: true }, this.g.fx); }
     // busted?
-    const nearCop = this.units.some(u => !u.leaving && u.v.pos.distanceTo(target) < (playerVeh ? 8 : 6));
+    const nearCop = this.units.some(u => !u.leaving && !u.footed && u.v.pos.distanceTo(target) < (playerVeh ? 8 : 6)) || this.foot.some(c => !c.isDown && !c.leaving && c.pos.distanceTo(target) < 1.8);
     const slow = playerVeh ? playerVeh.speed < 1.5 : (player && player.down <= 0 && Math.hypot(player.vel.x, player.vel.z) < 3);
     if (this.wanted > 0 && nearCop && slow) { this.bustTimer += dt; if (this.bustTimer > (playerVeh ? 2.5 : 1.5)) { this.bustTimer = 0; this.g.busted(); } }
     else this.bustTimer = Math.max(0, this.bustTimer - dt);
@@ -370,5 +423,6 @@ export class Police {
     if (this.heli && this.wanted < 3) { this.g.scene.remove(this.heli.v.mesh); this.heli = null; }
   }
 
+  copSees(p, r) { return this.units.some(u => u.v.pos.distanceTo(p) < r) || (this.foot || []).some(c => c.pos.distanceTo(p) < r); }
   get evading() { return this.wanted > 0 && this.unseen > 1.5; }
 }

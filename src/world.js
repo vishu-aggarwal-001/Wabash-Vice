@@ -92,6 +92,16 @@ function pointInPoly(x, z, ring) {
   }
   return inside;
 }
+function edgeDist(x, z, ring) {
+  let bd = Infinity;
+  for (let i = 0, j = ring.length - 2; i < ring.length; j = i, i += 2) {
+    const x0 = ring[j], z0 = ring[j + 1], dx = ring[i] - x0, dz = ring[i + 1] - z0, l2 = dx * dx + dz * dz || 1;
+    const t = Math.max(0, Math.min(1, ((x - x0) * dx + (z - z0) * dz) / l2));
+    const d = Math.hypot(x - x0 - dx * t, z - z0 - dz * t);
+    if (d < bd) bd = d;
+  }
+  return bd;
+}
 
 const PAL = {
   house: [[1, 1, 1], [1.0, 0.96, 0.86], [0.82, 0.9, 0.98], [0.86, 0.86, 0.84], [1.0, 0.94, 0.75], [0.82, 0.9, 0.8], [0.95, 0.85, 0.78], [0.7, 0.72, 0.74]],
@@ -155,6 +165,7 @@ export class World {
     progress(0.9, 'Indexing streets…'); await nextFrame();
     this.indexRoadNames();
     this.buildGraph();
+    this.buildTrafficLights();
   }
 
   async loadTextures() {
@@ -298,6 +309,7 @@ export class World {
       color: 0x24414a, roughness: 0.12, metalness: 0.05, normalMap: nmap, normalScale: new THREE.Vector2(0.22, 0.22),
       transparent: true, opacity: 0.92, envMapIntensity: 0.75,
     });
+    mat.defines = { NO_SNOW: '' };
     const water = new THREE.Mesh(new THREE.PlaneGeometry(30000, 30000), mat);
     water.rotation.x = -Math.PI / 2; water.position.y = this.map.waterLevel;
     water.receiveShadow = true;
@@ -320,6 +332,7 @@ export class World {
     for (const k in tex) {
       const n = (k === 'foot' ? T.concreteN : T.asphaltN).clone(); n.needsUpdate = true; n.repeat.set(...nrep[k]);
       mats[k] = new THREE.MeshStandardMaterial({ map: tex[k], normalMap: n, normalScale: new THREE.Vector2(0.8, 0.8), roughness: k === 'foot' ? 0.88 : 0.82, polygonOffset: true, polygonOffsetFactor: -1 - order[k], polygonOffsetUnits: -2 - order[k] * 2 });
+      mats[k].defines = { SNOW_SCALE: k === 'foot' ? '0.75' : k === 'rail' ? '0.6' : '0.32' };
     }
     const cmap = T.concreteD.clone(); cmap.needsUpdate = true; cmap.repeat.set(0.5, 0.5);
     const concrete = new THREE.MeshStandardMaterial({ map: cmap, color: 0xc8c4bc, roughness: 0.9 });
@@ -704,6 +717,7 @@ export class World {
     const barkN = T.barkN.clone(); barkN.needsUpdate = true; barkN.repeat.set(1, 2);
     const trunkM = new THREE.MeshStandardMaterial({ map: bark, normalMap: barkN, color: 0x9a8f82, roughness: 1 });
     const leafM = new THREE.MeshStandardMaterial({ map: T.foliage, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.82, alphaToCoverage: this.quality.msaa > 0 });
+    leafM.defines = { SNOW_SCALE: '0.38' };
     leafM.onBeforeCompile = (sh) => {
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec2 leafCell;')
         .replace('#include <uv_vertex>', '#include <uv_vertex>\nvMapUv += leafCell;');
@@ -867,6 +881,86 @@ export class World {
     return best;
   }
 
+  // Mast-arm traffic signals at junctions on the major roads. Approaches are split into two
+  // groups (roughly perpendicular streets) that take turns; AI traffic stops on red.
+  buildTrafficLights() {
+    const types = this.map.roadTypes, majorSet = new Set();
+    const key = (x, z) => Math.round(x / 2) + '|' + Math.round(z / 2);
+    const majors = ['primary', 'secondary', 'trunk', 'tertiary'];
+    for (const [ti, , , P] of this.map.roads) if (majors.includes(types[ti])) for (let i = 0; i < P.length; i += 3) majorSet.add(key(P[i], P[i + 2]));
+    this.lights = new Map();
+    const heads = [];
+    const N = this.gNodes, A = this.gAdj;
+    // undirected degree
+    const deg = new Map();
+    A.forEach((nb, i) => { for (const j of nb) { (deg.get(i) || deg.set(i, new Set()).get(i)).add(j); (deg.get(j) || deg.set(j, new Set()).get(j)).add(i); } });
+    for (const [i, set] of deg) {
+      if (set.size < 3 || !majorSet.has(key(N[i][0], N[i][2]))) continue;
+      // skip junctions too close to an existing one (dual carriageways, short links)
+      let close = false;
+      for (const [j] of this.lights) if (Math.hypot(N[j][0] - N[i][0], N[j][2] - N[i][2]) < 40) { close = true; break; }
+      if (close) continue;
+      const nbs = [...set], a0 = Math.atan2(N[nbs[0]][0] - N[i][0], N[nbs[0]][2] - N[i][2]);
+      const groups = new Map();
+      for (const j of nbs) {
+        const a = Math.atan2(N[j][0] - N[i][0], N[j][2] - N[i][2]);
+        groups.set(j, Math.abs(Math.cos(a - a0)) > 0.7 ? 0 : 1);
+        if (heads.length < 2400) heads.push([i, j, a, groups.get(j)]);
+      }
+      this.lights.set(i, { groups, offset: Math.random() * 30 });
+      if (this.lights.size > 420) break;
+    }
+    const n = heads.length;
+    const poleG = new THREE.CylinderGeometry(0.11, 0.14, 6.4, 8); poleG.translate(0, 3.2, 0);
+    const armG = new THREE.BoxGeometry(0.1, 0.1, 1); armG.translate(0, 0, 0.5);
+    const boxG = new THREE.BoxGeometry(0.36, 1.05, 0.26);
+    const lampG = new THREE.CircleGeometry(0.11, 12);
+    const metal = new THREE.MeshStandardMaterial({ color: 0x55595e, metalness: 0.7, roughness: 0.45 });
+    const housing = new THREE.MeshStandardMaterial({ color: 0x2a2a1e, roughness: 0.6 });
+    const lampM = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
+    const poles = new THREE.InstancedMesh(poleG, metal, n), arms = new THREE.InstancedMesh(armG, metal, n), boxes = new THREE.InstancedMesh(boxG, housing, n);
+    const lamps = new THREE.InstancedMesh(lampG, lampM, n * 3);
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), sc = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+    this.lightHeads = heads;
+    heads.forEach(([i, j, a], k) => {
+      const dx = Math.sin(a), dz = Math.cos(a), rx = dz, rz = -dx;   // d = toward approach; r = right of traffic coming in
+      const hw = 6;
+      const px = N[i][0] + dx * (hw + 2.5) + rx * (hw + 0.8), pz = N[i][2] + dz * (hw + 2.5) + rz * (hw + 0.8);
+      const gy = this.heightAt(px, pz);
+      const face = Math.atan2(dx, dz);             // signals face the approaching cars
+      q.setFromAxisAngle(up, face);
+      m4.compose(p.set(px, gy, pz), q, sc.set(1, 1, 1)); poles.setMatrixAt(k, m4);
+      // arm reaches out over the lanes (to the traffic's left)
+      const armLen = hw + 0.4, armYaw = Math.atan2(-rx, -rz);
+      m4.compose(p.set(px, gy + 6.2, pz), new THREE.Quaternion().setFromAxisAngle(up, armYaw), sc.set(1, 1, armLen)); arms.setMatrixAt(k, m4);
+      const hx = px - rx * (armLen - 1.2), hz = pz - rz * (armLen - 1.2);
+      m4.compose(p.set(hx, gy + 5.55, hz), q, sc.set(1, 1, 1)); boxes.setMatrixAt(k, m4);
+      for (let c = 0; c < 3; c++) {
+        m4.compose(p.set(hx + dx * 0.135, gy + 5.88 - c * 0.33, hz + dz * 0.135), q, sc.set(1, 1, 1));
+        lamps.setMatrixAt(k * 3 + c, m4); lamps.setColorAt(k * 3 + c, new THREE.Color(0x111111));
+      }
+    });
+    for (const im of [poles, arms, boxes, lamps]) { im.computeBoundingSphere(); im.userData.noAO = im === lamps; this.group.add(im); }
+    poles.castShadow = arms.castShadow = boxes.castShadow = true;
+    this.lampIM = lamps; this.lightT = 0; this.lightCols = [new THREE.Color(3, 0.15, 0.1), new THREE.Color(3, 1.6, 0.1), new THREE.Color(0.2, 3, 0.6), new THREE.Color(0.06, 0.05, 0.05)];
+  }
+  // 0 = green, 1 = yellow, 2 = red for traffic arriving at junction i from neighbour j
+  signal(i, j) {
+    const L = this.lights.get(i); if (!L) return 0;
+    const g = L.groups.get(j) ?? 0, t = (this.time + L.offset) % 32;
+    const ph = g === 0 ? t : (t + 16) % 32;
+    return ph < 13 ? 0 : ph < 16 ? 1 : 2;
+  }
+  updateLights() {
+    if (!this.lampIM) return;
+    const C = this.lightCols, im = this.lampIM;
+    this.lightHeads.forEach(([i, j], k) => {
+      const s = this.signal(i, j);
+      im.setColorAt(k * 3, s === 2 ? C[0] : C[3]); im.setColorAt(k * 3 + 1, s === 1 ? C[1] : C[3]); im.setColorAt(k * 3 + 2, s === 0 ? C[2] : C[3]);
+    });
+    im.instanceColor.needsUpdate = true;
+  }
+
   buildGraph() {
     const { nodes, adj } = this.map.graph;
     this.gNodes = nodes; this.gAdj = adj;
@@ -996,21 +1090,41 @@ export class World {
   }
 
   // ray march for the camera so it doesn't clip into buildings
-  lineBlocked(ax, ay, az, bx, by, bz) {
-    const steps = 12;
+  lineBlocked(ax, ay, az, bx, by, bz, pad = 0) {
+    const len = Math.hypot(bx - ax, by - ay, bz - az);
+    const steps = Math.max(12, Math.min(160, Math.ceil(len / 0.3)));
     for (let i = 1; i <= steps; i++) {
       const t = i / steps, x = ax + (bx - ax) * t, y = ay + (by - ay) * t, z = az + (bz - az) * t;
       if (y < this.heightAt(x, z) + 0.3) return t;
       for (const id of this.gridGet(this.bGrid, x, z) || []) {
         const b = this.buildings[id];
-        if (y < b.top && y > b.base && x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1 && pointInPoly(x, z, b.ring)) return t;
+        if (y < b.top + pad && y > b.base - pad && x >= b.x0 - pad && x <= b.x1 + pad && z >= b.z0 - pad && z <= b.z1 + pad && (pointInPoly(x, z, b.ring) || pad > 0 && edgeDist(x, z, b.ring) < pad)) return t;
+      }
+      if (pad > 0 && y < this.heightAt(x, z) + 7) {
+        for (const id of this.gridGet(this.tGrid, x, z) || []) {
+          const tr = this.trees[id];
+          if (Math.hypot(x - tr[0], z - tr[1]) < 0.35 * tr[2] + pad) return t;
+        }
       }
     }
     return 1;
   }
 
+  // camera probe: a thick ray (centre + 4 offsets around it) so the near plane never pokes into a wall
+  cameraClear(a, b, radius = 0.35) {
+    const dx = b.x - a.x, dz = b.z - a.z, l = Math.hypot(dx, dz) || 1;
+    const rx = -dz / l * radius, rz = dx / l * radius;
+    let t = this.lineBlocked(a.x, a.y, a.z, b.x, b.y, b.z, radius * 0.8);
+    for (const [ox, oy, oz] of [[rx, 0, rz], [-rx, 0, -rz], [0, radius, 0], [0, -radius * 0.6, 0]]) {
+      t = Math.min(t, this.lineBlocked(a.x, a.y, a.z, b.x + ox, b.y + oy, b.z + oz));
+    }
+    return t;
+  }
+
   update(dt, night) {
     this.time += dt;
+    this.lightT = (this.lightT || 0) - dt;
+    if (this.lightT <= 0) { this.lightT = 0.25; this.updateLights(); }
     this.waterNormal.offset.set(this.time * 0.004, this.time * 0.0025);
     for (const [m, k] of this.nightMats) m.emissiveIntensity = night * k;
   }

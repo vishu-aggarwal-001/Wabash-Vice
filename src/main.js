@@ -36,9 +36,13 @@ import { Missions } from './missions.js';
 import { HUD } from './hud.js';
 import { Input } from './input.js';
 import { Audio } from './audio.js';
+import { People } from './people.js';
+import { Jobs } from './jobs.js';
+import { Story } from './story.js';
+import { pickWeather, installSnowShader, Snowfall } from './weather.js';
 
 const QUALITY = {
-  low: { pixelRatio: 1, shadows: 0, shadowRange: 120, drawDistance: 1400, bloom: false, msaa: 0, ao: false, grade: false, textures: 'lo', treeCards: 14, traffic: 14, peds: 10, lamps: 1500, treeShadows: false },
+  low: { pixelRatio: 1, shadows: 1024, shadowRange: 80, drawDistance: 1400, bloom: false, msaa: 0, ao: false, grade: false, textures: 'lo', treeCards: 14, traffic: 14, peds: 10, lamps: 1500, treeShadows: false },
   medium: { pixelRatio: 1.25, shadows: 2048, shadowRange: 130, drawDistance: 2400, bloom: true, msaa: 4, ao: false, grade: true, textures: 'lo', treeCards: 24, traffic: 24, peds: 16, lamps: 4000, treeShadows: false },
   high: { pixelRatio: 1.5, shadows: 4096, shadowRange: 160, drawDistance: 3400, bloom: true, msaa: 4, ao: true, grade: true, textures: 'hi', treeCards: 34, traffic: 34, peds: 24, lamps: 8000, treeShadows: true },
   ultra: { pixelRatio: 2, shadows: 4096, shadowRange: 200, drawDistance: 4800, bloom: true, msaa: 4, ao: true, grade: true, textures: 'hi', treeCards: 44, traffic: 48, peds: 34, lamps: 14000, treeShadows: true },
@@ -54,14 +58,19 @@ class Game {
     try { save = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}'); } catch { /* storage unavailable */ }
     const touch = matchMedia('(pointer: coarse)').matches;
     this.save = save;
-    this.settings = Object.assign({ quality: touch ? 'low' : 'high', invertPitch: false, volume: 0.8, sensitivity: 1, units: 'mph', dayMinutes: 24 }, save.settings || {});
+    this.settings = Object.assign({ quality: 'auto', invertPitch: false, volume: 0.8, sensitivity: 1, units: 'mph', dayMinutes: 24, dynres: true, weather: 'auto' }, save.settings || {});
+    this.weather = pickWeather(params.get('weather') || this.settings.weather);
+    installSnowShader(this.weather === 'snow' ? 1 : 0);
+    if (!save.v3) { this.settings.quality = 'auto'; }   // v0.3: re-detect everyone's quality once
+    this.autoQuality = this.settings.quality === 'auto' ? detectQuality(touch) : null;
     if (params.get('quality')) this.settings.quality = params.get('quality');
-    this.quality = QUALITY[this.settings.quality] || QUALITY.high;
+    this.quality = { ...(QUALITY[this.autoQuality && !params.get('quality') ? this.autoQuality : this.settings.quality] || QUALITY.medium) };
     this.money = save.money ?? 500;
     this.vehicle = null; this.parked = []; this.paused = true; this.started = false;
     this.camYaw = 0; this.camPitch = 0.18; this.camMode = 0; this.lookIdle = 9; this.shake = 0;
     this.focus = new THREE.Vector3(); this.gps = null; this.gpsPath = null; this.gpsT = 0;
     this.airTime = 0; this.deathT = 0;
+    this.actors = []; this.scripts = []; this.blips = [];
   }
 
   async init() {
@@ -105,18 +114,25 @@ class Game {
     const bar = $('loadbar'), msg = $('loadmsg');
     this.world = new World(this.scene, r, q);
     await this.world.load((p, m) => { bar.style.width = (p * 100).toFixed(0) + '%'; msg.textContent = m; });
-    this.env = new Environment(this.scene, r, q);
+    msg.textContent = 'Casting the people of Lafayette…';
+    this.people = new People();
+    await this.people.load().catch((e) => console.warn('Character models failed to load, using simple figures', e));
+    this.env = new Environment(this.scene, r, q, this.weather);
+    if (this.weather === 'snow') this.snow = new Snowfall(this.scene, q.textures === 'lo' ? 5000 : 9000);
     this.env.daySeconds = this.settings.dayMinutes * 60;
     if (save_hours(this.save)) this.env.hours = this.save.hours;
     if (params.get('hour')) this.env.hours = +params.get('hour');
     this.fx = new FX(this.scene);
     this.audio = new Audio(); this.audio.setVolume(this.settings.volume);
     this.input = new Input(canvas);
-    this.player = new Player(this.world, this.scene);
+    this.player = new Player(this.world, this.scene, this.people);
     this.computeSpots();
     this.traffic = new Traffic(this);
     this.police = new Police(this);
     this.missions = new Missions(this);
+    this.jobs = new Jobs(this);
+    this.story = new Story(this);
+    if (this.save.player) { this.player.medkits = this.save.player.medkits ?? 2; this.player.armor = this.save.player.armor ?? 0; }
     this.hud = new HUD(this);
     this.headlight = new THREE.SpotLight(0xfff1d6, 0, 90, 0.55, 0.45, 1.2);
     this.headlight.position.set(0, 1, 1.5); this.headlight.target.position.set(0, 0, 30);
@@ -230,6 +246,26 @@ class Game {
     add('dirtbike', base[0] - rx * 5 - fx * 6, base[2] - rz * 5 - fz * 6, yaw + 1.2);
   }
 
+  // dynamic resolution: drop the render scale when the GPU can't keep up, raise it again when it can
+  adaptResolution(fps) {
+    if (!this.started || this.paused || !this.settings.dynres) return;
+    this.dynScale ??= 1;
+    this.slowSecs = fps < 40 ? (this.slowSecs || 0) + 1 : 0;
+    this.fastSecs = fps > 57 ? (this.fastSecs || 0) + 1 : 0;
+    let s = this.dynScale;
+    if (this.slowSecs >= 2) { s = Math.max(0.5, s - (fps < 25 ? 0.2 : 0.1)); this.slowSecs = 0; }
+    else if (this.fastSecs >= 4) { s = Math.min(1, s + 0.1); this.fastSecs = 0; }
+    // still slow at half resolution: switch off the most expensive effects
+    if (s <= 0.5 && fps < 30 && this.ao?.enabled) { this.ao.enabled = false; this.hud?.toast('Turned off ambient occlusion to keep things smooth'); }
+    if (s <= 0.5 && fps < 24 && this.renderer.shadowMap.enabled && !this.shadowsCut) { this.shadowsCut = true; this.env?.sun && (this.env.sun.shadow.mapSize.set(1024, 1024), this.env.sun.shadow.map?.dispose(), this.env.sun.shadow.map = null); }
+    if (Math.abs(s - this.dynScale) > 0.01) {
+      this.dynScale = s;
+      const pr = Math.min(devicePixelRatio, this.quality.pixelRatio) * s;
+      this.renderer.setPixelRatio(pr); this.composer?.setPixelRatio(pr);
+      this.renderer.setSize(innerWidth, innerHeight); this.composer?.setSize(innerWidth, innerHeight);
+    }
+  }
+
   resize() {
     this.camera.aspect = innerWidth / innerHeight; this.camera.updateProjectionMatrix();
     this.renderer.setSize(innerWidth, innerHeight);
@@ -239,7 +275,7 @@ class Game {
 
   persist() {
     try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify({ money: this.money, gears: this.save.gears || [], settings: this.settings, hours: this.env?.hours, seenHelp: this.save.seenHelp }));
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ v3: true, money: this.money, gears: this.save.gears || [], settings: this.settings, hours: this.env?.hours, seenHelp: this.save.seenHelp, karma: this.save.karma || 0, jobs: this.save.jobs, story: this.save.story, player: { medkits: this.player?.medkits ?? 2, armor: Math.round(this.player?.armor || 0) } }));
     } catch { /* ignore */ }
   }
   addMoney(n) { this.money = Math.max(0, this.money + n); this.persist(); }
@@ -312,7 +348,7 @@ class Game {
     const seat = v.mesh.userData.seat;
     if (seat && (v.type === 'bike' || v.spec.rider)) {
       v.mesh.add(this.player.mesh); this.player.mesh.position.copy(seat); this.player.mesh.rotation.set(0, 0, 0);
-      animate(this.player.mesh.userData.rig, 'ride', 0, 1);
+      this.player.char.update(0.5, 'ride', 0);
       this.player.mesh.visible = true;
     } else this.player.mesh.visible = false;
     v.mesh.add(this.headlight); v.mesh.add(this.headlight.target);
@@ -362,9 +398,11 @@ class Game {
 
   // ---------------------------------------------------------------- events
   onCrash(intensity, pos) { this.audio.crash(intensity); this.shake = Math.min(1, this.shake + intensity * 0.04); }
-  onPedHit(p, speed) {
+  onPedHit(p, speed, scripted = false) {
     this.audio.crash(speed * 0.4);
-    if (speed > 5) this.police.crime(1, 'Hit a pedestrian');
+    if (scripted && p.hostile !== undefined && (p.label || p.hostile)) return;   // mission targets: running them over is fair game
+    if (speed > 5 && !(this.jobs.active === 'police')) this.police.crime(1, 'Hit a pedestrian');
+    this.karma(-4);
   }
   setGPS(x, z, route = true) {
     if (x == null) { this.gps = null; this.gpsPath = null; return; }
@@ -372,7 +410,7 @@ class Game {
   }
   updateGPS(dt) {
     if (!this.gps) return;
-    if (Math.hypot(this.focus.x - this.gps.x, this.focus.z - this.gps.z) < 25 && !this.missions.active) { this.hud.toast('You have arrived', 'good'); this.setGPS(null); return; }
+    if (Math.hypot(this.focus.x - this.gps.x, this.focus.z - this.gps.z) < 25 && !this.missions.active && !this.scripts.length) { this.hud.toast('You have arrived', 'good'); this.setGPS(null); return; }
     this.gpsT -= dt;
     const air = this.vehicle && (this.vehicle.type === 'plane' || this.vehicle.type === 'heli' || this.vehicle.type === 'boat');
     if (this.gpsT <= 0 && this.gps.route && !air) {
@@ -384,13 +422,13 @@ class Game {
   wasted() {
     if (this.deathT > 0) return;
     this.deathT = 3.5; this.hud.big('WASTED', 'Respawning at the Purdue Memorial Union  •  -$100', 'wasted'); this.audio.stinger();
-    this.missions.cancel();
+    this.missions.cancel(); this.story.active?.fail('You were wasted'); this.jobs.end(true);
   }
   busted() {
     if (this.deathT > 0) return;
     this.deathT = 3.5; this.bustedFlag = true;
     this.hud.big('BUSTED', 'Lafayette PD fined you $250', 'busted'); this.audio.stinger();
-    this.missions.cancel();
+    this.missions.cancel(); this.story.active?.fail('You were busted'); this.jobs.end(true);
   }
   respawn() {
     if (this.vehicle) this.exitVehicle(true);
@@ -398,7 +436,7 @@ class Game {
     this.police.clear();
     this.addMoney(busted ? -250 : -100);
     const [x, z] = busted ? this.world.toWorld(40.4186, -86.8930) : this.startSpot;
-    this.player.place(x, z); this.player.hp = 100; this.player.down = 0; this.player.parachute = false;
+    this.player.place(x, z); this.player.hp = 100; this.player.down = 0; this.player.parachute = false; this.player.gone = false;
     this.player.mesh.visible = true;
   }
 
@@ -471,21 +509,45 @@ class Game {
       fov = 62 + Math.min(8, Math.hypot(p.vel.x, p.vel.z) * 0.8);
     }
     cam.up.set(0, 1, 0);
-    const cp = Math.cos(this.camPitch), sp = Math.sin(this.camPitch);
-    const back = new THREE.Vector3(-Math.sin(this.camYaw) * cp, sp, -Math.cos(this.camYaw) * cp);
-    let desired = target.clone().addScaledVector(back, dist);
-    if (!v) { desired.x += -Math.cos(this.camYaw) * -0.45; desired.z += Math.sin(this.camYaw) * -0.45; }
-    const t = w.lineBlocked(target.x, target.y, target.z, desired.x, desired.y, desired.z);
-    if (t < 1) desired = target.clone().lerp(desired, Math.max(0.12, t - 0.08));
+    // where the camera wants to be for a given pitch (with an over-the-shoulder offset on foot)
+    const shoulder = v ? 0 : 0.45 * Math.min(1, dist / 3);
+    const camAt = (pitch) => {
+      const cp = Math.cos(pitch), sp = Math.sin(pitch);
+      return new THREE.Vector3(target.x - Math.sin(this.camYaw) * cp * dist + Math.cos(this.camYaw) * shoulder, target.y + sp * dist, target.z - Math.cos(this.camYaw) * cp * dist - Math.sin(this.camYaw) * shoulder);
+    };
+    let desired = camAt(this.camPitch);
+    const lookAt = new THREE.Vector3(target.x, target.y + (v ? 0.4 : 0.15), target.z);
+    let lookDir = lookAt.clone().sub(desired).normalize();
+    const keep = 0.35;   // metres kept between the lens and any wall
+    let t = w.cameraClear(target, desired);
+    if (t < 1) {
+      // blocked: like GTA, first try swinging up over the obstacle before pulling in tight
+      let best = desired, bt = t;
+      for (const lift of [0.3, 0.6, 0.95]) {
+        const cand = camAt(Math.min(1.3, this.camPitch + lift)), ct = w.cameraClear(target, cand);
+        if (ct > bt + 0.25) { best = cand; bt = ct; if (ct >= 1) break; }
+      }
+      lookDir = lookAt.clone().sub(best).normalize();
+      desired = target.clone().lerp(best, Math.max(0, bt - keep / dist));
+    }
     const gy = w.heightAt(desired.x, desired.z) + 0.6;
     if (desired.y < gy) desired.y = gy;
-    const lag = v ? Math.min(1, dt * 12) : 1;
-    cam.position.lerp(desired, lag);
+    const lag = v ? Math.min(1, dt * 12) : Math.min(1, dt * 20);
+    if (cam.position.distanceToSquared(desired) > 400) cam.position.copy(desired);   // teleports / respawns
+    else cam.position.lerp(desired, lag);
+    // the lagging camera can swing through a corner: re-check where it actually ended up
+    const t2 = w.cameraClear(target, cam.position);
+    if (t2 < 1) { const d2 = cam.position.distanceTo(target) || 1; cam.position.copy(target.clone().lerp(cam.position, Math.max(0, t2 - keep / d2))); }
+    // never look at the inside of your own head
+    const camD = cam.position.distanceTo(target);
+    if (!v || v.spec.rider || v.type === 'bike') this.player.mesh.visible = !this.player.gone && camD > 0.95 && !(v && this.camMode === 2);
+    if (v) v.mesh.visible = camD > 0.8 || this.camMode === 2;
     if (this.shake > 0) {
       cam.position.x += (Math.random() - 0.5) * this.shake * 0.6; cam.position.y += (Math.random() - 0.5) * this.shake * 0.6;
       this.shake = Math.max(0, this.shake - dt * 1.6);
     }
-    cam.lookAt(target.x, target.y + (v ? 0.4 : 0.15), target.z);
+    // aim along the intended line (looking "at" the target from 30 cm away would spin the view)
+    if (camD > 1.2) cam.lookAt(lookAt); else cam.lookAt(cam.position.clone().add(lookDir));
     cam.fov += (fov - cam.fov) * Math.min(1, dt * 3);
     cam.updateProjectionMatrix();
   }
@@ -494,12 +556,13 @@ class Game {
   frame() {
     const dt = Math.min(0.05, this.clock.getDelta());
     this.fpsT += dt; this.frames++;
-    if (this.fpsT > 1) { $('fps').textContent = `${this.frames} fps`; this.frames = 0; this.fpsT = 0; }
+    if (this.fpsT > 1) { $('fps').textContent = `${this.frames} fps${this.dynScale < 0.99 ? ' · ' + Math.round(this.dynScale * 100) + '% res' : ''}`; this.adaptResolution(this.frames / this.fpsT); this.frames = 0; this.fpsT = 0; }
     const inp = this.input.read();
     const pr = inp.pressed;
     if (this.started) {
-      if (pr.has('map')) this.hud.toggleMap();
-      if (pr.has('pause')) { if (this.hud.mapOpen) this.hud.toggleMap(false); else this.hud.toggleMenu(!this.hud.menuOpen, 'settings'); }
+      if (pr.has('phone') && !this.hud.menuOpen && !this.hud.mapOpen) this.hud.togglePhone();
+      if (pr.has('map') && !this.hud.phoneOpen) this.hud.toggleMap();
+      if (pr.has('pause')) { if (this.hud.phoneOpen) this.hud.togglePhone(false); else if (this.hud.mapOpen) this.hud.toggleMap(false); else this.hud.toggleMenu(!this.hud.menuOpen, 'settings'); }
       if (pr.has('vehicles')) this.hud.toggleMenu(!this.hud.menuOpen, 'vehicles');
       if (pr.has('help')) $('help').hidden = !$('help').hidden;
     }
@@ -511,6 +574,7 @@ class Game {
 
   step(dt, inp) {
     const pr = inp.pressed, w = this.world;
+    this.lastDt = dt; this.lastPressed = pr;
     if (this.deathT > 0) { this.deathT -= dt; if (this.deathT <= 0) this.respawn(); }
     if (pr.has('camera')) this.camMode = (this.camMode + 1) % 3;
     if (pr.has('radio')) this.hud.toast(this.audio.toggleRadio() ? '📻 Boiler FM 88.8 — Wabash synthwave' : 'Radio off');
@@ -539,11 +603,14 @@ class Game {
         if (this.airTime > 1.3 && v.onGround) { const b = Math.round(this.airTime * 160); this.addMoney(b); this.hud.toast(`STUNT JUMP! ${this.airTime.toFixed(1)}s airtime  +$${b}`, 'good'); this.audio.chime(true); }
         this.airTime = 0;
       }
+      if (this.player.mesh.parent !== this.scene) this.player.char.update(dt, 'ride', 0);
       if ((v.type === 'car' || v.type === 'bike') && v.inWater > 1.5) { this.exitVehicle(true); this.hud.toast('Your vehicle sank in the Wabash!'); }
       if (v.type === 'plane' && pr.has('enter') && v.airborne) { /* handled above */ }
     } else {
       const pl = this.player;
-      pl.update(dt, { x: inp.moveX, y: inp.moveY, run: inp.shift, jump: inp.jump }, this.camYaw);
+      if (pr.has('horn') && pl.useMedkit()) { this.hud.toast(`+50 health  (${pl.medkits} medkits left)`, 'good'); this.audio.chime(true); }
+      pl.update(dt, { x: inp.moveX, y: inp.moveY, run: inp.shift, jump: inp.jump, punch: pr.has('punch'), kick: pr.has('kick') }, this.camYaw);
+      for (const e of pl.events) if (e === 'punch' || e === 'kick') this.melee(e === 'kick' ? 34 : 22, e === 'kick' ? 1.8 : 1.5);
       if (pl.parachute) {
         if (!this.chute) {
           this.chute = new THREE.Mesh(new THREE.SphereGeometry(3.2, 16, 8, 0, Math.PI * 2, 0, 1.0), new THREE.MeshStandardMaterial({ color: 0xcfb991, side: THREE.DoubleSide }));
@@ -568,11 +635,16 @@ class Game {
     if (v?.events.includes('explode')) this.handleExplosion(v);
     for (const pv of this.parked) if (pv !== v && !pv.kinematic && (pv.speed > 0.05 || !pv.onGround || pv.burn > 0 || pv.type === 'boat' || pv.type === 'heli' && pv.rotorSpeed > 0.01)) pv.update(dt, null, this.fx);
 
+    this.resolveMelee(dt);
     this.focus.copy(v ? v.pos : this.player.pos);
     if (this.player.hp <= 0 && this.deathT <= 0) this.wasted();
     this.traffic.update(dt, this.focus, v, v ? null : this.player);
     this.police.update(dt, this.focus, v, this.player);
     this.missions.update(dt, this.focus, v, inp);
+    for (const a of this.actors.slice()) a.update(dt);
+    for (const sc of this.scripts.slice()) sc.update(dt);
+    this.jobs.update(dt);
+    if (pr.has('endjob') && this.jobs.active) this.jobs.end();
     this.updateGPS(dt);
     // environment
     const snap = this.quality.shadowRange * 2 / (this.quality.shadows || 512);
@@ -581,6 +653,7 @@ class Game {
     this.world.update(dt, this.env.night);
     this.fx.update(dt);
     this.updateCamera(dt, inp);
+    this.snow?.update(dt, this.camera);
     // audio
     const sirenD = Math.min(...this.police.units.map(u => u.v.pos.distanceTo(this.focus)), v?.sirenOn ? 0 : Infinity, ...this.traffic.cars.filter(c => c.v.sirenOn).map(c => c.v.pos.distanceTo(this.focus)));
     this.audio.update(dt, v, v ? v.speed : Math.hypot(this.player.vel.x, this.player.vel.z), sirenD);
@@ -589,6 +662,40 @@ class Game {
     if (this.saveT > 20) { this.saveT = 0; this.persist(); }
   }
 
+  // fists and feet: hit whoever is in front of you
+  melee(dmg, reach) {
+    const pl = this.player, fx = Math.sin(pl.yaw), fz = Math.cos(pl.yaw);
+    this.meleeQueue = { t: 0.16, dmg, reach, fx, fz };
+  }
+  resolveMelee(dt) {
+    const q = this.meleeQueue; if (!q) return;
+    q.t -= dt; if (q.t > 0) return;
+    this.meleeQueue = null;
+    const pl = this.player;
+    let best = null, bd = q.reach;
+    const consider = (o, kind) => {
+      const dx = o.pos.x - pl.pos.x, dz = o.pos.z - pl.pos.z, d = Math.hypot(dx, dz);
+      if (d < bd && (dx * q.fx + dz * q.fz) / (d || 1) > 0.35 && Math.abs(o.pos.y - pl.pos.y) < 1.2) { bd = d; best = { o, kind, dx: dx / (d || 1), dz: dz / (d || 1) }; }
+    };
+    for (const p of this.traffic.peds) if (!p.fly && !(p.down > 0)) consider(p, 'ped');
+    for (const a of this.actors) if (a.hittable && !a.isDown) consider(a, a.cop ? 'cop' : 'npc');
+    if (!best) { this.audio.whoosh?.(); return; }
+    this.audio.punch?.(q.dmg);
+    this.shake = Math.min(1, this.shake + 0.15);
+    const o = best.o;
+    o.hp = (o.hp ?? 100) - q.dmg;
+    if (best.kind === 'ped') {
+      this.traffic.hitPed(o, best.dx, best.dz, q.dmg);
+      this.karma(-3);
+      if (this.police.copSees?.(pl.pos, 45) || Math.random() < 0.15) this.police.crime(1, 'Assault');
+    } else {
+      o.hit(best.dx, best.dz, q.dmg);
+      if (best.kind === 'cop') { this.karma(-6); this.police.crime(2, 'Assaulted an officer'); }
+      else if (!o.hostile && !o.label && this.jobs.active !== 'police') this.karma(-2);
+    }
+  }
+  karma(n) { this.save.karma = Math.max(-100, Math.min(100, (this.save.karma || 0) + n)); }
+
   handleExplosion(pv) {
     if (pv.exploded) return;
     pv.exploded = true;
@@ -596,7 +703,7 @@ class Game {
     this.audio.explosion();
     this.shake = 1;
     const d = pv.pos.distanceTo(this.focus);
-    if (pv === this.vehicle) { this.player.hp = 0; this.exitVehicle(true); this.player.mesh.visible = false; }
+    if (pv === this.vehicle) { this.player.hp = 0; this.exitVehicle(true); this.player.gone = true; }
     else if (!this.vehicle && d < 9) { this.player.knock(this.player.pos.clone().sub(pv.pos).setY(0).normalize().multiplyScalar(14)); this.player.hp -= 50; }
     for (const c of this.traffic.cars) if (c.v.pos.distanceTo(pv.pos) < 10 && c.v !== pv) { this.traffic.wreck(c, c.v.pos.clone().sub(pv.pos).setY(0).normalize().multiplyScalar(8)); c.v.damage(50); }
   }
@@ -605,6 +712,22 @@ class Game {
     if (this.grade) { this.grade.uniforms.time.value = (performance.now() / 1000) % 100; this.grade.uniforms.night.value = this.env?.night || 0; }
     if (this.composer) this.composer.render(); else this.renderer.render(this.scene, this.camera);
   }
+}
+
+// pick a sensible starting quality from the GPU name (integrated laptop GPUs get Medium/Low)
+function detectQuality(touch) {
+  if (touch) return 'low';
+  try {
+    const gl = document.createElement('canvas').getContext('webgl2') || document.createElement('canvas').getContext('webgl');
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const name = (ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)) + '';
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    if (/swiftshader|llvmpipe|software|mali|adreno|powervr/i.test(name)) return 'low';
+    if (/intel/i.test(name)) return /iris\s*(xe|plus)|arc/i.test(name) ? 'medium' : 'low';
+    if (/apple m\d|apple gpu/i.test(name)) return /m\d\s*(pro|max|ultra)/i.test(name) ? 'high' : 'medium';
+    if (/rtx|radeon rx|geforce gtx 1[06-9]|rx\s*[5-7]\d{3}/i.test(name)) return 'high';
+    return 'medium';
+  } catch { return 'medium'; }
 }
 
 function save_hours(s) { return typeof s.hours === 'number' && !isNaN(s.hours); }

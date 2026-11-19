@@ -2,6 +2,7 @@
 const ACTIONS = {
   KeyF: 'enter', Enter: 'enter', KeyM: 'map', KeyV: 'vehicles', Escape: 'pause', KeyP: 'pause',
   KeyC: 'camera', KeyR: 'radio', KeyH: 'horn', KeyK: 'siren', KeyL: 'lights', KeyG: 'gps', F1: 'help', KeyJ: 'mission',
+  KeyQ: 'punch', KeyE: 'kick', Tab: 'phone', KeyY: 'yes', KeyN: 'no', KeyX: 'endjob',
 };
 
 export class Input {
@@ -23,7 +24,7 @@ export class Input {
     addEventListener('mousemove', (e) => {
       if (this.mouse.locked || this.mouse.drag) { this.mouse.dx += e.movementX; this.mouse.dy += e.movementY; }
     });
-    canvas.addEventListener('mousedown', (e) => { if (e.button === 2) this.mouse.drag = true; });
+    canvas.addEventListener('mousedown', (e) => { if (e.button === 2) this.mouse.drag = true; if (e.button === 0 && this.mouse.locked) this.pressed.add('punch'); });
     addEventListener('mouseup', () => { this.mouse.drag = false; });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     canvas.addEventListener('wheel', (e) => { this.mouse.wheel += Math.sign(e.deltaY); }, { passive: true });
@@ -104,6 +105,7 @@ export class Input {
       if (b(4)) s.q = true; if (b(5)) s.e = true;
       if (b(10) || b(2)) s.shift = true;
       const edge = (i, a) => { const was = this['pad' + i]; const now = !!b(i); if (now && !was) this.pressed.add(a); this['pad' + i] = now; };
+      edge(2, 'punch'); edge(1, 'kick'); edge(13, 'phone');
       edge(3, 'enter'); edge(9, 'pause'); edge(8, 'map'); edge(11, 'camera'); edge(12, 'horn'); edge(14, 'vehicles'); edge(15, 'radio');
     }
     s.lookX += this.mouse.dx; s.lookY += this.mouse.dy; s.wheel = this.mouse.wheel;

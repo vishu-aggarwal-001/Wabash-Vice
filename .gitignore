@@ -3,3 +3,4 @@ osm/
 .DS_Store
 *.log
 ph/
+.lab/

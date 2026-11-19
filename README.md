@@ -6,7 +6,7 @@
 
 Every street, all 13,500 buildings, the Wabash River, the bridges, Purdue's campus, downtown Lafayette and Purdue Airport come from real OpenStreetMap data, at real 1:1 scale (about 6.8 km × 5.5 km). It runs in any modern browser. There's no install and no build step.
 
-> **Status: v0.2, a playable start with a realistic-graphics pass.** It isn't GTA 6. That took a studio of thousands of people about a decade. What it is: a real, working open-world game of your actual hometown that you can keep improving. See the [Roadmap](#roadmap).
+> **Status: v0.3: realistic people, jobs, a story chapter, fist fights, snow and traffic lights.** It isn't GTA 6. That took a studio of thousands of people about a decade. What it is: a real, working open-world game of your actual hometown that you can keep improving. See the [Roadmap](#roadmap).
 
 ---
 
@@ -47,6 +47,10 @@ To turn hosting on for a copy of this repo: **Settings → Pages → Build and d
 | Horn / siren / radio | **H** / **K** / **R** | D-pad up / – / right |
 | Fast-forward time | hold **T** | |
 | Menu, settings, fast travel | **Esc** | Start |
+| Punch / kick | **Click** or **Q** / **E** | X / B |
+| Use a medkit (on foot) | **H** | |
+| Phone: jobs, story, shop, stats | **Tab** | Back/View |
+| End your job shift | **X** | |
 | Help overlay | **F1** | |
 
 **Planes:** W/S throttle · A/D roll · **↓ nose up / ↑ nose down** (flight-sim style; you can invert it in Settings) · Q/E rudder · Space wheel brakes.
@@ -57,6 +61,26 @@ To turn hosting on for a copy of this repo: **Settings → Pages → Build and d
 **Phones and tablets:** on-screen joystick and buttons appear automatically (quality defaults to Low).
 
 ---
+
+## 🆕 What's new in v0.3
+
+**Real people instead of mannequins.** The player, pedestrians, cops and paramedics are now realistic skinned 3D characters (a Ready Player Me man and a Mixamo woman) with motion-captured idle, walk and run animations. Procedural layers add driving, bike riding, sitting, punching, kicking, cowering, hands-up and getting knocked flat. Men get short hair, beanies, ball caps or cowboy hats, and outfits are recoloured so the crowd isn't all clones.
+
+**Criminal Russia-style gameplay**
+- **Jobs** from the phone (**Tab**): **Police Work** (road accidents, speeders to pull over, purse snatchers to chase and cuff, street fights, stolen cars to ram), **Taxi Driver**, **Paramedic** and **Boiler Express** deliveries. Every job has a work vehicle, a uniform, endless calls from the dispatcher, cash and XP, and ranks (Rookie → Chief of Police) that pay more.
+- **Story mode: Chapter 1**, five missions for Dee, who runs a garage behind the courthouse downtown: a test drive, a debt collection in Chauncey Village, stealing a muscle car from Wabash Landing, a river run up the Wabash, and the Homecoming street race against AI rivals.
+- **Fist fights**: punch, kick, knock people down. Thugs fight back.
+- **Cops on foot**: with a wanted level they jump out of their cruisers and chase you.
+- **Health, armor, stamina and a karma meter** (bad ↔ good), medkits, and a phone shop for armor, medkits, healing and a lawyer.
+
+**Looks**
+- **Weather**: clear, overcast, or **snow**, which settles on roofs, lawns, trees and parked cars, with flakes falling around you. It changes every visit, or pick one in Settings.
+- **Working traffic lights** (mast-arm signals) at ~400 real junctions, and AI traffic stops on red.
+- New HUD: health/armor/stamina bars, karma meter, job panel, dialogue subtitles.
+
+**Fixes**
+- **Camera no longer clips into walls or your own head** (that was the "black screen"): a thick camera probe, swinging up over obstacles, re-checking after the camera lags, and hiding the player when the lens is too close.
+- **Runs much better on laptops**: Auto quality picks a preset from your GPU, and dynamic resolution lowers the render scale when the frame rate drops (and switches off ambient occlusion if it has to).
 
 ## ✨ What's in v0.1
 
@@ -103,7 +127,15 @@ src/world.js        loads the map data and builds terrain, river, roads, bridges
 src/vehicles.js     vehicle catalogue, procedural 3D models, physics for every vehicle type
 src/player.js       on-foot character (walk/run/jump/swim/ragdoll) and the shared person model
 src/npc.js          traffic, pedestrians, police and the wanted level
-src/missions.js     mission markers, checkpoints, Golden Gears
+src/missions.js     activity markers (J), checkpoints, Golden Gears
+src/people.js       realistic skinned characters, clip retargeting, poses, hair & hats
+src/actors.js       scripted NPCs (suspects, thugs, passengers, patients) and AI drivers
+src/script.js       tiny async mission-scripting runtime (say, goto, timer, failIf…)
+src/jobs.js         Police / Taxi / Paramedic / Delivery jobs, calls, ranks
+src/story.js        Story mode, Chapter 1
+src/weather.js      clear / overcast / snow, snow-cover shader patch, snowfall
+data/chars/         man.glb, woman.glb and anims.json (retargetable mocap clips)
+tools/charlab.html  dev page to preview characters/poses and re-extract the clips
 src/env.js          sky, sun, moon, stars, clouds, fog, day/night
 src/hud.js          speedometer, minimap, full map, menus
 src/audio.js        all sound (Web Audio, no files) and the radio
@@ -131,14 +163,14 @@ To make the world bigger (for example out to I-65, or to include Wildcat Creek),
 This is the honest path from v0.1 toward the “better than GTA *at Lafayette*” goal. Each step is a self-contained chunk you (or an AI helper) can do one at a time.
 
 1. **Feel**: suspension bounce, gear sounds, damage deformation, better tyre smoke and skid marks
-1. **Hero assets**: replace the procedural cars and people with real 3D models (e.g. made in Blender, or bought/CC-licensed glTF models). This is the single biggest step toward a GTA look
+1. **Hero assets**: ~~people~~ (done in v0.3); next, replace the procedural cars with real 3D models (e.g. made in Blender, or bought/CC-licensed glTF models). This is the single biggest step toward a GTA look
 2. **Real elevation**: swap the stylized terrain for USGS 3DEP elevation data (free, public domain)
 3. **Building detail**: real roof shapes from OSM `roof:shape`, more facade styles, storefront signs, Purdue limestone trims
 4. **Real landmarks**: detailed models of the Purdue Memorial Union, Ross-Ade Stadium, Mackey Arena, the Engineering Fountain and the bridges' real shapes
-5. **Smarter city**: traffic lights at real intersections, lane changes, buses on real CityBus routes, Purdue students between classes
-6. **Story mode**: characters, cutscenes, a mission chain across both cities
+5. **Smarter city**: ~~traffic lights~~ (done in v0.3), lane changes, buses on real CityBus routes, Purdue students between classes
+6. **Story mode**: ~~Chapter 1~~ (done in v0.3); more chapters, cutscenes
 7. **Weapons and combat** (if you want it), plus garages and buying property
-8. **Graphics ceiling**: SSAO, screen-space reflections, volumetric fog over the Wabash, rain and snow, WebGPU renderer
+8. **Graphics ceiling**: SSAO, screen-space reflections, volumetric fog over the Wabash, rain (~~snow~~ done in v0.3), WebGPU renderer
 9. **Bigger map**: all of Tippecanoe County, then I-65 to Indianapolis
 10. **Multiplayer**: drive around Lafayette with friends (WebSockets)
 
@@ -147,6 +179,7 @@ This is the honest path from v0.1 toward the “better than GTA *at Lafayette*�
 ## ⚠️ Notes
 
 - Textures are CC0 (public domain) photo scans from [Poly Haven](https://polyhaven.com). Thank you, Poly Haven!
+- Character models and mocap clips come from the [three.js examples](https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf) (a Ready Player Me avatar, and Mixamo's Michelle and X Bot animations), used for this non-commercial fan project.
 - Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), ODbL. Building heights that aren't in OSM are estimated, terrain is stylized, and the river valley shape is approximate.
 - This is a fan project. It is **not** affiliated with or endorsed by Purdue University, the City of Lafayette or West Lafayette, Rockstar Games, or any vehicle maker. All vehicle names are made up.
 - Code is MIT licensed (see `LICENSE`). Three.js is MIT licensed.

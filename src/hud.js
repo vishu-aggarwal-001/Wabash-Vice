@@ -1,5 +1,7 @@
 // HUD, minimap, full-screen map and menus (plain DOM + 2D canvas).
 import { CATALOG } from './vehicles.js';
+import { JOBS } from './jobs.js';
+import { CHAPTER } from './story.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -9,7 +11,8 @@ export class HUD {
     this.mini = $('minimap'); this.mctx = this.mini.getContext('2d');
     this.img = this.w.groundTex.image;
     this.ppm = this.img.width / this.w.W;
-    this.toastT = 0; this.promptT = 0; this.objT = 0; this.bigT = 0;
+    this.toastT = 0; this.promptT = 0; this.objT = 0; this.bigT = 0; this.subT = 0; this.jobT = 0;
+    this.phoneOpen = false; this.phoneStack = [];
     this.mapOpen = false; this.menuOpen = false;
     this.mapZoom = 1; this.mapPan = { x: 0, z: 0 };
     this.units = game.settings.units;
@@ -57,8 +60,13 @@ export class HUD {
     }
     $('phealth').style.width = Math.max(0, g.player.hp) + '%';
     $('pstam').style.width = g.player.stamina * 100 + '%';
+    $('parmor').style.width = Math.max(0, g.player.armor) + '%';
+    $('karma').style.left = (50 + (g.save.karma || 0) / 2) + '%';
+    $('medcount').textContent = g.player.medkits;
+    this.jobT -= dt;
+    $('jobpanel').hidden = !(g.jobs?.active) && this.jobT <= 0;
     // timers
-    for (const [id, key] of [['toast', 'toastT'], ['prompt', 'promptT'], ['objective', 'objT'], ['big', 'bigT']]) {
+    for (const [id, key] of [['toast', 'toastT'], ['prompt', 'promptT'], ['objective', 'objT'], ['big', 'bigT'], ['subs', 'subT']]) {
       this[key] -= dt;
       $(id).classList.toggle('show', this[key] > 0);
     }
@@ -68,12 +76,88 @@ export class HUD {
 
   toast(msg, kind = '') { const t = $('toast'); t.textContent = msg; t.className = 'show ' + kind; this.toastT = 3; }
   prompt(msg) { $('prompt').textContent = msg; this.promptT = 0.15; }
-  objective(msg, timeLeft) {
-    const m = Math.max(0, Math.floor(timeLeft / 60)), s = Math.max(0, Math.floor(timeLeft % 60));
-    $('objtext').textContent = msg; $('objtime').textContent = `${m}:${String(s).padStart(2, '0')}`;
-    $('objtime').classList.toggle('low', timeLeft < 15);
+  objective(msg, timeLeft = null) {
+    $('objtext').textContent = msg;
+    if (timeLeft === null || timeLeft === undefined) { $('objtime').textContent = ''; }
+    else {
+      const m = Math.max(0, Math.floor(timeLeft / 60)), s = Math.max(0, Math.floor(timeLeft % 60));
+      $('objtime').textContent = `${m}:${String(s).padStart(2, '0')}`;
+      $('objtime').classList.toggle('low', timeLeft < 15);
+    }
     this.objT = 0.2;
   }
+  // subtitles for dialogue and dispatcher radio
+  say(name, text, secs = 3) {
+    if (!name && !text) { this.subT = 0; return; }
+    $('subname').textContent = name ? name + ':' : ''; $('subtext').textContent = text;
+    this.subT = secs;
+  }
+  job(id, rank, earned, call, state) {
+    const J = JOBS[id];
+    $('jobtitle').textContent = J.name; $('jobrank').textContent = rank.name;
+    $('jobearned').textContent = '$' + earned.toLocaleString(); $('jobsub').textContent = J.sub;
+    $('jobcall').textContent = call; $('jobstate').textContent = state || '';
+    $('jobpanel').style.borderColor = J.color;
+    this.jobT = 0.3;
+  }
+
+  // ---------------------------------------------------------------- phone
+  togglePhone(open = !this.phoneOpen) {
+    this.phoneOpen = open;
+    $('phone').hidden = !open;
+    if (open) { this.phoneStack = []; this.phoneScreen('home'); document.exitPointerLock?.(); }
+    this.g.paused = open || this.menuOpen || this.mapOpen;
+  }
+  phoneScreen(name, push = true) {
+    const g = this.g, body = $('phbody');
+    if (push && this.phoneCur) this.phoneStack.push(this.phoneCur);
+    this.phoneCur = name;
+    $('phclock').textContent = g.env.clock;
+    const item = (title, sub, fn, cls = '') => { const b = document.createElement('button'); b.className = 'item ' + cls; b.innerHTML = `<b>${title}</b><small>${sub}</small>`; if (fn) b.onclick = fn; body.appendChild(b); return b; };
+    body.innerHTML = '';
+    if (name === 'home') {
+      body.innerHTML = `<h3>${g.env.clock} · $${g.money.toLocaleString()}</h3><div class="apps"></div>`;
+      const apps = body.querySelector('.apps');
+      const app = (icon, label, color, fn) => { const b = document.createElement('button'); b.className = 'app'; b.innerHTML = `<i style="background:${color}">${icon}</i>${label}`; b.onclick = fn; apps.appendChild(b); };
+      app('💼', 'Jobs', '#2f6fd6', () => this.phoneScreen('jobs'));
+      app('⭐', 'Story', '#c79a2b', () => this.phoneScreen('story'));
+      app('🛒', 'Shop', '#2c9a4b', () => this.phoneScreen('shop'));
+      app('🗺️', 'Map', '#6b4fd6', () => { this.togglePhone(false); this.toggleMap(true); });
+      app('🚗', 'Vehicles', '#c0392b', () => { this.togglePhone(false); this.toggleMenu(true, 'vehicles'); });
+      app('📊', 'Stats', '#555', () => this.phoneScreen('stats'));
+      if (g.jobs.active) item(`End ${JOBS[g.jobs.active].name} shift`, `Earned $${g.jobs.earned.toLocaleString()} so far`, () => { g.jobs.end(); this.togglePhone(false); }).style.marginTop = '18px';
+      if (g.story.active) item('Quit story mission', g.story.active.name, () => { g.story.cancel(); this.togglePhone(false); }).style.marginTop = '18px';
+    } else if (name === 'jobs') {
+      body.innerHTML = '<h3>Jobs</h3>';
+      for (const [id, J] of Object.entries(JOBS)) {
+        const r = g.jobs.rank(id);
+        const on = g.jobs.active === id;
+        item(`${J.icon} ${J.name}${on ? ' — ON SHIFT' : ''}`, `${J.desc}<br>Rank: <b>${r.name}</b>${r.next !== null ? ` · ${r.next - r.xp} calls to next rank` : ' · max rank'}`, () => { if (on) g.jobs.end(); else g.jobs.start(id); this.togglePhone(false); });
+      }
+    } else if (name === 'story') {
+      body.innerHTML = '<h3>Chapter 1 — Wabash Vice</h3>';
+      CHAPTER.forEach((M, i) => {
+        const done = i < g.story.done, locked = i > g.story.done;
+        item(`${done ? '✔ ' : locked ? '🔒 ' : '▶ '}${i + 1}. ${M.title}`, `${M.who}: ${M.blurb}${done ? ' (replay)' : ''} · $${M.pay.toLocaleString()}`, locked ? null : () => { this.togglePhone(false); g.story.start(i); }, done ? 'done' : locked ? 'locked' : '');
+      });
+    } else if (name === 'shop') {
+      body.innerHTML = '<h3>Shop — delivered by drone</h3>';
+      const buy = (title, sub, cost, ok, fn) => item(`${title} — $${cost}`, sub, () => { if (g.money < cost) return this.toast('Not enough money', 'warn'); if (!ok()) return this.toast('You already have the maximum', 'warn'); g.addMoney(-cost); fn(); this.toast(`Bought ${title}`, 'good'); this.phoneScreen('shop', false); });
+      buy('Medkit', `+50 health, press H to use. You have ${g.player.medkits}/5`, 150, () => g.player.medkits < 5, () => g.player.medkits++);
+      buy('Body armor', `Soaks up damage. Armor ${Math.round(g.player.armor)}%`, 500, () => g.player.armor < 100, () => { g.player.armor = 100; });
+      buy('Full heal', `Health ${Math.round(g.player.hp)}%`, 250, () => g.player.hp < 100, () => { g.player.hp = 100; });
+      buy('Lawyer', `Clears your wanted level (${g.police.wanted}★)`, 1000, () => g.police.wanted > 0, () => g.police.clear());
+    } else if (name === 'stats') {
+      body.innerHTML = '<h3>Stats</h3>';
+      const k = g.save.karma || 0;
+      item('Money', '$' + g.money.toLocaleString());
+      item('Karma', `${k > 20 ? 'Good citizen' : k < -20 ? 'Menace to society' : 'Neutral'} (${k > 0 ? '+' : ''}${k})`);
+      item('Story', `${g.story.done}/${CHAPTER.length} missions`);
+      for (const id of Object.keys(JOBS)) { const r = g.jobs.rank(id); item(JOBS[id].name, `${r.name} · ${r.xp} calls · $${g.jobs.stats(id).earned.toLocaleString()} earned`); }
+      item('Golden Gears', `${(g.save.gears || []).length}/30 found`);
+    }
+  }
+  phoneBack() { const p = this.phoneStack.pop(); if (p) this.phoneScreen(p, false); else this.togglePhone(false); }
   big(title, sub = '', kind = '') {
     const b = $('big'); b.className = 'show ' + kind;
     $('bigtitle').textContent = title; $('bigsub').textContent = sub;
@@ -97,7 +181,9 @@ export class HUD {
     c.fillStyle = '#4c6a36'; c.fillRect(0, 0, S, S);
     c.translate(R, R); c.rotate(th); c.scale(k / ppm, k / ppm);
     const px = (p.x - this.w.minX) * ppm, pz = (p.z - this.w.minZ) * ppm;
+    if (g.weather === 'snow') c.filter = 'saturate(0.25) brightness(1.35)';
     c.drawImage(this.img, -px, -pz);
+    c.filter = 'none';
     // GPS route
     if (g.gpsPath) {
       c.strokeStyle = '#b84dff'; c.lineWidth = 5 * ppm / k; c.lineJoin = 'round'; c.globalAlpha = 0.9;
@@ -123,6 +209,7 @@ export class HUD {
     for (const u of g.police.units) blip(u.v.pos.x, u.v.pos.z, performance.now() % 500 < 250 ? '#ff3b3b' : '#3b6bff', 4, g.police.wanted > 0);
     if (g.police.heli) blip(g.police.heli.v.pos.x, g.police.heli.v.pos.z, '#ff3b3b', 5);
     for (const pv of g.parked) if (pv !== v && !pv.dead) blip(pv.pos.x, pv.pos.z, '#7fd1ff', 3, false);
+    for (const b of g.blips) { const q = b.get(); if (q) blip(q.x, q.z, b.color, b.size || 5); }
     // north marker
     const nx = Math.sin(th + Math.PI) * 0, ny = 0;
     const na = th; // world north (-z) direction on screen
@@ -184,7 +271,7 @@ export class HUD {
       this.mapZoom = 2.2;
       document.exitPointerLock?.();
     }
-    this.g.paused = open || this.menuOpen;
+    this.g.paused = open || this.menuOpen || this.phoneOpen;
   }
   drawMap() {
     const cv = $('bigmap'), c = this.bctx, s = this.mapScale(), C = this.mapCenter();
@@ -214,6 +301,7 @@ export class HUD {
       c.font = 'bold 12px system-ui'; c.fillStyle = '#fff'; c.fillText(m.name, x, y - 16);
     }
     for (const [name, x0, z0] of this.w.landmarks) { const [x, y] = W2(x0, z0); c.fillStyle = '#fff'; c.beginPath(); c.arc(x, y, 5, 0, 7); c.fill(); c.font = 'bold 12px system-ui'; c.fillText(name, x, y + 14); }
+    for (const b of this.g.blips) { const q = b.get(); if (!q) continue; const [x, y] = W2(q.x, q.z); c.fillStyle = b.color; c.strokeStyle = '#000'; c.lineWidth = 2; c.beginPath(); c.arc(x, y, 7, 0, 7); c.fill(); c.stroke(); }
     if (this.g.gps) { const [x, y] = W2(this.g.gps.x, this.g.gps.z); c.fillStyle = '#b84dff'; c.beginPath(); c.arc(x, y, 8, 0, 7); c.fill(); c.stroke(); }
     const [px, py] = W2(this.g.focus.x, this.g.focus.z);
     const h = this.g.vehicle ? this.g.vehicle.yaw : this.g.player.yaw;
@@ -251,12 +339,16 @@ export class HUD {
     $('resume').onclick = () => this.toggleMenu(false);
     const q = $('setq'); q.value = g.settings.quality;
     q.onchange = () => { g.settings.quality = q.value; g.persist(); this.toast('Quality saved — reloading…'); setTimeout(() => location.reload(), 600); };
+    const wx = $('setweather'); wx.value = g.settings.weather || 'auto';
+    wx.onchange = () => { g.settings.weather = wx.value; g.persist(); this.toast('Weather saved — reloading…'); setTimeout(() => location.reload(), 600); };
     const inv = $('setinv'); inv.checked = g.settings.invertPitch; inv.onchange = () => { g.settings.invertPitch = inv.checked; g.persist(); };
     const vol = $('setvol'); vol.value = g.settings.volume; vol.oninput = () => { g.settings.volume = +vol.value; g.audio.setVolume(+vol.value); g.persist(); };
     const sens = $('setsens'); sens.value = g.settings.sensitivity; sens.oninput = () => { g.settings.sensitivity = +sens.value; g.persist(); };
     const un = $('setunits'); un.value = g.settings.units; un.onchange = () => { g.settings.units = this.units = un.value; g.persist(); };
     $('setday').value = g.settings.dayMinutes; $('setday').onchange = () => { g.settings.dayMinutes = +$('setday').value; g.env.daySeconds = g.settings.dayMinutes * 60; g.persist(); };
-    $('cancelmission').onclick = () => { g.missions.cancel(); this.toggleMenu(false); };
+    $('cancelmission').onclick = () => { g.missions.cancel(); g.story.cancel(); g.jobs.end(); this.toggleMenu(false); };
+    $('phback').onclick = () => this.phoneBack();
+    $('phclose').onclick = () => this.togglePhone(false);
     $('clearwanted').onclick = () => { if (g.money >= 1000 && g.police.wanted) { g.addMoney(-1000); g.police.clear(); this.toast('Paid off the cops: -$1,000'); } else this.toast(g.police.wanted ? 'Need $1,000' : 'You are not wanted'); this.toggleMenu(false); };
   }
   tab(name) {
@@ -267,6 +359,6 @@ export class HUD {
     this.menuOpen = open;
     $('menu').hidden = !open;
     if (open) { this.tab(tab); document.exitPointerLock?.(); $('gearcount').textContent = `${(this.g.save.gears || []).length}/30`; }
-    this.g.paused = open || this.mapOpen;
+    this.g.paused = open || this.mapOpen || this.phoneOpen;
   }
 }
