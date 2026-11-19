@@ -3,6 +3,7 @@
 // street names, districts).
 import * as THREE from 'three';
 import * as TX from './textures.js';
+import { storefrontAtlas, SHOP_VARIANTS, sidewalkTexture } from './facades.js';
 
 const CHUNK = 1000;      // render chunk size (m) for frustum culling
 const GRID = 40;         // spatial hash cell (m) for gameplay queries
@@ -28,12 +29,12 @@ function mergeGeoms(list) {
 // ------------------------------------------------------------------ geometry builder
 class GB {
   constructor(withAtlas = false) {
-    this.p = []; this.n = []; this.uv = []; this.c = []; this.a = withAtlas ? [] : null;
+    this.p = []; this.n = []; this.uv = []; this.c = []; this.a = withAtlas ? [] : null; this.s = withAtlas ? [] : null; this.curSf = -1;
   }
   get count() { return this.p.length / 3; }
   v(x, y, z, nx, ny, nz, u, w, r = 1, g = 1, b = 1, ax = 0, ay = 0) {
     this.p.push(x, y, z); this.n.push(nx, ny, nz); this.uv.push(u, w); this.c.push(r, g, b);
-    if (this.a) this.a.push(ax, ay);
+    if (this.a) { this.a.push(ax, ay); this.s.push(this.curSf); }
   }
   // triangle with automatic winding so it faces `want` (a normal-ish vector)
   tri(A, B, C, want, col, atl) {
@@ -52,7 +53,7 @@ class GB {
     g.setAttribute('normal', new THREE.Float32BufferAttribute(this.n, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.c, 3));
-    if (this.a) g.setAttribute('atl', new THREE.Float32BufferAttribute(this.a, 2));
+    if (this.a) { g.setAttribute('atl', new THREE.Float32BufferAttribute(this.a, 2)); g.setAttribute('sf', new THREE.Float32BufferAttribute(this.s, 1)); }
     g.computeBoundingSphere(); g.computeBoundingBox();
     return g;
   }
@@ -61,7 +62,7 @@ class GB {
 // atlas sampling: repeating UVs inside one tile of the 4x3 building atlas
 // (colour, normal, roughness/metalness and night-window maps all share the layout)
 const TS = 'vec2(0.25, 0.33333)';
-function atlasMaterial({ map, normalMap, roughMap, emissiveMap }) {
+function atlasMaterial({ map, normalMap, roughMap, emissiveMap, storeMap }) {
   const m = new THREE.MeshStandardMaterial({
     map, normalMap, roughnessMap: roughMap, metalnessMap: roughMap, emissiveMap,
     emissive: 0xffffff, emissiveIntensity: 0, vertexColors: true, roughness: 1, metalness: 1, envMapIntensity: 1.0,
@@ -69,20 +70,97 @@ function atlasMaterial({ map, normalMap, roughMap, emissiveMap }) {
   const S = (tex, uv) => `textureGrad(${tex}, vAtl + (0.004 + fract(${uv}) * 0.992) * ${TS}, dFdx(${uv}) * ${TS}, dFdy(${uv}) * ${TS})`;
   const patch = (src, chunk, tex, uv) => src.replace(`#include <${chunk}>`, THREE.ShaderChunk[chunk].split(`texture2D( ${tex}, ${uv} )`).join(S(tex, uv)));
   m.onBeforeCompile = (sh) => {
+    sh.uniforms.storeMap = { value: storeMap };
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec2 atl;\nvarying vec2 vAtl;')
-      .replace('#include <uv_vertex>', '#include <uv_vertex>\nvAtl = atl;');
-    let f = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec2 vAtl;');
+      .replace('#include <common>', '#include <common>\nattribute vec2 atl;\nattribute float sf;\nvarying vec2 vAtl;\nvarying float vSf;\nvarying vec3 vWPos;\nvarying vec3 vWN;')
+      .replace('#include <uv_vertex>', '#include <uv_vertex>\nvAtl = atl; vSf = sf;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz; vWN = normalize(mat3(modelMatrix) * objectNormal);');
+    let f = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec2 vAtl;\nvarying float vSf;\nvarying vec3 vWPos;\nvarying vec3 vWN;\nuniform sampler2D storeMap;');
     f = patch(f, 'map_fragment', 'map', 'vMapUv');
     f = patch(f, 'emissivemap_fragment', 'emissiveMap', 'vEmissiveMapUv');
     f = patch(f, 'roughnessmap_fragment', 'roughnessMap', 'vRoughnessMapUv');
     f = patch(f, 'metalnessmap_fragment', 'metalnessMap', 'vMetalnessMapUv');
     f = patch(f, 'normal_fragment_maps', 'normalMap', 'vNormalMapUv');
+    f = f.replace('#include <lights_physical_fragment>', FACADE_GLSL + '\n#include <lights_physical_fragment>\nmaterial.specularF90 = mix(material.specularF90, 0.3, wvGlass);');
     sh.fragmentShader = f;
   };
-  m.customProgramCacheKey = () => 'wv-atlas';
+  m.customProgramCacheKey = () => 'wv-atlas3';
   return m;
 }
+
+// Ground-floor storefronts + "interior mapping": every pane of glass shows a 3D room
+// (back wall, side walls, floor, ceiling) that shifts with the camera, lit by day and,
+// for some rooms, by warm lamps at night. Glass itself becomes a smooth dielectric, so
+// it reflects the sky at grazing angles and you see inside when looking straight on.
+const FACADE_GLSL = /* glsl */`
+float wvGlass = 0.0;
+{
+  const vec2 TSZ = vec2(0.25, 0.33333);
+  const float GF = 4.2;
+  vec3 Nw = normalize(vWN);
+  bool wallF = abs(Nw.y) < 0.4;
+  float hA = vMapUv.y * 13.6 + (vSf > 0.5 ? 0.8 : 0.0);
+  float glassM = 0.0; bool shop = false;
+  vec2 pc = vMapUv * 4.0; vec2 cellSz = vec2(3.2, 3.4); float depthM = 4.5;
+  if (wallF) {
+    vec4 rmS = textureGrad(roughnessMap, vAtl + (0.004 + fract(vRoughnessMapUv) * 0.992) * TSZ, dFdx(vRoughnessMapUv) * TSZ, dFdy(vRoughnessMapUv) * TSZ);
+    glassM = smoothstep(0.45, 0.8, rmS.b) * step(0.5, 1.0 - rmS.g);
+    if (vSf > 0.5 && hA < GF) {
+      float vi = floor(vSf + 0.5) - 1.0;
+      vec2 cell = vec2(mod(vi, 2.0) * 0.5, floor(vi / 2.0) * 0.25);
+      vec2 luv = vec2(fract(vMapUv.x), 1.0 - clamp(hA / GF, 0.0, 1.0));
+      vec2 g0 = vec2(vMapUv.x, -hA / GF);
+      vec4 sc = textureGrad(storeMap, cell + vec2(0.002 + luv.x * 0.496, 0.002 + luv.y * 0.246), dFdx(g0) * vec2(0.5, 0.25), dFdy(g0) * vec2(0.5, 0.25));
+      diffuseColor.rgb = sc.rgb * mix(vec3(1.0), vColor.rgb, 0.2);
+      glassM = 1.0 - sc.a;
+      roughnessFactor = 0.8; metalnessFactor = 0.0;
+      normal = normalize((viewMatrix * vec4(Nw, 0.0)).xyz);
+      totalEmissiveRadiance = vec3(0.0);
+      shop = vSf < float(${SHOP_VARIANTS}) + 0.5;
+      pc = vec2(vMapUv.x * 12.8 / 3.2, hA / 3.6); cellSz = vec2(3.2, 3.6); depthM = shop ? 7.0 : 5.0;
+    }
+  }
+  if (glassM > 0.01) {
+    vec3 T = vec3(-Nw.z, 0.0, Nw.x);
+    float sgn = dot(dFdx(vWPos), T) * dFdx(vMapUv.x) + dot(dFdy(vWPos), T) * dFdy(vMapUv.x);
+    T *= sgn < 0.0 ? -1.0 : 1.0;
+    vec3 V = normalize(vWPos - cameraPosition);
+    vec3 d = vec3(dot(V, T), V.y, min(dot(V, Nw), -0.03));
+    vec2 cid = floor(pc), fr = fract(pc);
+    vec3 dd = d / vec3(cellSz, depthM);
+    float tx = dd.x > 0.0 ? (1.0 - fr.x) / dd.x : fr.x / max(-dd.x, 1e-4);
+    float ty = dd.y > 0.0 ? (1.0 - fr.y) / dd.y : fr.y / max(-dd.y, 1e-4);
+    float tz = -1.0 / dd.z;
+    float t = min(min(tx, ty), tz);
+    vec3 hp = vec3(fr, 0.0) + dd * t;
+    float h1 = fract(sin(dot(cid + vAtl * 37.0 + floor(vWPos.xz / 40.0), vec2(12.9898, 78.233))) * 43758.5453);
+    float h2 = fract(h1 * 17.31 + 0.13), h3 = fract(h1 * 71.7 + 0.5);
+    vec3 wallC = mix(vec3(0.60, 0.56, 0.50), vec3(0.80, 0.78, 0.74), h1);
+    if (h3 > 0.75) wallC = mix(vec3(0.42, 0.52, 0.6), vec3(0.6, 0.48, 0.38), h2);
+    vec3 room;
+    if (t == tz) {
+      room = wallC * 0.9;
+      if (hp.y < (shop ? 0.28 : 0.3)) room *= 0.5;                                        // furniture / counters
+      if (!shop && hp.x > 0.2 && hp.x < 0.5 && hp.y > 0.45 && hp.y < 0.72) room = mix(room, vec3(0.18, 0.2, 0.24), 0.7);   // shelf / screen
+      if (shop && abs(fract(hp.x * 3.0) - 0.5) < 0.42 && hp.y > 0.3 && hp.y < 0.8) room = mix(room, vec3(h1, h2, h3) * 0.8 + 0.1, 0.55);  // shelves of stuff
+    } else if (t == ty) room = dd.y > 0.0 ? vec3(0.88, 0.88, 0.85) : mix(vec3(0.34, 0.25, 0.18), vec3(0.45, 0.45, 0.47), h2);
+    else room = wallC * 0.7;
+    room *= mix(1.0, 0.5, clamp(-hp.z, 0.0, 1.0));
+    float nightK = clamp(emissive.r / 1.25, 0.0, 1.0);
+    bool lit = h2 > (shop ? 0.12 : 0.52);
+    vec3 lamp = shop ? vec3(1.0, 0.86, 0.64) * 0.6 : mix(vec3(1.0, 0.76, 0.48), vec3(0.78, 0.86, 1.0), step(0.82, h3)) * 0.6;
+    vec3 inside = room * mix(vec3(shop ? 0.16 : 0.08), lit ? lamp : vec3(0.025), nightK);
+    // curtains / blinds hanging just behind the glass in some homes and offices
+    if (!shop && h3 < 0.35 && fr.y > 0.55 - h1 * 0.3) inside = mix(vec3(0.75, 0.7, 0.6), vec3(0.55, 0.6, 0.66), h2) * mix(0.16, lit ? 0.9 : 0.04, nightK);
+    else if (!shop && h3 > 0.9 && fract(fr.y * 14.0) < 0.55) inside = vec3(0.6) * mix(0.14, lit ? 0.8 : 0.03, nightK);
+    wvGlass = glassM;
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.015), glassM);
+    roughnessFactor = mix(roughnessFactor, 0.05, glassM);
+    metalnessFactor = mix(metalnessFactor, 0.0, glassM);
+    totalEmissiveRadiance = mix(totalEmissiveRadiance, inside, glassM);
+  }
+}
+`;
 
 function pointInPoly(x, z, ring) {
   let inside = false;
@@ -334,6 +412,51 @@ export class World {
       mats[k] = new THREE.MeshStandardMaterial({ map: tex[k], normalMap: n, normalScale: new THREE.Vector2(0.8, 0.8), roughness: k === 'foot' ? 0.88 : 0.82, polygonOffset: true, polygonOffsetFactor: -1 - order[k], polygonOffsetUnits: -2 - order[k] * 2 });
       mats[k].defines = { SNOW_SCALE: k === 'foot' ? '0.75' : k === 'rail' ? '0.6' : '0.32' };
     }
+    {
+      const wt = sidewalkTexture(this.renderer.capabilities.getMaxAnisotropy());
+      const wn = T.concreteN.clone(); wn.needsUpdate = true; wn.repeat.set(1, 1);
+      mats.walk = new THREE.MeshStandardMaterial({ map: wt, normalMap: wn, normalScale: new THREE.Vector2(0.5, 0.5), roughness: 0.9 });
+      mats.walk.defines = { SNOW_SCALE: '0.85' };
+    }
+    // intersections (graph nodes with 3+ streets) get no sidewalk across them
+    const gN = this.map.graph.nodes, gA = this.map.graph.adj, degc = new Map();
+    gA.forEach((nb, i) => { for (const j of nb) { degc.set(i, (degc.get(i) || 0) + 1); degc.set(j, (degc.get(j) || 0) + 1); } });
+    const xGrid = new Map(), XG = 30;
+    degc.forEach((d, i) => { if (d >= 5) { const k = Math.floor(gN[i][0] / XG) * 65536 + Math.floor(gN[i][2] / XG); (xGrid.get(k) || xGrid.set(k, []).get(k)).push(gN[i]); } });
+    const nearX = (x, z, r) => { for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (const p of xGrid.get((Math.floor(x / XG) + a) * 65536 + Math.floor(z / XG) + b) || []) if (Math.hypot(p[0] - x, p[2] - z) < r) return true; return false; };
+    this.sidewalk = (P, hw, c) => {
+      const n = P.length / 3; if (n < 2) return;
+      const gb = bucket('walk', P[0], P[2]);
+      const R = c === 'major' ? 15 : 11;
+      for (let i = 1; i < n; i++) {
+        const ax = P[i * 3 - 3], ay = P[i * 3 - 2], az = P[i * 3 - 1], bx = P[i * 3], by = P[i * 3 + 1], bz = P[i * 3 + 2];
+        const l = Math.hypot(bx - ax, bz - az); if (l < 0.3) continue;
+        const tx = (bx - ax) / l, tz = (bz - az) / l;
+        // split long segments so the intersection gaps are tight
+        const parts = Math.max(1, Math.ceil(l / 6));
+        for (let k = 0; k < parts; k++) {
+          const t0 = k / parts, t1 = (k + 1) / parts;
+          const x0 = ax + (bx - ax) * t0, z0 = az + (bz - az) * t0, y0 = ay + (by - ay) * t0, x1 = ax + (bx - ax) * t1, z1 = az + (bz - az) * t1, y1 = ay + (by - ay) * t1;
+          if (nearX((x0 + x1) / 2, (z0 + z1) / 2, R)) continue;
+          for (const side of [1, -1]) {
+            const nx = -tz * side, nz = tx * side;
+            const o0 = hw, o1 = hw + 0.22, o2 = hw + 2.9;
+            const h = 0.17, ya = Math.max(y0 + 0.12, this.heightAt(x0 + nx * o2, z0 + nz * o2)) , yb = Math.max(y1 + 0.12, this.heightAt(x1 + nx * o2, z1 + nz * o2));
+            const top0 = Math.max(y0 + h, ya + 0.03), top1 = Math.max(y1 + h, yb + 0.03);
+            const v0 = (i + t0) * l / 2.6, v1 = (i + t1) * l / 2.6;
+            const curbCol = [0.92, 0.92, 0.9];
+            // curb face
+            gb.quad([x0 + nx * o0, y0 + 0.05, z0 + nz * o0, 0, v0], [x1 + nx * o0, y1 + 0.05, z1 + nz * o0, 0, v1], [x1 + nx * o0, top1, z1 + nz * o0, 0.05, v1], [x0 + nx * o0, top0, z0 + nz * o0, 0.05, v0], [-nx, 0, -nz], curbCol);
+            // curb top
+            gb.quad([x0 + nx * o0, top0, z0 + nz * o0, 0, v0], [x1 + nx * o0, top1, z1 + nz * o0, 0, v1], [x1 + nx * o1, top1, z1 + nz * o1, 0.08, v1], [x0 + nx * o1, top0, z0 + nz * o1, 0.08, v0], [0, 1, 0], curbCol);
+            // slabs
+            gb.quad([x0 + nx * o1, top0, z0 + nz * o1, 0.1, v0], [x1 + nx * o1, top1, z1 + nz * o1, 0.1, v1], [x1 + nx * o2, top1, z1 + nz * o2, 1, v1], [x0 + nx * o2, top0, z0 + nz * o2, 1, v0], [0, 1, 0], [1, 1, 1]);
+            // back edge down into the ground
+            gb.quad([x0 + nx * o2, top0, z0 + nz * o2, 1, v0], [x1 + nx * o2, top1, z1 + nz * o2, 1, v1], [x1 + nx * o2, top1 - 0.4, z1 + nz * o2, 1, v1], [x0 + nx * o2, top0 - 0.4, z0 + nz * o2, 1, v0], [nx, 0, nz], [0.8, 0.8, 0.8]);
+          }
+        }
+      }
+    };
     const cmap = T.concreteD.clone(); cmap.needsUpdate = true; cmap.repeat.set(0.5, 0.5);
     const concrete = new THREE.MeshStandardMaterial({ map: cmap, color: 0xc8c4bc, roughness: 0.9 });
     const buckets = new Map();
@@ -376,11 +499,13 @@ export class World {
       if (isBridge && c !== 'rail') this.bridgeStructure(sb, P, L, R, c === 'foot');
       else if (isBridge) this.bridgeStructure(sb, P, L, R, true);
       if (ni >= 0 && c !== 'foot' && c !== 'rail') this.roadSegs.push([ni, P]);
+      if (!isBridge && (c === 'major' || c === 'minor') && tname !== 'motorway' && tname !== 'trunk' && tname !== 'link') this.sidewalk(P, hw, c);
     }
     for (const { k, gb } of buckets.values()) {
       const m = new THREE.Mesh(gb.geometry(), k === 'concrete' ? concrete : mats[k]);
       m.receiveShadow = true;
       m.castShadow = k === 'concrete';
+      if (k === 'walk') { m.material.vertexColors = true; }
       this.group.add(m);
     }
   }
@@ -444,7 +569,7 @@ export class World {
   // ---------------------------------------------------------------- buildings
   buildBuildings() {
     const T = this.tex;
-    const mat = atlasMaterial({ map: T.facadeD, normalMap: T.facadeN, roughMap: T.facadeR, emissiveMap: T.facadeE });
+    const mat = atlasMaterial({ map: T.facadeD, normalMap: T.facadeN, roughMap: T.facadeR, emissiveMap: T.facadeE, storeMap: storefrontAtlas(this.renderer.capabilities.getMaxAnisotropy()) });
     this.buildingMat = mat;
     this.nightMats.push([mat, 1.25]);
     const kinds = this.map.buildingKinds;
@@ -463,6 +588,7 @@ export class World {
       m.castShadow = true; m.receiveShadow = true;
       this.group.add(m);
     }
+    this.buildRoofItems();
   }
 
   addBuilding([base, top, ni, ki, ring], bi, kinds, chunk, dt, forcedTile = null) {
@@ -494,6 +620,15 @@ export class World {
     const col = pick(pal, r2);
     const atl = TILE[tile];
     const gb = chunk(cx, cz);
+    // ground floor: storefronts on shopping streets, stone or brick bases on big buildings
+    const hgt = top - base, r3 = hash(bi * 13 + 5);
+    let sf = 0;
+    if (forcedTile == null && hgt > 4.5 && kind !== 'house' && kind !== 'garage' && kind !== 'parking' && kind !== 'church' && kind !== 'stadium' && kind !== 'hangar' && kind !== 'industrial') {
+      if (kind === 'commercial' || (downtown && Math.abs(area) > 60)) sf = 1 + Math.floor(r3 * SHOP_VARIANTS);
+      else if (hgt > 8 && Math.abs(area) > 250 && tile !== 0) sf = kind === 'university' || tile === 11 || tile === 10 ? SHOP_VARIANTS + 1 : SHOP_VARIANTS + 2;
+    }
+    const vOff = sf ? 0.8 : 0;
+    gb.curSf = sf;
     // pitched roof for small rectangular houses
     let wallTop = top, pitched = false;
     if ((kind === 'house' || (kind === 'other' && tile === 0)) && n === 4 && Math.abs(area) < 420) {
@@ -509,9 +644,10 @@ export class World {
       let ox = (z2 - z1) / l, oz = -(x2 - x1) / l;
       if (area < 0) { ox = -ox; oz = -oz; }
       const u0 = per / 12.8, u1 = (per + l) / 12.8;
-      gb.quad([x1, base, z1, u0, 0], [x2, base, z2, u1, 0], [x2, wallTop, z2, u1, (wallTop - base) / 13.6], [x1, wallTop, z1, u0, (wallTop - base) / 13.6], [ox, 0, oz], col, atl);
+      gb.quad([x1, base, z1, u0, -vOff / 13.6], [x2, base, z2, u1, -vOff / 13.6], [x2, wallTop, z2, u1, (wallTop - base - vOff) / 13.6], [x1, wallTop, z1, u0, (wallTop - base - vOff) / 13.6], [ox, 0, oz], col, atl);
       per += l;
     }
+    gb.curSf = -1;
     // roof
     const rcol = pick(pitched ? PAL.shingle : PAL.roof, hash(bi * 3 + 1));
     if (pitched) {
@@ -546,12 +682,83 @@ export class World {
         }
       }
     }
+    // 3D ledges: a cornice under the roof line and a belt course above the shop fronts
+    if (!pitched && n >= 3 && n < 60) {
+      if (hgt > 6 && tile !== 4 && tile !== 9) this.ledge(gb, ring, area, top - 0.55, top - 0.05, 0.42, col);
+      if (sf) this.ledge(gb, ring, area, base + 4.2, base + 4.45, 0.28, col);
+      if (hgt > 16 && tile !== 2 && tile !== 4 && tile !== 9) this.ledge(gb, ring, area, base + 4.2 + 3.4 * 3, base + 4.2 + 3.4 * 3 + 0.18, 0.16, col);
+      if (Math.abs(area) > 180 && hgt > 5) this.roofStuff(ring, top, Math.abs(area), bi);
+    }
     // gameplay record
     let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
     for (let i = 0; i < n; i++) { x0 = Math.min(x0, ring[i * 2]); x1 = Math.max(x1, ring[i * 2]); z0 = Math.min(z0, ring[i * 2 + 1]); z1 = Math.max(z1, ring[i * 2 + 1]); }
     const id = this.buildings.length;
     this.buildings.push({ ring, base, top: pitched ? wallTop + pitched.roofH * 0.5 : top, name: ni >= 0 ? this.map.names[ni] : null, cx, cz, x0, z0, x1, z1 });
     this.gridInsert(this.bGrid, x0, z0, x1, z1, id);
+  }
+
+  // a protruding stone band around the footprint (mitred corners) from y0 to y1
+  ledge(gb, ring, area, y0, y1, d, col) {
+    const n = ring.length / 2, sgn = area < 0 ? -1 : 1;
+    const nrm = [];
+    for (let i = 0; i < n; i++) {
+      const x1 = ring[i * 2], z1 = ring[i * 2 + 1], x2 = ring[((i + 1) % n) * 2], z2 = ring[((i + 1) % n) * 2 + 1];
+      const l = Math.hypot(x2 - x1, z2 - z1) || 1;
+      nrm.push([(z2 - z1) / l * sgn, -(x2 - x1) / l * sgn]);
+    }
+    const off = [];
+    for (let i = 0; i < n; i++) {
+      const a = nrm[(i - 1 + n) % n], b = nrm[i];
+      let mx = a[0] + b[0], mz = a[1] + b[1]; const ml = Math.hypot(mx, mz) || 1; mx /= ml; mz /= ml;
+      const k = Math.min(2.2, 1 / Math.max(0.3, mx * b[0] + mz * b[1]));
+      off.push([ring[i * 2] + mx * d * k, ring[i * 2 + 1] + mz * d * k]);
+    }
+    const stone = [col[0] * 0.5 + 0.45, col[1] * 0.5 + 0.43, col[2] * 0.5 + 0.4];
+    const A = TILE[11], v0 = 0.93, v1 = 0.99;
+    let per = 0;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n, P = off[i], Q = off[j], [ox, oz] = nrm[i];
+      const ix = ring[i * 2], iz = ring[i * 2 + 1], jx = ring[j * 2], jz = ring[j * 2 + 1];
+      const l = Math.hypot(Q[0] - P[0], Q[1] - P[1]), u0 = per / 12.8, u1 = (per + l) / 12.8; per += l;
+      gb.quad([P[0], y0, P[1], u0, v0], [Q[0], y0, Q[1], u1, v0], [Q[0], y1, Q[1], u1, v1], [P[0], y1, P[1], u0, v1], [ox, 0, oz], stone, A);      // face
+      gb.quad([ix, y1, iz, u0, v0], [jx, y1, jz, u1, v0], [Q[0], y1, Q[1], u1, v1], [P[0], y1, P[1], u0, v1], [0, 1, 0], stone, A);               // top
+      gb.quad([ix, y0, iz, u0, v0], [jx, y0, jz, u1, v0], [Q[0], y0, Q[1], u1, v1], [P[0], y0, P[1], u0, v1], [0, -1, 0], [stone[0] * 0.7, stone[1] * 0.7, stone[2] * 0.7], A);   // soffit
+    }
+  }
+
+  // air-conditioning units, vents and stair housings scattered on flat roofs (instanced later)
+  roofStuff(ring, top, area, bi) {
+    this.roofItems ||= [];
+    if (this.roofItems.length > 9000) return;
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+    for (let i = 0; i < ring.length; i += 2) { x0 = Math.min(x0, ring[i]); x1 = Math.max(x1, ring[i]); z0 = Math.min(z0, ring[i + 1]); z1 = Math.max(z1, ring[i + 1]); }
+    const count = Math.min(8, 1 + Math.floor(area / 350));
+    for (let k = 0; k < count * 3 && this.roofItems.length < 9000; k++) {
+      const x = x0 + hash(bi * 31 + k * 7) * (x1 - x0), z = z0 + hash(bi * 17 + k * 13 + 1) * (z1 - z0);
+      if (!pointInPoly(x, z, ring) || edgeDist(x, z, ring) < 2.2) continue;
+      this.roofItems.push([x, top, z, hash(bi + k * 3) * 6.28, Math.floor(hash(bi * 5 + k) * 3)]);
+      if (this.roofItems.length % 3 === 0 && k > count) break;
+    }
+  }
+  buildRoofItems() {
+    const items = this.roofItems || [];
+    if (!items.length) return;
+    const metal = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, metalness: 0.55, roughness: 0.45 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x5c5f63, metalness: 0.3, roughness: 0.6 });
+    const ac = new THREE.BoxGeometry(1.8, 1.1, 1.3); ac.translate(0, 0.55, 0);
+    const fan = new THREE.CylinderGeometry(0.45, 0.45, 0.08, 16); fan.translate(0.35, 1.13, 0);
+    const vent = new THREE.CylinderGeometry(0.22, 0.22, 1.2, 10); vent.translate(0, 0.6, 0);
+    const hut = new THREE.BoxGeometry(3, 2.6, 3.4); hut.translate(0, 1.3, 0);
+    const groups = [[ac, metal], [fan, dark], [vent, metal], [hut, dark]].map(([g, m]) => ({ g, m, list: [] }));
+    for (const it of items) { const t = it[4]; if (t === 0) { groups[0].list.push(it); groups[1].list.push(it); } else if (t === 1) groups[2].list.push(it); else groups[3].list.push(it); }
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1), up = new THREE.Vector3(0, 1, 0);
+    for (const G of groups) {
+      if (!G.list.length) continue;
+      const im = new THREE.InstancedMesh(G.g, G.m, G.list.length);
+      G.list.forEach(([x, y, z, r], i) => { q.setFromAxisAngle(up, r); m4.compose(p.set(x, y, z), q, one); im.setMatrixAt(i, m4); });
+      im.computeBoundingSphere(); im.castShadow = true; im.receiveShadow = true;
+      this.group.add(im);
+    }
   }
 
   // ---------------------------------------------------------------- landmarks
@@ -1121,8 +1328,34 @@ export class World {
     return t;
   }
 
-  update(dt, night) {
+  // real light pools under the street lamps nearest the player (a fixed number of lights, so no shader rebuilds)
+  setupLampLights(n) {
+    this.lampLights = [];
+    for (let i = 0; i < n; i++) { const L = new THREE.PointLight(0xffc27a, 0, 30, 1.6); this.scene.add(L); this.lampLights.push(L); }
+    this.lampLT = 0;
+  }
+  updateLampLights(dt, night, focus) {
+    if (!this.lampLights?.length || !focus) return;
+    this.lampLT -= dt;
+    if (this.lampLT <= 0 && this.lampSpots) {
+      this.lampLT = 0.4;
+      const near = [];
+      for (const s of this.lampSpots) { const d = (s[0] - focus.x) ** 2 + (s[2] - focus.z) ** 2; if (d < 120 * 120) near.push([d, s]); }
+      near.sort((a, b) => a[0] - b[0]);
+      this.lampLights.forEach((L, i) => {
+        const s = near[i]?.[1];
+        if (!s) { L.intensity = 0; return; }
+        L.position.set(s[0] + Math.sin(s[3]) * 2, s[1] + 7.4, s[2] + Math.cos(s[3]) * 2);
+        L.userData.on = true;
+      });
+    }
+    const k = THREE.MathUtils.smoothstep(night, 0.25, 0.7);
+    for (const L of this.lampLights) L.intensity = L.userData.on ? 260 * k : 0;
+  }
+
+  update(dt, night, focus) {
     this.time += dt;
+    this.updateLampLights(dt, night, focus);
     this.lightT = (this.lightT || 0) - dt;
     if (this.lightT <= 0) { this.lightT = 0.25; this.updateLights(); }
     this.waterNormal.offset.set(this.time * 0.004, this.time * 0.0025);

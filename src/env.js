@@ -92,7 +92,7 @@ export class Environment {
     const u = this.sky.material.uniforms;
     u.sunPosition.value.copy(dir);
     u.rayleigh.value = 1.6 + golden * 1.6;
-    u.turbidity.value = 2.6 + golden * 4;
+    u.turbidity.value = 1.6 + golden * 4;
 
     // the sun light: follows the focus point so shadows stay crisp near the player
     const lightDir = sunUp > 0 ? dir : this.moonDir(dir);
@@ -106,9 +106,10 @@ export class Environment {
       this.sun.color.set(0x8fa6d8);
       this.sun.intensity = 0.35 * this.night;
     }
-    this.hemi.intensity = 0.2 + 0.35 * (1 - this.night);
-    this.hemi.color.setHSL(0.58, 0.5, 0.35 + 0.4 * (1 - this.night));
-    this.hemi.groundColor.setHSL(0.22, 0.3, 0.12 + 0.18 * (1 - this.night));
+    // at night the city glows: sky lit orange from below by street lights, enough ambient to see the streets
+    this.hemi.intensity = 0.55 + 0.0 * (1 - this.night);
+    this.hemi.color.setHSL(0.58 - 0.0 * this.night, 0.5 - 0.25 * this.night, 0.35 + 0.4 * (1 - this.night));
+    this.hemi.groundColor.setHSL(0.22 - 0.14 * this.night, 0.3 + 0.2 * this.night, 0.12 + 0.18 * (1 - this.night) + 0.06 * this.night);
     // overcast / snow: a soft grey sky — weak sun, strong skylight, thick haze
     const G = this.grey, snow = this.weather === 'snow';
     if (G > 0) {
@@ -125,7 +126,7 @@ export class Environment {
     this.scene.fog.color.copy(fog);
     this.scene.fog.density = this.fogBase * (1 + golden * 0.25 + this.night * 0.4) * (snow ? 2.6 : G ? 1.5 : 1);
     this.renderer.setClearColor(fog);
-    this.renderer.toneMappingExposure = 0.55 + 0.25 * (1 - this.night) + this.night * 0.35;
+    this.renderer.toneMappingExposure = 0.5 + 0.22 * (1 - this.night) + this.night * 0.35;
 
     this.starMat.opacity = this.night;
     this.stars.position.copy(focus);

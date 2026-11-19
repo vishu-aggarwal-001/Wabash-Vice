@@ -17,8 +17,8 @@ const GradeShader = {
     void main() {
       vec3 c = texture2D(tDiffuse, vUv).rgb;
       float l = dot(c, vec3(0.299, 0.587, 0.114));
-      c = mix(vec3(l), c, 1.04 - night * 0.2);                       // saturation
-      c = (c - 0.5) * (1.07) + 0.5;                                  // contrast
+      c = mix(vec3(l), c, 1.14 - night * 0.25);                      // saturation
+      c = (c - 0.5) * (1.12) + 0.5;                                  // contrast
       c *= mix(vec3(1.03, 1.0, 0.95), vec3(0.9, 0.97, 1.1), night);    // warm day / cool night
       c = mix(c, c * c * (3.0 - 2.0 * c), 0.18);                     // soft S-curve
       vec2 d = vUv - 0.5; c *= 1.0 - dot(d, d) * 0.55;               // vignette
@@ -118,6 +118,7 @@ class Game {
     this.people = new People();
     await this.people.load().catch((e) => console.warn('Character models failed to load, using simple figures', e));
     this.env = new Environment(this.scene, r, q, this.weather);
+    this.world.setupLampLights(q.textures === 'lo' ? 3 : 6);
     if (this.weather === 'snow') this.snow = new Snowfall(this.scene, q.textures === 'lo' ? 5000 : 9000);
     this.env.daySeconds = this.settings.dayMinutes * 60;
     if (save_hours(this.save)) this.env.hours = this.save.hours;
@@ -650,7 +651,7 @@ class Game {
     const snap = this.quality.shadowRange * 2 / (this.quality.shadows || 512);
     const sf = new THREE.Vector3(Math.round(this.focus.x / snap) * snap, this.focus.y, Math.round(this.focus.z / snap) * snap);
     this.env.update(dt, sf, inp.timeFast);
-    this.world.update(dt, this.env.night);
+    this.world.update(dt, this.env.night, this.focus);
     this.fx.update(dt);
     this.updateCamera(dt, inp);
     this.snow?.update(dt, this.camera);
