@@ -78,6 +78,14 @@ To turn hosting on for a copy of this repo: **Settings → Pages → Build and d
 - **Working traffic lights** (mast-arm signals) at ~400 real junctions, and AI traffic stops on red.
 - New HUD: health/armor/stamina bars, karma meter, job panel, dialogue subtitles.
 
+**Graphics pass 2**
+- **Rooms behind every window** (interior mapping): real depth that shifts as you move, curtains and blinds, shelves in shops, and rooms that light up at night
+- **Storefronts** with shop signs, display windows, doors and awnings on commercial streets and downtown; stone or brick bases with entrances on big buildings
+- **3D cornices and ledges**, and AC units, vents and stair huts on the roofs
+- **Curbs and slab sidewalks** along every street
+- **Street lamps that actually light the street** near you, and warmer city nights
+- **Better cars**: dark tinted glass, real headlight and tail-light clusters, grille bars, door handles, a reflection probe with a dark ground so cars stop looking washed out
+
 **Fixes**
 - **Camera no longer clips into walls or your own head** (that was the "black screen"): a thick camera probe, swinging up over obstacles, re-checking after the camera lags, and hiding the player when the lens is too close.
 - **Runs much better on laptops**: Auto quality picks a preset from your GPU, and dynamic resolution lowers the render scale when the frame rate drops (and switches off ambient occlusion if it has to).

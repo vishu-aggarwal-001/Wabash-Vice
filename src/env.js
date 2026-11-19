@@ -63,6 +63,15 @@ export class Environment {
     this.envScene = new THREE.Scene();
     this.envSky = new Sky(); this.envSky.scale.setScalar(1000);
     this.envScene.add(this.envSky);
+    // a dark ground in the reflection probe: the bottom half of cars, glass and windows reflects
+    // asphalt and buildings, not a white sky (which made everything look washed out and toy-like)
+    this.envGround = new THREE.Mesh(new THREE.CircleGeometry(4000, 32), new THREE.MeshBasicMaterial({ color: 0x2c2e2b }));
+    this.envGround.rotation.x = -Math.PI / 2; this.envGround.position.y = -4;
+    this.envScene.add(this.envGround);
+    // a ring of dark "city" around the horizon
+    this.envCity = new THREE.Mesh(new THREE.CylinderGeometry(900, 900, 120, 48, 1, true), new THREE.MeshBasicMaterial({ color: 0x3a3a3a, side: THREE.BackSide }));
+    this.envCity.position.y = 40;
+    this.envScene.add(this.envCity);
     this.lastEnvHour = -99;
     this.sunDir = new THREE.Vector3();
     this.update(0, new THREE.Vector3());
@@ -144,6 +153,10 @@ export class Environment {
       for (const k of ['turbidity', 'rayleigh', 'mieCoefficient', 'mieDirectionalG']) eu[k].value = u[k].value;
       eu.sunPosition.value.copy(dir);
       if (this.grey) { eu.turbidity.value = 20; eu.rayleigh.value = 0.4; eu.mieCoefficient.value = 0.05; }
+      const gk = 0.12 + 0.88 * (1 - this.night);
+      this.envGround.material.color.setRGB(0.17 * gk, 0.18 * gk, 0.17 * gk);
+      this.envCity.material.color.setRGB(0.22 * gk, 0.22 * gk, 0.23 * gk);
+      if (this.weather === 'snow') this.envGround.material.color.setRGB(0.6 * gk, 0.62 * gk, 0.66 * gk);
       if (this.envMap) this.envMap.dispose();
       this.envMap = this.pmrem.fromScene(this.envScene).texture;
       this.scene.environment = this.envMap;
