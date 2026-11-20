@@ -12,10 +12,12 @@ export class FX {
     scene.add(this.flash);
     this.flashT = 0;
   }
-  sprite() {
-    let s = this.pool.pop();
+  // one pool per texture, so a sprite never swaps its map (which would force a shader re-check)
+  sprite(map = this.tex) {
+    const pool = map === this.tex ? this.pool : (this.pool2 ||= []);
+    let s = pool.pop();
     if (!s) {
-      s = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.tex, transparent: true, depthWrite: false, fog: true }));
+      s = new THREE.Sprite(new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false, fog: true }));
       this.scene.add(s);
     }
     s.visible = true;
@@ -24,14 +26,12 @@ export class FX {
   emit(kind, p, v = null, n = 1) {
     if (this.live.length > 900) return;
     for (let i = 0; i < n; i++) {
-      const s = this.sprite();
+      const s = this.sprite(kind === 'flame' ? this.flameTex : this.tex);
       const r = () => Math.random() - 0.5;
       const o = { s, kind, life: 1, age: 0, vel: new THREE.Vector3(), size: 1, grow: 1, fade: 1 };
       s.position.copy(p);
       const m = s.material;
       m.blending = THREE.NormalBlending;
-      const want = kind === 'flame' ? this.flameTex : this.tex;
-      if (m.map !== want) { m.map = want; m.needsUpdate = true; }
       o.aspect = kind === 'flame' ? 1.7 : 1;
       if (kind === 'smoke') {
         m.color.setHSL(0, 0, 0.25 + Math.random() * 0.15); o.life = 2.5; o.size = 1.5; o.grow = 3; o.fade = 0.55;
@@ -88,7 +88,7 @@ export class FX {
       const o = this.live[i];
       o.age += dt;
       const t = o.age / o.life;
-      if (t >= 1) { o.s.visible = false; this.pool.push(o.s); this.live.splice(i, 1); continue; }
+      if (t >= 1) { o.s.visible = false; (o.s.material.map === this.tex ? this.pool : this.pool2).push(o.s); this.live.splice(i, 1); continue; }
       if (o.gravity) o.vel.y -= 9.8 * dt;
       if (!o.noDrag) o.vel.multiplyScalar(Math.exp(-dt * 0.8));
       o.s.position.addScaledVector(o.vel, dt);

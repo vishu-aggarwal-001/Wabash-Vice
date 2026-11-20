@@ -171,7 +171,8 @@ async function m4(S) {
   const g = S.g, w = g.world;
   await S.dialog([['Dee', "A friend dropped a waterproof bag in the Wabash up north. Very valuable."], ['Dee', "Grab a boat at Tapawingo Park and get it before the river police do."]]);
   const [, bz, wx] = g.boatLaunch;
-  const boat = S.car('speedboat', wx + 6, bz, g.riverYaw(bz));
+  // the launch already has a speedboat moored: use it rather than stacking a second one on top
+  const boat = g.parked.find(v => v.type === 'boat' && !v.dead && Math.hypot(v.pos.x - (wx + 6), v.pos.z - bz) < 8) || S.car('speedboat', wx + 6, bz, g.riverYaw(bz));
   await S.goto(boat.pos.x, boat.pos.z, { r: 5, need: boat, text: 'Get in the speedboat at Tapawingo Park' });
   const iz0 = Math.round((bz - w.minZ) / w.cell);
   const cps = [];
@@ -206,7 +207,7 @@ async function m5(S) {
   const cps = []; let acc = 0, last = null;
   for (const n of path) { const q = w.gNodes[n]; if (last) acc += Math.hypot(q[0] - last[0], q[2] - last[2]); last = q; if (acc > 240) { acc = 0; cps.push({ x: q[0], z: q[2] }); } }
   cps.push({ x: P.x, z: P.z });
-  const rivals = [['muscle', -1], ['hyper', 1]].map(([id, side], k) => {
+  const rivals = [['muscle', -1], ['pony', 1]].map(([id, side], k) => {
     const d = S.aiCar(id, R.x - Math.sin(yaw) * (6 + k * 6) + Math.cos(yaw) * 2.2 * side, R.z - Math.cos(yaw) * (6 + k * 6) - Math.sin(yaw) * 2.2 * side, yaw, { mode: 'goto', cap: 0.86, arrive: 4 });
     d.idx = 0; d.brake = true; return d;
   });
@@ -224,7 +225,7 @@ async function m5(S) {
       if (Math.hypot(d.v.pos.x - cp.x, d.v.pos.z - cp.z) < 22) { d.idx++; d.goal = cps[d.idx] || cps[cps.length - 1]; }
       // rubber band: rivals ease off if far ahead, push if behind
       const lead = d.idx - S.cp;
-      d.cap = lead > 1 ? 0.72 : lead < -1 ? 1 : 0.88;
+      d.cap = lead > 0 ? 0.7 : lead < -1 ? 1 : 0.86;
       if (d.v.dead) { if (!rivalDone.includes(d)) d.idx = -99; }
     }
   };
@@ -337,7 +338,7 @@ async function traitor(S) {
   const D = S.aiCar('pony', Lv.x, Lv.z, yaw, { mode: 'wander', cap: 0.7, color: 0xf2c014 });
   S.blip(() => D.v.pos, '#ff3b3b', 6);
   await S.goto(D.v.pos.x, D.v.pos.z, { r: 45, text: 'Find Marco at the Levee', noBeam: true, route: true });
-  D.mode = 'flee'; D.cap = 1;
+  D.mode = 'flee'; D.cap = 0.85;
   await S.say('Marco', "Oh no. No no no!", 1.2);
   let lost = 0;
   S.failIf(() => { lost = D.v.pos.distanceTo(S.here()) > 420 ? lost + 1 / 60 : 0; return lost > 9; }, 'Marco got away');
@@ -469,5 +470,5 @@ async function fuelDeal(S) {
     ['Danny', "Come on. Dee's rebuilding the garage. We've got work to do."],
   ]);
   const [hx, hz] = g.world.toWorld(40.4318, -86.9180);
-  g.spawnVehicle('hyper', hx, hz, 0, false);
+  if (!g.parked.some(v => v.spec.id === 'hyper' && Math.hypot(v.pos.x - hx, v.pos.z - hz) < 10)) g.spawnVehicle('hyper', hx, hz, 0, false);
 }

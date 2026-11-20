@@ -1,6 +1,6 @@
 // People: the player on foot, and the same model reused for pedestrians.
 import * as THREE from 'three';
-import { dress, normalizeLook } from './outfit.js';
+import { dress, normalizeLook, undress } from './outfit.js';
 
 const G = 9.81;
 const mats = new Map();
@@ -123,6 +123,7 @@ export class Player {
     if (this.char.look?.base === look.base && this.char.T?.id === look.base) { dress(people, this.char, look); return; }
     // a different body: rebuild the character, keep everything else
     const old = this.mesh, parent = old.parent;
+    undress(this.char);
     this.char = people.makePlayer(look);
     this.mesh = this.char.mesh;
     this.mesh.position.copy(old.position); this.mesh.rotation.copy(old.rotation); this.mesh.visible = old.visible;

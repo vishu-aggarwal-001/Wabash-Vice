@@ -468,8 +468,27 @@ export class World {
     this.bridgeSegs = [];
     this.brGrid = new Map();
     this.roadSegs = [];
+    // drivable-surface raster (3 m cells) so vehicles know asphalt from grass
+    const RC = 3, rw = Math.ceil(this.W / RC) + 2, rh = Math.ceil(this.Hh / RC) + 2;
+    this.roadRaster = { RC, rw, rh, a: new Uint8Array(rw * rh) };
+    const mark = (P, hw) => {
+      const A = this.roadRaster.a, r = Math.ceil(hw / RC);
+      for (let i = 3; i < P.length; i += 3) {
+        const x0 = P[i - 3], z0 = P[i - 1], x1 = P[i], z1 = P[i + 2], len = Math.hypot(x1 - x0, z1 - z0), steps = Math.max(1, Math.ceil(len / 1.5));
+        for (let k = 0; k <= steps; k++) {
+          const x = x0 + (x1 - x0) * k / steps, z = z0 + (z1 - z0) * k / steps;
+          const cx = Math.floor((x - this.minX) / RC), cz = Math.floor((z - this.minZ) / RC);
+          for (let a = -r; a <= r; a++) for (let b = -r; b <= r; b++) {
+            const X = cx + a, Z = cz + b;
+            if (X < 0 || Z < 0 || X >= rw || Z >= rh) continue;
+            if (Math.hypot(a * RC, b * RC) <= hw + RC * 0.5) A[Z * rw + X] = 1;
+          }
+        }
+      }
+    };
     for (const [ti, ni, flags, P] of this.map.roads) {
       const tname = types[ti], c = cls[tname];
+      if (c && c !== 'foot' && c !== 'rail') mark(P, widths[tname] / 2);
       const w = widths[tname], hw = w / 2;
       const isBridge = flags & 1;
       const n = P.length / 3;
@@ -1232,7 +1251,7 @@ export class World {
   }
 
   // Highest walkable surface under (x,z) that is not far above y.
-  // returns {y, kind: 'ground'|'bridge'|'roof'|'water', water: waterY or null}
+  // returns {y, kind: 'ground'|'road'|'bridge'|'roof'|'water', water: waterY or null}
   groundAt(x, z, y = null, step = 1.6) {
     const t = this.heightAt(x, z);
     if (y === null) y = t + 3;   // default: street level (ignore rooftops)
@@ -1245,7 +1264,14 @@ export class World {
     }
     const wl = this.map.waterLevel;
     const water = kind === 'ground' && t < wl - 0.25 ? wl : null;
+    if (kind === 'ground' && water === null && this.isRoad(x, z)) kind = 'road';
     return { y: gy, kind: water !== null ? 'water' : kind, water };
+  }
+
+  isRoad(x, z) {
+    const R = this.roadRaster; if (!R) return false;
+    const cx = Math.floor((x - this.minX) / R.RC), cz = Math.floor((z - this.minZ) / R.RC);
+    return cx >= 0 && cz >= 0 && cx < R.rw && cz < R.rh && R.a[cz * R.rw + cx] === 1;
   }
 
   // Push a vertical capsule (circle in x/z between yb and yt) out of buildings and trees.

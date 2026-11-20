@@ -390,17 +390,42 @@ function bikeModel(spec, color) {
     g.add(box(0.2, 0.05, 0.28, flat(0x111111), 0, 1.0, -0.22));
     g.add(box(0.55, 0.03, 0.03, frame, 0, 1.12, 0.45));
   } else {
-    const blob = (mat, sx, sy, sz, x, y, z, rx = 0) => { const m = new THREE.Mesh(new THREE.SphereGeometry(0.5, 18, 12), mat); m.scale.set(sx, sy, sz); m.position.set(x, y, z); m.rotation.x = rx; m.castShadow = true; g.add(m); return m; };
-    blob(body, 0.34, 0.26, 0.62, 0, 0.92, 0.12, -0.12);                                    // tank
-    blob(flat(0x111111, 0.7), 0.28, 0.1, 0.62, 0, 0.93, -0.42, 0.1);                       // seat
-    blob(body, 0.26, 0.18, 0.5, 0, 0.9, -0.78, 0.25);                                      // tail
-    blob(flat(0x2a2a2c, 0.4, 0.8), 0.3, 0.34, 0.5, 0, 0.56, 0.0);                          // engine
-    blob(body, 0.4, 0.42, 0.42, 0, 0.98, L / 2 - 0.55, -0.4);                              // fairing
-    blob(GLASS, 0.3, 0.2, 0.08, 0, 1.2, L / 2 - 0.68, -0.9);                               // screen
-    const fork = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.8, 8), RIM); fork.position.set(0, 0.68, L / 2 - 0.45); fork.rotation.x = 0.4; g.add(fork);
-    g.add(box(0.7, 0.03, 0.03, frame, 0, 1.12, L / 2 - 0.66));                              // bars
-    const ex = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.7, 12), flat(0x8a8a8a, 0.25, 1)); ex.rotation.x = Math.PI / 2 - 0.25; ex.position.set(0.17, 0.5, -0.6); g.add(ex);
-    if (spec.offroad) g.add(box(0.2, 0.05, 0.5, body, 0, 0.95, L / 2 - 0.3));
+    // side-profile pieces (x = forward, y = up), extruded across the bike
+    const F = L / 2, dirt = !!spec.offroad;
+    const prof = (pts, w, mat, bev = 0.025) => { const m = extrudeProfile(pts.map(([z, y]) => [z, y]), w, mat, bev); g.add(m); return m; };
+    const dark = flat(0x18181a, 0.55, 0.3), metal = flat(0x9a9ea4, 0.3, 0.9), rubber = flat(0x111111, 0.85);
+    if (!dirt) {
+      prof([[F - 0.14, 0.86], [F - 0.1, 0.97], [F - 0.3, 1.15], [F - 0.5, 1.17], [F - 0.62, 1.0], [F - 0.62, 0.74], [F - 0.4, 0.7]], 0.34, body, 0.05);   // front fairing
+      prof([[0.3, 0.98], [0.2, 1.1], [-0.12, 1.08], [-0.3, 0.98], [-0.25, 0.88], [0.25, 0.88]], 0.32, body, 0.06);                                       // tank
+      prof([[-0.3, 0.98], [-0.62, 0.99], [-0.66, 0.94], [-0.3, 0.93]], 0.27, rubber, 0.02);                                                              // seat
+      prof([[-0.6, 0.92], [-0.66, 0.99], [-F + 0.06, 1.06], [-F + 0.03, 1.0], [-0.82, 0.86]], 0.22, body, 0.04);                                               // tail
+      prof([[0.36, 0.74], [0.3, 0.5], [0.12, 0.4], [-0.2, 0.42], [0.0, 0.62]], 0.36, body, 0.04);                                            // belly fairing
+      const scr = prof([[F - 0.28, 1.18], [F - 0.42, 1.34], [F - 0.5, 1.21]], 0.3, GLASS, 0.01);
+    } else {
+      prof([[0.28, 0.95], [0.18, 1.08], [-0.15, 1.06], [-0.25, 0.92], [0.25, 0.86]], 0.3, body);                                                         // tank
+      prof([[-0.1, 1.04], [-0.75, 1.02], [-0.8, 0.98], [-0.1, 0.98]], 0.24, rubber, 0.02);                                                              // long seat
+      prof([[-0.7, 0.98], [-F + 0.05, 1.08], [-F + 0.1, 1.02], [-0.7, 0.94]], 0.18, body);                                                             // rear fender
+      prof([[F - 0.25, 1.0], [F + 0.08, 0.98], [F + 0.06, 0.94], [F - 0.25, 0.95]], 0.16, body);                                                       // front fender
+      prof([[F - 0.42, 1.0], [F - 0.36, 1.24], [F - 0.5, 1.22], [F - 0.55, 1.02]], 0.26, body);                                                       // number plate
+    }
+    // engine block, cylinders, frame, swingarm, forks, discs, exhaust, bars, mirrors
+    g.add(box(0.3, 0.32, 0.46, dark, 0, 0.55, 0.02));
+    for (const zz of [-0.06, 0.1]) { const c2 = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.22, 12), metal); c2.position.set(0, 0.74, zz); c2.rotation.x = 0.35; g.add(c2); }
+    const tube = (a, b, rad, mat) => { const d = new THREE.Vector3().subVectors(b, a), m = new THREE.Mesh(new THREE.CylinderGeometry(rad, rad, d.length(), 10), mat); m.position.copy(a).addScaledVector(d, 0.5); m.quaternion.setFromUnitVectors(UP, d.normalize()); m.castShadow = true; g.add(m); return m; };
+    const head = new THREE.Vector3(0, 1.05, F - 0.45), fa = new THREE.Vector3(0, r, F - r), ra = new THREE.Vector3(0, r, -F + r), piv = new THREE.Vector3(0, 0.52, -0.25);
+    for (const sx of [-0.1, 0.1]) {
+      tube(new THREE.Vector3(sx, head.y, head.z), new THREE.Vector3(sx, fa.y, fa.z), 0.028, dirt ? metal : flat(0xc9a64a, 0.3, 0.9));                    // forks
+      tube(new THREE.Vector3(sx, piv.y, piv.z), new THREE.Vector3(sx * 1.2, ra.y, ra.z), 0.03, dark);                                                     // swingarm
+      const disc = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.62, r * 0.62, 0.012, 24), metal); disc.rotation.z = Math.PI / 2; disc.position.set(sx * 0.9, fa.y, fa.z); g.add(disc);
+    }
+    tube(head, new THREE.Vector3(0, 0.9, -0.35), 0.035, dark); tube(new THREE.Vector3(0, 0.9, -0.35), piv, 0.035, dark);
+    const shock = tube(new THREE.Vector3(0, 0.95, -0.3), new THREE.Vector3(0, 0.45, -0.55), 0.03, flat(0xd8b04a, 0.35, 0.8));
+    const ex = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.045, 0.55, 14), flat(0x8a8a8a, 0.25, 1));
+    if (dirt) { ex.rotation.x = Math.PI / 2 - 0.35; ex.position.set(0.17, 0.82, -0.55); } else { ex.rotation.x = Math.PI / 2 + 0.3; ex.position.set(0.18, 0.62, -0.72); }
+    g.add(ex);
+    tube(new THREE.Vector3(-0.36, dirt ? 1.22 : 1.1, F - 0.5), new THREE.Vector3(0.36, dirt ? 1.22 : 1.1, F - 0.5), 0.016, dark);                         // bars
+    for (const sx of [-0.33, 0.33]) g.add(box(0.05, 0.035, 0.12, rubber, sx, dirt ? 1.22 : 1.1, F - 0.5));                                               // grips
+    if (!dirt) for (const sx of [-0.26, 0.26]) { tube(new THREE.Vector3(sx * 0.8, 1.16, F - 0.42), new THREE.Vector3(sx, 1.26, F - 0.36), 0.008, dark); g.add(box(0.08, 0.05, 0.015, GLASS, sx, 1.27, F - 0.35)); }
   }
   const h = box(0.14, 0.1, 0.05, HEAD, 0, spec.pedal ? 0.95 : 1.05, L / 2 - 0.35); g.add(h); parts.lights.push(h);
   const t = box(0.14, 0.06, 0.05, TAIL.clone(), 0, 0.85, -L / 2 + 0.1); g.add(t); parts.brake.push(t);
@@ -636,8 +661,8 @@ export class Vehicle {
       let thr = c.throttle;
       if (this.hp <= 0) thr = 0;
       const pm = this.perf || { accel: 1, max: 1, grip: 1, nitro: 1 };
-      let accel = s.accel * pm.accel * (1 - off * 0.25);
-      let maxV = s.max * pm.max * (1 - off * 0.35);
+      let accel = s.accel * pm.accel * (1 - off * 0.15);
+      let maxV = s.max * pm.max * (1 - off * 0.3);
       if (c.boost && this.nitro > 0 && thr > 0 && s.type === 'car') {
         this.nitro = Math.max(0, this.nitro - dt * 0.22); accel *= 1.8; maxV *= 1.25; this.boosting = true;
       } else this.nitro = Math.min(1, this.nitro + dt * 0.05 * pm.nitro);
@@ -649,7 +674,7 @@ export class Vehicle {
         if (vf > 0.5) vf -= 15 * dt * -thr;              // brake
         else vf -= accel * 0.55 * -thr * dt;             // reverse
       }
-      vf -= k * vf * Math.abs(vf) * dt + Math.sign(vf) * Math.min(Math.abs(vf), (0.35 + off * 1.5) * dt);
+      vf -= k * vf * Math.abs(vf) * dt + Math.sign(vf) * Math.min(Math.abs(vf), (0.35 + off * 0.5) * dt);
       vf = Math.max(vf, -12);
       if (c.handbrake) vf -= Math.sign(vf) * Math.min(Math.abs(vf), 6 * dt);
       // gravity along slope

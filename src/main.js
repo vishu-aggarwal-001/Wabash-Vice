@@ -122,6 +122,7 @@ class Game {
     await this.world.load((p, m) => { bar.style.width = (p * 100).toFixed(0) + '%'; msg.textContent = m; });
     msg.textContent = 'Casting the people of Lafayette…';
     this.people = new People();
+    this.people.lite = this.quality.peds <= 10;   // phones: fewer outfits in memory, smaller textures
     this.save.look = normalizeLook(this.save.look);
     this.people.look = this.save.look;
     await this.people.load().catch((e) => console.warn('Character models failed to load, using simple figures', e));
@@ -176,7 +177,7 @@ class Game {
     this.people?.ok && this.people.loadRest();   // stream the rest of the townspeople in the background
     this.started = true; this.paused = false;
     this.audio.start();
-    if (!this.save.seenHelp) { this.hud.big('WABASH VICE', 'West Lafayette & Lafayette, Indiana — press F1 for controls'); this.save.seenHelp = true; this.persist(); }
+    if (!this.save.seenHelp) { this.hud.big('WABASH VICE', 'West Lafayette & Lafayette, Indiana — ' + (matchMedia('(pointer: coarse)').matches ? 'tap ☎ for jobs & story' : 'press F1 for controls')); this.save.seenHelp = true; this.persist(); }
     else this.hud.big('WABASH VICE', 'Welcome back');
     if (!matchMedia('(pointer: coarse)').matches && !params.has('autostart')) $('game').requestPointerLock?.();
   }
@@ -345,11 +346,23 @@ class Game {
       if (bank) { ox = bank[0] + Math.sign(ox - rx) * 12; }
       this.hud.toast('Moved you to the river bank');
     }
-    for (const d of [7, 4, 10, 0]) {
-      const x = ox + Math.sin(yaw) * d, z = oz + Math.cos(yaw) * d;
+    // a clear spot ahead or beside you: no walls, no other vehicles
+    const others = [...this.parked, ...this.traffic.cars.map(c => c.v), ...this.police.units.map(u => u.v)];
+    const R = Math.max(s.L, s.W) / 2 + 0.6;
+    const free = (x, z) => !others.some(o => !o.dead && Math.hypot(o.pos.x - x, o.pos.z - z) < R + Math.max(o.spec.L, o.spec.W) / 2);
+    let fallback = null;
+    for (const d of [7, 10, 4, 14, 18]) for (const side of [0, 4, -4, 8, -8]) {
+      const x = ox + Math.sin(yaw) * d - Math.cos(yaw) * side, z = oz + Math.cos(yaw) * d + Math.sin(yaw) * side;
       const res = w.collide(x, z, Math.max(1, s.W / 2), p.y + 0.3, p.y + 2);
-      if (!res.hit || d === 0) { this.spawnVehicle(id, res.x, res.z, yaw, true, opts); return; }
+      if (res.hit) continue;
+      // the whole length must be clear too (buses, trucks)
+      const half = Math.max(0, s.L / 2 - s.W / 2);
+      if (half > 0.5 && [-1, 1].some(k => w.collide(res.x + Math.sin(yaw) * half * k, res.z + Math.cos(yaw) * half * k, s.W / 2, p.y + 0.3, p.y + 2).hit)) continue;
+      fallback ||= res;
+      if (free(res.x, res.z)) { this.spawnVehicle(id, res.x, res.z, yaw, true, opts); return; }
     }
+    const res = fallback || w.collide(ox, oz, Math.max(1, s.W / 2), p.y + 0.3, p.y + 2);
+    this.spawnVehicle(id, res.x, res.z, yaw, true, opts);
   }
   teleport(x, z, name) {
     if (this.vehicle) {
@@ -488,14 +501,15 @@ class Game {
     if (this.garage?.open && v) {   // tune shop: slow orbit around the car
       this.garage.orbit += 0.0025;
       const p = v.pos, a = v.yaw + this.garage.orbit, R = v.spec.L * 0.95 + 2.2;
-      cam.position.set(p.x + Math.sin(a) * R, p.y + 1.7, p.z + Math.cos(a) * R);
-      cam.lookAt(p.x, p.y + 0.6, p.z); cam.fov = 50; cam.updateProjectionMatrix();
+      const narrow = innerWidth < 700;
+      cam.position.set(p.x + Math.sin(a) * R * (narrow ? 1.3 : 1), p.y + 1.7, p.z + Math.cos(a) * R * (narrow ? 1.3 : 1));
+      cam.lookAt(p.x, p.y + (narrow ? -0.6 : 0.6), p.z); cam.fov = 50; cam.updateProjectionMatrix();
       return;
     }
     if (this.wardrobe?.open && !v) {   // changing room: look at the player from the front-right
-      const p = this.player.pos, a = this.player.yaw + 0.35;
-      cam.position.set(p.x + Math.sin(a) * 2.7, p.y + 1.35, p.z + Math.cos(a) * 2.7);
-      cam.lookAt(p.x, p.y + 1.0, p.z); cam.fov = 45; cam.updateProjectionMatrix();
+      const p = this.player.pos, a = this.player.yaw + 0.35, narrow = innerWidth < 700;   // phones: the shop sheet covers the bottom half
+      cam.position.set(p.x + Math.sin(a) * (narrow ? 3.6 : 2.7), p.y + (narrow ? 1.1 : 1.35), p.z + Math.cos(a) * (narrow ? 3.6 : 2.7));
+      cam.lookAt(p.x, p.y + (narrow ? 0.35 : 1.0), p.z); cam.fov = 45; cam.updateProjectionMatrix();
       this.player.mesh.visible = true;
       return;
     }

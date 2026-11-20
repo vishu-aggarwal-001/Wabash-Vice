@@ -177,7 +177,7 @@ export class Wardrobe {
       };
       list.appendChild(b);
     }
-    if (!this.fetched && items.some(i => i.img && !thumb(g.people, i.id, i.img))) { this.fetched = true; g.people.loadRest().then(() => { if (this.open) this.render(); }); }
+    if (!this.fetched && items.some(i => i.img && !thumb(g.people, i.id, i.img))) { this.fetched = true; g.people.loadRest(true).then(() => { if (this.open) this.render(); }); }
     this.el.querySelector('#wmoney').textContent = '$' + g.money.toLocaleString();
   }
 }

@@ -193,9 +193,10 @@ async function policeAccident(S, jobs, id) {
 async function policeSpeeder(S, jobs, id) {
   keepPanel(S, jobs, id);
   const g = S.g, p = S.somewhere(150, 380), yaw = S.roadYaw(p);
-  const ids = ['gt', 'muscle', 'hyper', 'sportbike'];
+  const ids = ['gt', 'muscle', 'pony', 'rally', 'sportbike'];
   const vid = ids[Math.floor(Math.random() * ids.length)];
-  const D = S.aiCar(vid, p.x, p.z, yaw, { mode: 'wander', cap: 0.9 });
+  // a cruiser tops out around 66 m/s: speeders drive fast but catchable
+  const D = S.aiCar(vid, p.x, p.z, yaw, { mode: 'wander', cap: 0.62 });
   D.v.mesh.userData.label = 'SPEEDER';
   await S.say('Dispatch', `Speeding ${D.v.spec.name} reported nearby. Pull it over.`);
   S.blip(() => D.v.pos, '#ff3b3b', 6);
@@ -278,7 +279,7 @@ async function policeBrawl(S, jobs, id) {
 async function policeStolen(S, jobs, id) {
   keepPanel(S, jobs, id);
   const g = S.g, p = S.somewhere(250, 500), yaw = S.roadYaw(p);
-  const D = S.aiCar(['suv', 'pickup', 'muscle', 'sedan'][Math.floor(Math.random() * 4)], p.x, p.z, yaw, { mode: 'flee', cap: 1 });
+  const D = S.aiCar(['suv', 'pickup', 'muscle', 'sedan'][Math.floor(Math.random() * 4)], p.x, p.z, yaw, { mode: 'flee', cap: 0.8 });
   await S.say('Dispatch', `Stolen ${D.v.spec.name} spotted. Driver is armed with attitude. Stop that car.`);
   S.blip(() => D.v.pos, '#ff3b3b', 6);
   panel(S, jobs, id, 'Ram it until it stops');

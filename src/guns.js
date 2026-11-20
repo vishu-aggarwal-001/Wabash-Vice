@@ -76,7 +76,7 @@ export class Guns {
     for (const t of this.tracers) if (t.t > 0) { t.t -= dt; t.l.material.opacity = Math.max(0, t.t / 0.07); if (t.t <= 0) t.l.visible = false; }
     const onFoot = !g.vehicle && pl.down <= 0 && !pl.swimming && !g.paused;
     const show = !!id && onFoot;
-    this.xhair.hidden = !show; this.ammoEl.hidden = !id;
+    this.xhair.hidden = !show; this.ammoEl.hidden = !id || !!g.vehicle;
     pl.char.aiming = show && this.aimT > 0 ? 1 : 0;
     pl.char.twoHand = !!this.spec?.twoHand;
     if (!id) return false;
@@ -85,7 +85,7 @@ export class Guns {
     if (this.reload > 0) { this.reload -= dt; if (this.reload <= 0) { const take = Math.min(S.mag - this.magOf(id), this.reserve(id)); this.mag[id] += take; g.save.ammo[id] -= take; } }
     this.ammoEl.innerHTML = `${this.reload > 0 ? 'RELOADING' : this.magOf(id)} <small>/ ${this.reserve(id)}</small>`;
     if (!show) return false;
-    const trig = pressed.has('punch') || (S.auto && (inp.q || g.input.mouse.down));
+    const trig = pressed.has('punch') || (S.auto && (inp.q || g.input.mouse.down || g.input.touch.buttons.has('!punch')));
     if (!trig) return false;
     if (campus) {
       if (this.campusNote <= 0) { g.hud.toast('Purdue campus is a gun-free zone. Your gun stays holstered here.', 'warn'); this.campusNote = 4; }

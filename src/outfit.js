@@ -26,7 +26,7 @@ export function normalizeLook(look) {
 
 // ---------------------------------------------------------------- texture compositing
 const part = (T, name) => { let m = null; T.scene.traverse(o => { if (!m && o.isMesh && o.name === name) m = o; }); return m; };
-const keep = (m) => { m.defines = { ...(m.defines || {}), NO_SNOW: '' }; m.needsUpdate = true; return m; };
+const keep = (m) => { m.defines = { ...(m.defines || {}), NO_SNOW: '' }; m.userData.own = true; m.needsUpdate = true; return m; };
 const imgOf = (T, name) => part(T, name)?.material?.map?.image;
 function canvas(w = S, h = S) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
 
@@ -89,7 +89,7 @@ export async function dress(people, ch, look) {
   if (token !== ch.dressToken) return;
   const headT = people.templates[look.head] || people.templates[look.base];
   // face & hair from the head donor, re-bound to this skeleton
-  for (const m of ch.extra || []) m.parent?.remove(m);
+  for (const m of ch.extra || []) { m.parent?.remove(m); m.material?.dispose?.(); }
   ch.extra = [];
   const own = (name) => { let m = null; ch.model.traverse(o => { if (!m && o.isMesh && o.name === name && !o.userData.donor) m = o; }); return m; };
   const swap = look.head !== look.base;
@@ -106,11 +106,14 @@ export async function dress(people, ch, look) {
     m.bind(new THREE.Skeleton(bones, src.skeleton.boneInverses), src.bindMatrix);
     ch.extra.push(m);
   }
+  // free the previous look's composited textures (each is a 1024² GPU upload)
+  for (const t of ch.ownTex || []) t.dispose();
+  ch.ownTex = [body];
   const headMesh = swap ? ch.extra.find(m => m.name === 'head') : own('head');
   if (headMesh) {
     headMesh.material = headMesh.userData.donor ? headMesh.material : keep(headMesh.material.clone());
     const ht = (look.skin || 0) ? shadedHead(headT, look.skin) : null;
-    if (ht) headMesh.material.map = ht; else headMesh.material.map = part(headT, 'head').material.map;
+    if (ht) { headMesh.material.map = ht; ch.ownTex.push(ht); } else headMesh.material.map = part(headT, 'head').material.map;
     headMesh.material.needsUpdate = true;
   }
   const bm = own('body');
@@ -121,6 +124,13 @@ export async function dress(people, ch, look) {
   if (look.hat && HATS[look.hat]) ch.accessories.push(hat(ch, ...HATS[look.hat]));
   if (look.glasses && GLASSES[look.glasses]) ch.accessories.push(glasses(ch, ...GLASSES[look.glasses]));
   ch.look = look;
+}
+
+// release a player character's own textures and materials when it is replaced
+export function undress(ch) {
+  for (const t of ch.ownTex || []) t.dispose();
+  ch.ownTex = [];
+  ch.model?.traverse(o => { if (o.isMesh && o.material?.userData?.own) o.material.dispose(); });
 }
 
 // a frame on the head: x = the face's left, y = up, z = forward (from the eye bones)
@@ -176,6 +186,12 @@ function hat(ch, style, color) {
       const front = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.045, 0.03), fur); front.position.set(0, 0.105, 0.06); g.add(front);
     }
   });
+}
+
+// a random-coloured beanie or cap for townspeople (thieves, thugs)
+export function npcHat(ch, style) {
+  const cols = style === 'beanie' ? [0x151515, 0x1f2c45, 0x8c1d1d, 0x2f4a2f, 0x3a3a3a] : [0x111111, 0x1f2c45, 0x8c1d1d, 0xcfb991];
+  return hat(ch, style, cols[Math.floor(Math.random() * cols.length)]);
 }
 
 // thumbnail of one region of an avatar, for the wardrobe

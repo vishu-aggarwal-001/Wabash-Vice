@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as skClone } from 'three/addons/utils/SkeletonUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { dress, normalizeLook } from './outfit.js';
+import { dress, normalizeLook, npcHat } from './outfit.js';
 
 const D = Math.PI / 180;
 // native ground speed of each clip (m/s) so feet don't slide
@@ -135,7 +135,7 @@ export class People {
   ensure(id) {
     if (!this.meta[id]) return Promise.resolve(null);
     return (this.loading[id] ||= this.L.loadAsync(this.base + `data/chars/rb/${id}.glb`)
-      .then((g) => { const T = this.prep(g, this.anims); T.meta = this.meta[id]; T.id = id; this.templates[id] = T; return T; })
+      .then(async (g) => { if (this.lite) await shrink(g.scene, 512); const T = this.prep(g, this.anims); T.meta = this.meta[id]; T.id = id; this.templates[id] = T; return T; })
       .catch((e) => { console.warn('could not load person', id, e); return null; }));
   }
   // region mask of an avatar's body texture (0 top, 1 legs, 2 feet, 3 palms, 4 fingers), 256 px
@@ -173,7 +173,12 @@ export class People {
     dress(this, c, look);
     return c;
   }
-  loadRest() { return Promise.all(this.index.map(m => this.ensure(m.id))); }
+  // everyone (the wardrobe), or on phones a varied crowd of 18 plus the uniforms
+  loadRest(all = false) {
+    if (all || !this.lite) return Promise.all(this.index.map(m => this.ensure(m.id)));
+    const civ = this.index.filter(m => ['civ', 'biz', 'worker'].includes(m.role)).sort(() => Math.random() - 0.5).slice(0, 18);
+    return Promise.all([...civ, ...this.index.filter(m => !['civ', 'biz', 'worker'].includes(m.role))].map(m => this.ensure(m.id)));
+  }
   pool(role, g) { return Object.keys(this.templates).filter(id => { const m = this.meta[id]; return (Array.isArray(role) ? role.includes(m.role) : m.role === role) && (!g || m.g === g); }); }
   get men() { return this.pool(['civ', 'biz', 'worker'], 'm'); }
   get women() { return this.pool(['civ', 'biz'], 'f'); }
@@ -232,81 +237,28 @@ export class People {
     model.scale.multiplyScalar(s);
     model.position.y = -T.minY * s;
     root.add(model);
-    const style = opts.head && opts.head !== 'police' ? opts.head : 'none';
-    if (style !== 'none') headwear(model, style, opts.hairColor, T.height * s);
-    return new Character(root, model, T, kind);
+    const ch = new Character(root, model, T, kind);
+    if (opts.head === 'beanie' || opts.head === 'cap') npcHat(ch, opts.head);
+    return ch;
   }
 }
 const DEFAULT_PLAYER = 'Male_Adult_04';
+// downscale an avatar's textures (phones): keeps GPU memory and upload time down
+async function shrink(scene, size) {
+  const jobs = [];
+  scene.traverse((o) => {
+    if (!o.isMesh || !o.material?.map?.image || typeof createImageBitmap !== 'function') return;
+    const t = o.material.map, im = t.image;
+    if ((im.width || 0) <= size) return;
+    jobs.push(createImageBitmap(im, { resizeWidth: size, resizeHeight: size, resizeQuality: 'medium' }).then((b) => { t.image = b; t.needsUpdate = true; }).catch(() => {}));
+  });
+  await Promise.all(jobs);
+}
 const CORE = ['Male_Adult_02', 'Male_Adult_09', 'Male_Adult_17', 'Business_Male_02', 'Female_Adult_05', 'Female_Adult_13', 'Police_Male_03', 'Security_Male_01'];
 // story characters by role
 const ALIAS = { m_business: 'Business_Male_07', m_leather: 'Business_Male_04', m_tracksuit: 'Male_Adult_17', m_tattoo: 'Delivery_Male_01', m_hoodie: 'Male_Adult_18', m_viking: 'Construction_Male_01', m_worker: 'Construction_Male_02', m_denim: 'Male_Adult_12', m_old: 'Male_Adult_03', f_sport: 'Business_Female_01' };
 
 function* meshes(o) { const st = [o]; while (st.length) { const x = st.pop(); if (x.isMesh) yield x; st.push(...x.children); } }
-
-// ---------------------------------------------------------------- hair & hats
-const HAIR = [0x1c140e, 0x2b1d12, 0x0e0b09, 0x4a3420, 0x6b4c2f, 0x8a6a45, 0x5a5a5a];
-const KNIT = [0x1f2c45, 0x8c1d1d, 0x2f4a2f, 0x3a3a3a, 0xcfb991, 0x6b4a2a, 0xd9d4c7, 0x111111];
-const texCache = {};
-function strandTex(kind) {
-  if (texCache[kind]) return texCache[kind];
-  const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
-  g.fillStyle = '#fff'; g.fillRect(0, 0, 128, 128);
-  if (kind === 'hair') {
-    for (let i = 0; i < 900; i++) { const x = Math.random() * 128, y = Math.random() * 128, v = 150 + Math.random() * 105; g.strokeStyle = `rgb(${v},${v},${v})`; g.lineWidth = 0.6 + Math.random(); g.beginPath(); g.moveTo(x, y); g.lineTo(x + (Math.random() - 0.5) * 3, y + 6 + Math.random() * 10); g.stroke(); }
-  } else {
-    for (let x = 0; x < 128; x += 4) { g.fillStyle = 'rgba(0,0,0,0.22)'; g.fillRect(x, 0, 1.5, 128); }
-    for (let y = 0; y < 128; y += 3) { g.fillStyle = 'rgba(255,255,255,0.12)'; g.fillRect(0, y, 128, 1); }
-    g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(0, 104, 128, 3);
-  }
-  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.repeat.set(kind === 'hair' ? 3 : 6, kind === 'hair' ? 1 : 1);
-  return (texCache[kind] = t);
-}
-const matCache2 = new Map();
-function mat(color, kind, rough = 0.9) {
-  const k = color + kind;
-  if (!matCache2.has(k)) { const m = new THREE.MeshStandardMaterial({ color, roughness: rough, map: kind ? strandTex(kind) : null }); m.defines = { NO_SNOW: '' }; matCache2.set(k, m); }
-  return matCache2.get(k);
-}
-function headwear(model, style, hairColor, topY) {
-  model.updateMatrixWorld(true);
-  const head = model.getObjectByName('Head'), top = model.getObjectByName('HeadTop_End');
-  if (!head) return;
-  const hp = head.getWorldPosition(new THREE.Vector3());
-  let tp;
-  if (top) tp = top.getWorldPosition(new THREE.Vector3());
-  else tp = new THREE.Vector3(hp.x, (topY ?? hp.y + 0.24) - 0.015, hp.z + 0.015);   // MakeHuman rigs: measured head top
-  let R = hp.distanceTo(tp) * 0.5;                         // ~ skull radius
-  let c = hp.clone().lerp(tp, 0.47);
-  if (!top) { R = 0.118; c = tp.clone().add(new THREE.Vector3(0, -R * 0.8, -0.014)); }
-  const g = new THREE.Group(); g.position.copy(c);
-  const add = (geo, m, x, y, z, rx = 0, sx = 1, sy = 1, sz = 1) => { const o = new THREE.Mesh(geo, m); o.position.set(x * R, y * R, z * R); o.rotation.x = rx; o.scale.set(sx, sy, sz); o.castShadow = true; g.add(o); return o; };
-  const hc = hairColor ?? HAIR[Math.floor(Math.random() * HAIR.length)];
-  if (style === 'short' || style === 'cap') {
-    add(new THREE.SphereGeometry(R, 28, 14, 0, Math.PI * 2, 0, Math.PI * 0.62), mat(hc, 'hair'), 0, 0.03, -0.05, -0.32, 0.86, 1.04, 1.04);
-  }
-  if (style === 'beanie') {
-    const k = KNIT[Math.floor(Math.random() * KNIT.length)];
-    add(new THREE.SphereGeometry(R * 1.06, 28, 14, 0, Math.PI * 2, 0, Math.PI * 0.5), mat(k, 'knit'), 0, 0.12, -0.05, -0.3, 0.88, 1.12, 1.0);
-    add(new THREE.CylinderGeometry(R * 1.06, R * 1.08, R * 0.34, 28, 1, true), mat(k, 'knit'), 0, 0.06, -0.05, -0.3, 0.88, 1, 1.0).material.side = THREE.DoubleSide;
-  }
-  if (style === 'cap' || style === 'police') {
-    const col = style === 'police' ? 0x141a2c : [0x1f2c45, 0x111111, 0x8c1d1d, 0xcfb991, 0xeeeeee][Math.floor(Math.random() * 5)];
-    const m = mat(col, null, 0.7);
-    if (style === 'police') {
-      // peaked police cap: band, wide saucer crown, glossy visor and badge
-      add(new THREE.CylinderGeometry(R * 1.0, R * 0.98, R * 0.42, 28), mat(0x1b2130, null, 0.6), 0, 0.42, -0.02, -0.1, 0.94, 1, 1.02);
-      add(new THREE.CylinderGeometry(R * 1.36, R * 1.0, R * 0.34, 28), m, 0, 0.78, -0.06, -0.14, 0.94, 1, 1.02);
-      add(new THREE.CylinderGeometry(R * 1.36, R * 1.36, R * 0.05, 28), m, 0, 0.96, -0.08, -0.14, 0.94, 1, 1.02);
-      add(new THREE.CylinderGeometry(R * 1.0, R * 1.0, R * 0.04, 24, 1, false, -1.15, 2.3), mat(0x050505, null, 0.18), 0, 0.27, 0.36, 0.28, 0.92, 1, 1.15);
-      add(new THREE.CircleGeometry(R * 0.16, 12), new THREE.MeshStandardMaterial({ color: 0xd8b04a, metalness: 0.9, roughness: 0.3 }), 0, 0.68, 1.0, -0.1);
-    } else {
-      add(new THREE.SphereGeometry(R * 1.04, 24, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), m, 0, 0.14, -0.03, -0.2, 0.88, 0.95, 1.0);
-      add(new THREE.CylinderGeometry(R * 0.8, R * 0.8, R * 0.05, 24, 1, false, -1.0, 2.0), m, 0, 0.2, 0.62, -0.08, 0.95, 1, 1.0);
-    }
-  }
-  g.updateMatrixWorld(true); head.attach(g);
-}
 
 export class Character {
   constructor(root, model, T, kind) {
@@ -322,6 +274,9 @@ export class Character {
     this.w = { idle: 1, walk: 0, run: 0 };
     this.pose = null; this.poseW = 0; this.punchT = 0; this.kickT = 0;
     this.lean = 0; this.tilt = 0; this.baseY = model.position.y;
+    // standing hip height in metres, for sitting on seats of the right height
+    model.updateMatrixWorld(true);
+    const hb = this.bones.Hips; this.hipH = hb ? hb.getWorldPosition(new THREE.Vector3()).y - root.getWorldPosition(new THREE.Vector3()).y : 0.9;
   }
 
   // mode: idle|walk|run|jump|swim|sit|drive|ride|down|cower|hands_up ; speed in m/s
@@ -376,7 +331,7 @@ export class Character {
     this.tilt += (lie - this.tilt) * Math.min(1, dt * (mode === 'down' ? 10 : 5));
     this.model.rotation.x = this.tilt;
     if (this.grip) for (const [b, r, c] of this.grip) b.quaternion.copy(r).multiply(c);   // fist around a weapon
-    const lift = mode === 'down' ? 0.18 : mode === 'swim' ? 0.9 : mode === 'ride' ? -0.52 : mode === 'sit' || mode === 'drive' ? -0.46 : 0;
+    const lift = mode === 'down' ? 0.18 : mode === 'swim' ? 0.9 : mode === 'ride' ? -(this.hipH - 0.1) : mode === 'sit' || mode === 'drive' ? -(this.hipH - 0.44) : 0;
     this.model.position.z = (mode === 'down' ? -0.85 : 0) * Math.abs(this.tilt) / (Math.PI / 2);
     this.liftY = (this.liftY ?? 0) + (lift - (this.liftY ?? 0)) * Math.min(1, dt * 8);
     this.model.position.y = this.baseY + this.liftY;
