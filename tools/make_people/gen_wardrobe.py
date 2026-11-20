@@ -88,7 +88,7 @@ if PASS != 'base':
 for img in bpy.data.images:
     if img.size[0] == 0: continue
     n = (img.name + (img.filepath or '')).lower()
-    big = 2048 if 'skins' in n else 1024 if any(k in n for k in ('hair', 'short0', 'long0', 'afro', 'ponytail', 'beard', 'moustache')) else 512
+    big = 2048 if 'skins' in n else 1024 if any(k in n for k in ('hair', 'short0', 'long0', 'afro', 'ponytail', 'beard', 'moustache')) else 1024
     if img.size[0] > big: img.scale(big, int(img.size[1] * big / img.size[0]))
 tmp = os.path.join(OUT, '_tex'); os.makedirs(tmp, exist_ok=True)
 for img in list(bpy.data.images):

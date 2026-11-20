@@ -27,6 +27,8 @@ const POSES = {
 };
 const PUNCH_GUARD = { LeftArm: [-45, 0, -12], RightArm: [-45, 0, 12], LeftForeArm: [-110, 0, -25], RightForeArm: [-110, 0, 25], Spine: [0, 12, 0] };
 const PUNCH_HIT = { RightArm: [-88, 0, 4], RightForeArm: [-4, 0, 0], LeftArm: [-45, 0, -12], LeftForeArm: [-110, 0, -25], Spine: [6, -28, 0] };
+export const SWING_UP = { Spine: [0, -30, 0], RightArm: [0, 0, -60], RightForeArm: [0, 0, -110], RightHand: [-75, 0, 0], LeftArm: [-70, -40, 0], LeftForeArm: [-60, 0, 0] };
+export const SWING_HIT = { Spine: [6, 35, 0], RightArm: [-80, 40, 0], RightForeArm: [-10, 0, 0], RightHand: [70, 0, 0], LeftArm: [-60, 30, 0], LeftForeArm: [-30, 0, 0] };
 const KICK = { RightUpLeg: [-100, 0, 0], RightLeg: [10, 0, 0], LeftArm: [-20, 0, 30], RightArm: [-20, 0, -30], Spine: [-18, 0, 0] };
 
 const _q = new THREE.Quaternion(), _p = new THREE.Quaternion(), _r = new THREE.Quaternion(), _e = new THREE.Euler();
@@ -345,14 +347,23 @@ export class Character {
       const p = 1 - this.punchT / 0.42;                       // 0..1
       const guard = Math.min(1, p * 6) * Math.min(1, this.punchT * 8);
       const hit = p > 0.18 && p < 0.7 ? Math.sin((p - 0.18) / 0.52 * Math.PI) : 0;
-      this.apply(PUNCH_GUARD, guard * (1 - hit));
-      this.apply(PUNCH_HIT, hit);
+      if (this.weapon?.swing) {   // wind up over the shoulder, then sweep across
+        const ss = THREE.MathUtils.smoothstep;
+        const up = p < 0.35 ? ss(p, 0, 0.3) : Math.max(0, 1 - (p - 0.35) / 0.15);
+        const sw = p < 0.6 ? ss(p, 0.3, 0.6) : 1 - ss(p, 0.75, 1);
+        this.apply(SWING_UP, up * (1 - sw));
+        this.apply(SWING_HIT, sw);
+      } else {
+        this.apply(PUNCH_GUARD, guard * (1 - hit));
+        this.apply(PUNCH_HIT, hit);
+      }
     }
     if (this.kickT > 0) { this.kickT -= dt; const p = 1 - this.kickT / 0.55; this.apply(KICK, Math.sin(Math.min(1, p) * Math.PI)); }
     // whole-body: lying down / swimming / leaning on a bike
     const lie = mode === 'down' ? -Math.PI / 2 : mode === 'swim' ? 1.25 : 0;
     this.tilt += (lie - this.tilt) * Math.min(1, dt * (mode === 'down' ? 10 : 5));
     this.model.rotation.x = this.tilt;
+    if (this.grip) for (const [b, r, c] of this.grip) b.quaternion.copy(r).multiply(c);   // fist around a weapon
     const lift = mode === 'down' ? 0.18 : mode === 'swim' ? 0.9 : mode === 'ride' ? -0.52 : mode === 'sit' || mode === 'drive' ? -0.46 : 0;
     this.model.position.z = (mode === 'down' ? -0.85 : 0) * Math.abs(this.tilt) / (Math.PI / 2);
     this.liftY = (this.liftY ?? 0) + (lift - (this.liftY ?? 0)) * Math.min(1, dt * 8);

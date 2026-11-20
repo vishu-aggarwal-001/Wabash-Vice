@@ -47,7 +47,9 @@ To turn hosting on for a copy of this repo: **Settings → Pages → Build and d
 | Horn / siren / radio | **H** / **K** / **R** | D-pad up / – / right |
 | Fast-forward time | hold **T** | |
 | Menu, settings, fast travel | **Esc** | Start |
-| Punch / kick | **Click** or **Q** / **E** | X / B |
+| Punch or swing / kick | **Click** or **Q** / **E** | X / B |
+| Switch melee weapon | **Z** | |
+| Answer a choice (pay the bribe?) | **Y** / **N** | |
 | Use a medkit (on foot) | **H** | |
 | Phone: jobs, story, shop, stats | **Tab** | Back/View |
 | End your job shift | **X** | |
@@ -62,7 +64,30 @@ To turn hosting on for a copy of this repo: **Settings → Pages → Build and d
 
 ---
 
-## 🆕 What's new in v0.3
+## 🆕 What's new in v0.4: the Criminal Russia update
+
+**Story mode, Chapter 1: twelve missions.** Your big brother Danny ran a garage in downtown Lafayette until Lieutenant Kessler framed him for car theft. You arrive broke and work for Danny's partner Dee and then for **Uncle Vic**, the godfather of Lafayette, until you can bring Kessler down:
+1. New Life · 2. Valuable Cargo (a van of TVs that break on every bump) · 3. The Godfather · 4. Hot Wheels · 5. Police Control (bribe the checkpoint or run it) · 6. Debt · 7. Fastest Car (Homecoming race) · 8. River Run · 9. Traitor · 10. The Party (protect Vic from the Northside Crew) · 11. Escape (4 stars and roadblocks) · 12. Fuel Deal (steal Kessler's tanker and get it to Purdue Airport).
+
+**Levels and talents.** Missions, jobs and stunts give XP. Each level gives a talent point (phone → **Skills**): **Endurance** (more health, faster stamina), **Driving** (acceleration, grip, nitro) and **Criminal Enterprise** (pay, and the cops lose you faster).
+
+**Dee's Tune Shop** (orange 🔧 on the map, next to the garage). Drive any car in and press **J**:
+- 16 paint colours, window tint (clear to limo black), 5 rim styles in chrome, black, white, bronze or **24k gold**
+- Lip, sport or GT wings, lifted / lowered / slammed suspension (lower = more grip), **ECU chip stages 1–3** (more acceleration and top speed; stages 2 and 3 unlock at levels 4 and 7)
+- Repairs and nitro refills
+- **Keep it as your own car**: every mod is saved, and you can call it from the phone (**🚗 Vehicles → Your car**).
+
+**16 more cars** (36 vehicles in total), all in traffic: wagon, 1979 classic, luxury sedan, limo, compact, rally hatch, roadster, GT-R, supercar, drag muscle, pony car, 4x4, crossover, heavy-duty pickup, van and a fuel tanker.
+
+**Three new jobs**: **CityBus Driver** (stop at each stop, people get on and off, keep to the timetable), **Firefighter** (house, car and dumpster fires with real flames and smoke; park the engine and the water cannon locks on) and **Vic's Chop Shop** (find the car on order, steal it, deliver it clean).
+
+**Melee weapons** at **Levee Pawn & Loan** (red marker downtown): brass knuckles, baseball bat, lead pipe, hockey stick, crowbar, golf club and sledgehammer. Your character grips them and swings them over the shoulder. **Z** switches. No guns: this map has a real university campus in it.
+
+**Police roadblocks**: at 3 stars and above, two cruisers block the road ahead of you.
+
+**Sharper clothes**: every outfit texture doubled to 1024 px.
+
+## What was new in v0.3
 
 **Real people instead of mannequins.** The player, pedestrians, cops and paramedics are realistic skinned 3D people built from MakeHuman's free assets: jackets and jeans, hoodies and cargo pants, knitted sweaters, sneakers and boots, and Criminal Russia-style cops in a light blue shirt, tie and cap. They're driven by motion-captured idle, walk and run animations. Procedural layers add driving, bike riding, sitting, punching, kicking, cowering, hands-up and getting knocked flat. Men get short hair, beanies, ball caps or cowboy hats, and outfits are recoloured so the crowd isn't all clones.
 
@@ -183,8 +208,8 @@ This is the honest path from v0.1 toward the “better than GTA *at Lafayette*�
 3. **Building detail**: real roof shapes from OSM `roof:shape`, more facade styles, storefront signs, Purdue limestone trims
 4. **Real landmarks**: detailed models of the Purdue Memorial Union, Ross-Ade Stadium, Mackey Arena, the Engineering Fountain and the bridges' real shapes
 5. **Smarter city**: ~~traffic lights~~ (done in v0.3), lane changes, buses on real CityBus routes, Purdue students between classes
-6. **Story mode**: ~~Chapter 1~~ (done in v0.3); more chapters, cutscenes
-7. **Weapons and combat** (if you want it), plus garages and buying property
+6. **Story mode**: ~~Chapter 1, 12 missions~~ (done in v0.4); more chapters, cutscenes
+7. ~~Melee weapons, tuning garage~~ (done in v0.4); next, buying property and Chapter 2
 8. **Graphics ceiling**: SSAO, screen-space reflections, volumetric fog over the Wabash, rain (~~snow~~ done in v0.3), WebGPU renderer
 9. **Bigger map**: all of Tippecanoe County, then I-65 to Indianapolis
 10. **Multiplayer**: drive around Lafayette with friends (WebSockets)

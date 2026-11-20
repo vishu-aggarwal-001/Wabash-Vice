@@ -75,6 +75,19 @@ export class Script {
     await this.wait(secs);
   }
   async dialog(lines) { for (const [n, t, s] of lines) await this.say(n, t, s); }
+  // two-way choice: on-screen buttons, or Y / N on the keyboard. Resolves 0 or 1.
+  choose(question, a, b) {
+    const g = this.g, el = document.createElement('div');
+    el.className = 'choice';
+    el.innerHTML = `<p></p><button data-k="0"></button><button data-k="1"></button>`;
+    el.querySelector('p').textContent = question;
+    el.querySelectorAll('button')[0].textContent = 'Y — ' + a; el.querySelectorAll('button')[1].textContent = 'N — ' + b;
+    document.body.appendChild(el); document.exitPointerLock?.();
+    let pick = null;
+    el.querySelectorAll('button').forEach(btn => btn.onclick = () => { pick = +btn.dataset.k; });
+    const rm = () => el.remove(); this.onCleanup(rm);
+    return this.until(() => { if (g.lastPressed?.has('yes')) pick = 0; if (g.lastPressed?.has('no')) pick = 1; return pick !== null; }).then(() => { rm(); return pick; });
+  }
   big(title, sub, kind) { this.g.hud.big(title, sub, kind); }
   toast(msg, kind) { this.g.hud.toast(msg, kind); }
 

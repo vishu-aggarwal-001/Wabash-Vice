@@ -286,7 +286,7 @@ export class Police {
   constructor(game) {
     this.g = game; this.w = game.world;
     this.wanted = 0; this.units = []; this.heli = null;
-    this.unseen = 0; this.seenTime = 0; this.bustTimer = 0; this.cool = 0; this.spawnT = 0;
+    this.unseen = 0; this.seenTime = 0; this.bustTimer = 0; this.cool = 0; this.spawnT = 0; this.blockT = 12;
   }
   crime(n, why) {
     if (this.cool > 0 && n <= 1) return;
@@ -314,11 +314,33 @@ export class Police {
     this.units.push({ v, path: null, pathT: 0, wp: 0, stuck: 0, reverse: 0, leaving: false });
   }
 
+  // 3+ stars: two cruisers parked across the road ahead of a fleeing driver
+  roadblock(target, pv) {
+    const f = pv.vel.clone().setY(0); if (f.lengthSq() < 1) return; f.normalize();
+    const n = this.w.nearestNode(target.x + f.x * 170, target.z + f.z * 170, 90); if (n < 0) return;
+    const p = this.w.gNodes[n], nb = this.w.gAdj[n]?.[0]; if (nb === undefined) return;
+    const q = this.w.gNodes[nb], ry = Math.atan2(q[0] - p[0], q[2] - p[2]);
+    if (Math.hypot(p[0] - target.x, p[2] - target.z) < 90) return;
+    const gy = this.w.groundAt(p[0], p[2], p[1] + 2).y;
+    for (const s of [-1, 1]) {
+      const v = new Vehicle('police', this.w);
+      v.place(p[0] - Math.cos(ry) * s * 2.7, p[2] + Math.sin(ry) * s * 2.7, ry + Math.PI / 2 + s * 0.3, gy);
+      v.sirenOn = true; v.driver = 'ai'; v.headlights = this.g.env.night > 0.4;
+      this.g.scene.add(v.mesh);
+      this.units.push({ v, block: true, path: null, pathT: 0, wp: 0, stuck: 0, reverse: 0, leaving: false });
+    }
+    this.g.hud.toast('🚧 Police roadblock ahead!', 'warn');
+  }
+
   update(dt, target, playerVeh, player) {
     this.cool = Math.max(0, this.cool - dt);
+    if (this.wanted >= 3 && playerVeh && playerVeh.type !== 'plane' && playerVeh.type !== 'heli' && playerVeh.type !== 'boat' && playerVeh.speed > 12) {
+      this.blockT -= dt;
+      if (this.blockT <= 0) { this.blockT = 26; this.roadblock(target, playerVeh); }
+    }
     const want = [0, 1, 2, 3, 4, 6][this.wanted];
     this.spawnT -= dt;
-    if (this.wanted > 0 && this.units.filter(u => !u.leaving).length < want && this.spawnT <= 0) { this.spawnT = 2.5; this.spawnUnit(target); }
+    if (this.wanted > 0 && this.units.filter(u => !u.leaving && !u.block).length < want && this.spawnT <= 0) { this.spawnT = 2.5; this.spawnUnit(target); }
     // helicopter at 3+ stars
     if (this.wanted >= 3 && !this.heli) {
       const v = new Vehicle('heli', this.w, { color: 0x111317 });
@@ -348,6 +370,12 @@ export class Police {
       const u = this.units[i], v = u.v;
       const dx = target.x - v.pos.x, dz = target.z - v.pos.z, dist = Math.hypot(dx, dz);
       if (u.footed) { seen = seen || dist < 150; continue; }
+      if (u.block && !u.leaving) {
+        if (dist < 150) seen = true;
+        if (dist > 500) { this.g.scene.remove(v.mesh); this.units.splice(i, 1); continue; }
+        v.update(dt, { throttle: 0, steer: 0, handbrake: true }, this.g.fx);
+        continue;
+      }
       if (u.leaving || v.dead) {
         if (dist > 350 || v.dead && dist > 150) { this.g.scene.remove(v.mesh); this.units.splice(i, 1); continue; }
         v.update(dt, { throttle: 0, steer: 0, handbrake: true }, this.g.fx);

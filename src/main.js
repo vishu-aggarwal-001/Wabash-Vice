@@ -42,6 +42,7 @@ import { Story } from './story.js';
 import { Wardrobe, DEFAULT_LOOK } from './wardrobe.js';
 import { Progression } from './progression.js';
 import { Garage } from './garage.js';
+import { Pawn, byWeapon } from './weapons.js';
 import { pickWeather, installSnowShader, Snowfall, snowy } from './weather.js';
 
 const QUALITY = {
@@ -140,6 +141,7 @@ class Game {
     this.story = new Story(this);
     this.wardrobe = new Wardrobe(this);
     this.garage = new Garage(this);
+    this.pawn = new Pawn(this);
     this.prog = new Progression(this);
     if (this.save.player) { this.player.medkits = this.save.player.medkits ?? 2; this.player.armor = this.save.player.armor ?? 0; }
     this.hud = new HUD(this);
@@ -285,7 +287,7 @@ class Game {
 
   persist() {
     try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify({ v3: true, money: this.money, gears: this.save.gears || [], settings: this.settings, hours: this.env?.hours, seenHelp: this.save.seenHelp, xp: this.save.xp || 0, talents: this.save.talents, karma: this.save.karma || 0, jobs: this.save.jobs, story: this.save.story, look: this.save.look, owned: this.save.owned, myCar: this.save.myCar || null, player: { medkits: this.player?.medkits ?? 2, armor: Math.round(this.player?.armor || 0) } }));
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ v3: true, money: this.money, gears: this.save.gears || [], settings: this.settings, hours: this.env?.hours, seenHelp: this.save.seenHelp, xp: this.save.xp || 0, talents: this.save.talents, karma: this.save.karma || 0, jobs: this.save.jobs, story: this.save.story, look: this.save.look, owned: this.save.owned, myCar: this.save.myCar || null, weapons: this.save.weapons, weapon: this.save.weapon, player: { medkits: this.player?.medkits ?? 2, armor: Math.round(this.player?.armor || 0) } }));
     } catch { /* ignore */ }
   }
   addMoney(n) { this.money = Math.max(0, this.money + n); this.persist(); }
@@ -593,6 +595,7 @@ class Game {
       if (pr.has('map') && !this.hud.phoneOpen) this.hud.toggleMap();
       if (pr.has('pause') && this.wardrobe?.open) { this.wardrobe.hide(); pr.delete('pause'); }
       if (pr.has('pause') && this.garage?.open) { this.garage.hide(); pr.delete('pause'); }
+      if (pr.has('pause') && this.pawn?.open) { this.pawn.hide(); pr.delete('pause'); }
       if (pr.has('pause')) { if (this.hud.phoneOpen) this.hud.togglePhone(false); else if (this.hud.mapOpen) this.hud.toggleMap(false); else this.hud.toggleMenu(!this.hud.menuOpen, 'settings'); }
       if (pr.has('vehicles')) this.hud.toggleMenu(!this.hud.menuOpen, 'vehicles');
       if (pr.has('help')) $('help').hidden = !$('help').hidden;
@@ -644,7 +647,7 @@ class Game {
       const pl = this.player;
       if (pr.has('horn') && pl.useMedkit()) { this.hud.toast(`+50 health  (${pl.medkits} medkits left)`, 'good'); this.audio.chime(true); }
       pl.update(dt, { x: inp.moveX, y: inp.moveY, run: inp.shift, jump: inp.jump, punch: pr.has('punch'), kick: pr.has('kick') }, this.camYaw);
-      for (const e of pl.events) if (e === 'punch' || e === 'kick') this.melee(e === 'kick' ? 34 : 22, e === 'kick' ? 1.8 : 1.5);
+      for (const e of pl.events) if (e === 'punch' || e === 'kick') { const wp = e === 'punch' ? byWeapon[this.save.weapon] || byWeapon.fists : byWeapon.fists; this.melee(e === 'kick' ? 34 : 22 * wp.dmg, (e === 'kick' ? 1.8 : 1.5) + wp.reach, wp.swing ? 0.24 : 0.16); }
       if (pl.parachute) {
         if (!this.chute) {
           this.chute = new THREE.Mesh(new THREE.SphereGeometry(3.2, 16, 8, 0, Math.PI * 2, 0, 1.0), new THREE.MeshStandardMaterial({ color: 0xcfb991, side: THREE.DoubleSide }));
@@ -681,7 +684,8 @@ class Game {
     // talents feed into the player and whatever they drive
     this.player.maxHP = this.prog.maxHP; this.player.staminaRegen = 1 + 0.25 * this.prog.t('endurance');
     if (v) { const dm = this.prog.driveMult, tu = v.tunePerf || { accel: 1, max: 1, grip: 1 }; v.perf = { accel: dm * tu.accel, max: tu.max, grip: (1 + 0.06 * this.prog.t('driving')) * tu.grip, nitro: 1 + 0.3 * this.prog.t('driving') }; }
-    this.wardrobe.update(dt); this.garage.update(dt);
+    this.wardrobe.update(dt); this.garage.update(dt); this.pawn.update(dt);
+    if (pr.has('weapon') && !this.vehicle) this.pawn.cycle();
     if (pr.has('endjob') && this.jobs.active) this.jobs.end();
     this.updateGPS(dt);
     // environment
@@ -701,9 +705,9 @@ class Game {
   }
 
   // fists and feet: hit whoever is in front of you
-  melee(dmg, reach) {
+  melee(dmg, reach, delay = 0.16) {
     const pl = this.player, fx = Math.sin(pl.yaw), fz = Math.cos(pl.yaw);
-    this.meleeQueue = { t: 0.16, dmg, reach, fx, fz };
+    this.meleeQueue = { t: delay, dmg, reach, fx, fz };
   }
   resolveMelee(dt) {
     const q = this.meleeQueue; if (!q) return;

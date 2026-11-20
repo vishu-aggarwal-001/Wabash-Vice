@@ -154,3 +154,8 @@ kbd { display: inline-block; font: 700 11px system-ui; background: rgba(255,255,
 }
 
 body.shopping #minimap, body.shopping #loc, body.shopping #toast { display: none !important; }
+
+.choice { position: fixed; left: 50%; bottom: 22%; transform: translateX(-50%); z-index: 12; background: rgba(10,12,16,.9); border: 1px solid #ffd23f; border-radius: 12px; padding: 14px 16px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: min(520px, 92vw); }
+.choice p { width: 100%; margin: 0 0 6px; text-align: center; font-weight: 700; }
+.choice button { background: #23262c; color: #fff; border: 1px solid #555; border-radius: 8px; padding: 10px 14px; font: inherit; cursor: pointer; }
+.choice button:hover { background: #ffd23f; color: #000; }

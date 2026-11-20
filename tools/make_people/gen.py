@@ -148,7 +148,7 @@ def build(name, P):
     for img in bpy.data.images:
         if img.size[0] == 0: continue
         n = (img.name + (img.filepath or '')).lower()
-        big = 2048 if ('skins' in n or 'skin' in n) else 1024 if any(k in n for k in ('hair', 'short0', 'long0', 'bob0', 'ponytail', 'afro', 'beard', 'moustache')) else 512
+        big = 2048 if ('skins' in n or 'skin' in n) else 1024 if any(k in n for k in ('hair', 'short0', 'long0', 'bob0', 'ponytail', 'afro', 'beard', 'moustache')) else 1024
         if 'normal' in img.name.lower(): big = min(big, 512)
         if img.size[0] > big:
             h = int(img.size[1] * big / img.size[0]); img.scale(big, h)

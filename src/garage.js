@@ -61,7 +61,7 @@ export class Garage {
   // ---------------------------------------------------------------- UI
   buildUI() {
     const el = this.el = document.createElement('div');
-    el.id = 'garage'; el.hidden = true;
+    el.id = 'garage'; el.className = 'shopui'; el.hidden = true;
     el.innerHTML = `<div class="wpanel"><div class="whead"><b>${SHOP.name}</b><span id="gsub"></span></div>
       <div class="wtabs" id="gtabs"></div><div class="wlist" id="glist"></div>
       <div class="wfoot"><button id="gleft">⟲</button><button id="gright">⟳</button><span id="gmoney"></span><button id="gclose">Drive out (Esc)</button></div></div>`;
@@ -71,18 +71,18 @@ export class Garage {
     el.querySelector('#gright').onclick = () => { this.orbit -= 0.7; };
     const css = document.createElement('style');
     css.textContent = `
-#garage { position: fixed; inset: 0; z-index: 11; pointer-events: none; }
-#garage .wpanel { pointer-events: auto; position: absolute; left: 24px; top: 50%; transform: translateY(-50%); width: min(380px, 90vw); max-height: 86vh; display: flex; flex-direction: column; background: rgba(12,14,18,.9); border: 1px solid #333; border-radius: 12px; overflow: hidden; }
-#garage .whead { padding: 14px 16px 8px; } #garage .whead b { display: block; font-size: 22px; font-style: italic; color: #ff9a3a; } #garage .whead span { color: #aaa; font-size: 13px; }
-#garage .wtabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 8px; }
-#garage .wtabs button, #garage .wfoot button { background: #23262c; color: #fff; border: 1px solid #3a3f47; border-radius: 6px; padding: 6px 10px; cursor: pointer; font: inherit; font-size: 13px; }
-#garage .wtabs button.on { background: #ff8a1a; color: #000; font-weight: 700; }
-#garage .wlist { overflow: auto; padding: 0 12px 10px; flex: 1; }
-#garage .witem { display: flex; gap: 10px; align-items: center; width: 100%; text-align: left; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08); color: #fff; padding: 10px 12px; border-radius: 8px; margin-bottom: 6px; cursor: pointer; font: inherit; }
-#garage .witem span { flex: 1; } #garage .witem i { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff3; }
-#garage .witem:hover { background: rgba(255,138,26,.18); } #garage .witem.eq { border-color: #7ddc6a; background: rgba(125,220,106,.12); }
-#garage .witem small { color: #ffd23f; font-weight: 700; } #garage .witem.eq small { color: #9fe38a; } #garage .witem small.lock { color: #888; font-weight: 400; }
-#garage .wfoot { display: flex; gap: 6px; align-items: center; padding: 10px 12px; border-top: 1px solid #333; } #garage #gmoney { flex: 1; text-align: center; color: #7ee36a; font-weight: 800; }`;
+.shopui { position: fixed; inset: 0; z-index: 11; pointer-events: none; }
+.shopui .wpanel { pointer-events: auto; position: absolute; left: 24px; top: 50%; transform: translateY(-50%); width: min(380px, 90vw); max-height: 86vh; display: flex; flex-direction: column; background: rgba(12,14,18,.9); border: 1px solid #333; border-radius: 12px; overflow: hidden; }
+.shopui .whead { padding: 14px 16px 8px; } .shopui .whead b { display: block; font-size: 22px; font-style: italic; color: #ff9a3a; } .shopui .whead span { display: block; } .shopui .whead span { color: #aaa; font-size: 13px; }
+.shopui .wtabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 8px; }
+.shopui .wtabs button, .shopui .wfoot button { background: #23262c; color: #fff; border: 1px solid #3a3f47; border-radius: 6px; padding: 6px 10px; cursor: pointer; font: inherit; font-size: 13px; }
+.shopui .wtabs button.on { background: #ff8a1a; color: #000; font-weight: 700; }
+.shopui .wlist { overflow: auto; padding: 0 12px 10px; flex: 1; }
+.shopui .witem { display: flex; gap: 10px; align-items: center; width: 100%; text-align: left; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08); color: #fff; padding: 10px 12px; border-radius: 8px; margin-bottom: 6px; cursor: pointer; font: inherit; }
+.shopui .witem span { flex: 1; } .shopui .witem i { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff3; }
+.shopui .witem:hover { background: rgba(255,138,26,.18); } .shopui .witem.eq { border-color: #7ddc6a; background: rgba(125,220,106,.12); }
+.shopui .witem small { color: #ffd23f; font-weight: 700; } .shopui .witem.eq small { color: #9fe38a; } .shopui .witem small.lock { color: #888; font-weight: 400; }
+.shopui .wfoot { display: flex; gap: 6px; align-items: center; padding: 10px 12px; border-top: 1px solid #333; } .shopui #gmoney { flex: 1; text-align: center; color: #7ee36a; font-weight: 800; }`;
     document.head.appendChild(css);
   }
   show(v) {
