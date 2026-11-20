@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as skClone } from 'three/addons/utils/SkeletonUtils.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
 const D = Math.PI / 180;
 // native ground speed of each clip (m/s) so feet don't slide
@@ -57,7 +58,10 @@ function retarget(scene, anims, hips, restHips) {
   for (const [n, par, , p] of order) { if (p) sPos[n] = new THREE.Vector3().fromArray(p); if (par) (sKids[par] ||= []).push(n); }
   const tByName = {}; for (const b of tBones) tByName[b.name] = b;
   for (const b of tBones) {
-    const kids = sKids[b.name];
+    let kids = sKids[b.name];
+    // bones that branch: aim along the main chain (wrist -> middle finger, chest -> neck, hips -> spine)
+    const prefer = { LeftHand: 'LeftHandMiddle1', RightHand: 'RightHandMiddle1', Spine2: 'Neck', Hips: 'Spine' }[b.name];
+    if (prefer && kids?.includes(prefer)) kids = [prefer];
     if (!kids || kids.length !== 1 || !sPos[b.name] || !sPos[kids[0]] || !tByName[kids[0]]) continue;
     const ds = sPos[kids[0]].clone().sub(sPos[b.name]).normalize();
     const dt = tByName[kids[0]].getWorldPosition(new THREE.Vector3()).sub(b.getWorldPosition(new THREE.Vector3())).normalize();
@@ -78,7 +82,7 @@ function retarget(scene, anims, hips, restHips) {
       interp[t.name.split('.')[0]] = tr.createInterpolant();
       if (!times || t.times.length > times.length) times = t.times;
     }
-    const out = {}; for (const b of tBones) if (interp[b.name]) out[b.name] = [];
+    const out = {}; for (const b of tBones) if (interp[b.name] && !/Hand(Thumb|Index|Middle|Ring|Pinky)/.test(b.name)) out[b.name] = [];
     const pos = [];
     const Ws = {}, Wt = {}, tmp = Q();
     for (const t of times) {
@@ -110,13 +114,19 @@ function retarget(scene, anims, hips, restHips) {
 export class People {
   constructor() { this.ok = false; this.matCache = new Map(); }
 
+  // MakeHuman (CC0) townspeople built by tools/make_people (Blender + MPFB2), Mixamo skeletons
   async load(base = '') {
     const L = new GLTFLoader();
-    const [man, woman, anims] = await Promise.all([
-      L.loadAsync(base + 'data/chars/man.glb'), L.loadAsync(base + 'data/chars/woman.glb'),
+    L.setMeshoptDecoder(MeshoptDecoder);
+    const names = ['player', 'cop', 'm_hoodie', 'm_sweater', 'm_denim', 'm_old', 'm_asian', 'f_casual', 'f_sweater', 'f_asian'];
+    const [anims, ...models] = await Promise.all([
       fetch(base + 'data/chars/anims.json').then(r => r.json()),
+      ...names.map(n => L.loadAsync(base + `data/chars/mh/${n}.glb`)),
     ]);
-    this.templates = { man: this.prep(man, anims), woman: this.prep(woman, anims) };
+    this.templates = {};
+    names.forEach((n, i) => { this.templates[n] = this.prep(models[i], anims); });
+    this.men = names.filter(n => n.startsWith('m_'));
+    this.women = names.filter(n => n.startsWith('f_'));
     this.ok = true;
   }
 
@@ -155,37 +165,35 @@ export class People {
   }
 
   // kind: man | woman | cop | medic | player
+  // kind: man | woman | cop | medic | player
   make(kind = 'man', opts = {}) {
-    const tplName = kind === 'woman' ? 'woman' : 'man';
+    const pick = (a) => a[Math.floor(Math.random() * a.length)];
+    const tplName = opts.template || (kind === 'player' ? 'player' : kind === 'cop' || kind === 'medic' ? 'cop' : kind === 'woman' ? pick(this.women) : pick(this.men));
     const T = this.templates[tplName];
     const model = skClone(T.scene);
-    const outfits = OUTFITS[kind] || OUTFITS.man;
-    const outfit = opts.outfit ?? outfits[Math.floor(Math.random() * outfits.length)];
+    const female = tplName.startsWith('f_');
+    // uniforms and a little colour variety in everyday clothes
+    const tint = TINTS[Math.floor(Math.random() * TINTS.length)];
     model.traverse((o) => {
       if (!o.isMesh) return;
       const n = o.material.name || '';
-      if (tplName === 'man') {
-        if (/Headwear/.test(n)) o.visible = kind === 'man' && Math.random() < 0.15;
-        else if (/Outfit_Top/.test(n)) o.material = this.material(o.material, outfit[0]);
-        else if (/Outfit_Bottom/.test(n)) o.material = this.material(o.material, outfit[1]);
-        else if (/Footwear/.test(n)) o.material = this.material(o.material, outfit[2]);
-        else if (/Beard/.test(n)) o.visible = kind === 'player' || kind === 'man' && Math.random() < 0.5;
-      } else if (outfit[0] !== 0xffffff) o.material = this.material(o.material, outfit[0]);
+      if (/body|eyebrow|eyelash|low-poly|short0|long0|bob0|ponytail/i.test(n)) return;
+      if (kind === 'cop') o.material = this.material(o.material, /pants/i.test(n) ? 0x4a5372 : 0xffffff);
+      else if (kind === 'medic') o.material = this.material(o.material, /shirt/i.test(n) ? 0xf2f2f2 : /pants/i.test(n) ? 0x5a6d9a : 0xffffff);
+      else if (kind !== 'player' && tint && !/shoe|boot|sneaker/i.test(n) && Math.random() < 0.6) o.material = this.material(o.material, tint);
     });
     const root = new THREE.Group();
-    const s = (opts.height ?? (tplName === 'woman' ? 1.66 : 1.8) * (opts.vary === false ? 1 : 0.95 + Math.random() * 0.08)) / T.height;
+    const s = (opts.height ?? (female ? 1.66 : 1.79) * (opts.vary === false || kind === 'player' ? 1 : 0.95 + Math.random() * 0.08)) / T.height;
     model.scale.multiplyScalar(s);
     model.position.y = -T.minY * s;
     root.add(model);
-    if (tplName === 'man') {
-      const hasHat = model.getObjectByProperty('visible', true) && [...meshes(model)].some(m => /Headwear/.test(m.material.name) && m.visible);
-      const r = Math.random();
-      const style = opts.head ?? (kind === 'cop' ? 'police' : kind === 'medic' ? 'short' : kind === 'player' ? 'short' : hasHat ? 'none' : r < 0.45 ? 'short' : r < 0.7 ? 'beanie' : r < 0.85 ? 'cap' : 'none');
-      if (style !== 'none') headwear(model, style, opts.hairColor);
-    }
+    const r = Math.random();
+    const style = opts.head ?? (kind === 'cop' ? 'police' : kind === 'man' && !female ? (r < 0.18 ? 'beanie' : r < 0.3 ? 'cap' : 'none') : kind === 'woman' && r < 0.15 ? 'beanie' : 'none');
+    if (style !== 'none') headwear(model, style, opts.hairColor, T.height * s);
     return new Character(root, model, T, kind);
   }
 }
+const TINTS = [null, null, 0xd8d0c8, 0xb8c6d8, 0xc9b8a8, 0x9aa8b8, 0xc8c8c8, 0xd9c7b0];
 
 function* meshes(o) { const st = [o]; while (st.length) { const x = st.pop(); if (x.isMesh) yield x; st.push(...x.children); } }
 
@@ -213,13 +221,17 @@ function mat(color, kind, rough = 0.9) {
   if (!matCache2.has(k)) { const m = new THREE.MeshStandardMaterial({ color, roughness: rough, map: kind ? strandTex(kind) : null }); m.defines = { NO_SNOW: '' }; matCache2.set(k, m); }
   return matCache2.get(k);
 }
-function headwear(model, style, hairColor) {
+function headwear(model, style, hairColor, topY) {
   model.updateMatrixWorld(true);
   const head = model.getObjectByName('Head'), top = model.getObjectByName('HeadTop_End');
   if (!head) return;
-  const hp = head.getWorldPosition(new THREE.Vector3()), tp = top ? top.getWorldPosition(new THREE.Vector3()) : hp.clone().add(new THREE.Vector3(0, 0.2, 0));
-  const R = hp.distanceTo(tp) * 0.5;                       // ~ skull radius
-  const c = hp.clone().lerp(tp, 0.47);
+  const hp = head.getWorldPosition(new THREE.Vector3());
+  let tp;
+  if (top) tp = top.getWorldPosition(new THREE.Vector3());
+  else tp = new THREE.Vector3(hp.x, (topY ?? hp.y + 0.24) - 0.015, hp.z + 0.015);   // MakeHuman rigs: measured head top
+  let R = hp.distanceTo(tp) * 0.5;                         // ~ skull radius
+  let c = hp.clone().lerp(tp, 0.47);
+  if (!top) { R = 0.118; c = tp.clone().add(new THREE.Vector3(0, -R * 0.8, -0.014)); }
   const g = new THREE.Group(); g.position.copy(c);
   const add = (geo, m, x, y, z, rx = 0, sx = 1, sy = 1, sz = 1) => { const o = new THREE.Mesh(geo, m); o.position.set(x * R, y * R, z * R); o.rotation.x = rx; o.scale.set(sx, sy, sz); o.castShadow = true; g.add(o); return o; };
   const hc = hairColor ?? HAIR[Math.floor(Math.random() * HAIR.length)];

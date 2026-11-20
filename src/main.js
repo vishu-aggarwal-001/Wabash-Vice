@@ -39,7 +39,7 @@ import { Audio } from './audio.js';
 import { People } from './people.js';
 import { Jobs } from './jobs.js';
 import { Story } from './story.js';
-import { pickWeather, installSnowShader, Snowfall } from './weather.js';
+import { pickWeather, installSnowShader, Snowfall, snowy } from './weather.js';
 
 const QUALITY = {
   low: { pixelRatio: 1, shadows: 1024, shadowRange: 80, drawDistance: 1400, bloom: false, msaa: 0, ao: false, grade: false, textures: 'lo', treeCards: 14, traffic: 14, peds: 10, lamps: 1500, treeShadows: false },
@@ -60,7 +60,7 @@ class Game {
     this.save = save;
     this.settings = Object.assign({ quality: 'auto', invertPitch: false, volume: 0.8, sensitivity: 1, units: 'mph', dayMinutes: 24, dynres: true, weather: 'auto' }, save.settings || {});
     this.weather = pickWeather(params.get('weather') || this.settings.weather);
-    installSnowShader(this.weather === 'snow' ? 1 : 0);
+    installSnowShader(snowy(this.weather) ? 1 : 0);
     if (!save.v3) { this.settings.quality = 'auto'; }   // v0.3: re-detect everyone's quality once
     this.autoQuality = this.settings.quality === 'auto' ? detectQuality(touch) : null;
     if (params.get('quality')) this.settings.quality = params.get('quality');
@@ -119,7 +119,7 @@ class Game {
     await this.people.load().catch((e) => console.warn('Character models failed to load, using simple figures', e));
     this.env = new Environment(this.scene, r, q, this.weather);
     this.world.setupLampLights(q.textures === 'lo' ? 3 : 6);
-    if (this.weather === 'snow') this.snow = new Snowfall(this.scene, q.textures === 'lo' ? 5000 : 9000);
+    if (snowy(this.weather)) this.snow = new Snowfall(this.scene, this.weather === 'snowsun' ? 1800 : q.textures === 'lo' ? 5000 : 9000);
     this.env.daySeconds = this.settings.dayMinutes * 60;
     if (save_hours(this.save)) this.env.hours = this.save.hours;
     if (params.get('hour')) this.env.hours = +params.get('hour');

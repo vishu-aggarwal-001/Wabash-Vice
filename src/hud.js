@@ -181,7 +181,7 @@ export class HUD {
     c.fillStyle = '#4c6a36'; c.fillRect(0, 0, S, S);
     c.translate(R, R); c.rotate(th); c.scale(k / ppm, k / ppm);
     const px = (p.x - this.w.minX) * ppm, pz = (p.z - this.w.minZ) * ppm;
-    if (g.weather === 'snow') c.filter = 'saturate(0.25) brightness(1.35)';
+    if (g.weather === 'snow' || g.weather === 'snowsun') c.filter = 'saturate(0.25) brightness(1.35)';
     c.drawImage(this.img, -px, -pz);
     c.filter = 'none';
     // GPS route

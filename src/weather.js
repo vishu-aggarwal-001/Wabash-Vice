@@ -3,12 +3,13 @@
 // material shader, and flakes fall in a box that follows the camera (all on the GPU).
 import * as THREE from 'three';
 
-export const WEATHERS = ['clear', 'overcast', 'snow'];
+export const WEATHERS = ['clear', 'overcast', 'snow', 'snowsun'];
+export const snowy = (w) => w === 'snow' || w === 'snowsun';
 
 export function pickWeather(setting) {
   if (WEATHERS.includes(setting)) return setting;
   const r = Math.random();
-  return r < 0.45 ? 'clear' : r < 0.65 ? 'overcast' : 'snow';
+  return r < 0.3 ? 'clear' : r < 0.42 ? 'overcast' : r < 0.65 ? 'snow' : 'snowsun';
 }
 
 // Must run before any material compiles. Materials can opt out with defines.NO_SNOW,

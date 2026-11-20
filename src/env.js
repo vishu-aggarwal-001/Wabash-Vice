@@ -6,7 +6,7 @@ import * as TX from './textures.js';
 export class Environment {
   constructor(scene, renderer, quality, weather = 'clear') {
     this.scene = scene; this.renderer = renderer; this.quality = quality;
-    this.weather = weather; this.grey = weather === 'clear' ? 0 : 1;
+    this.weather = weather; this.grey = weather === 'overcast' || weather === 'snow' ? 1 : 0; this.snowy = weather === 'snow' || weather === 'snowsun';
     this.hours = 16.5;            // start in the late afternoon (golden hour soon)
     this.daySeconds = 24 * 60;    // one in-game day = 24 real minutes
     this.night = 0;
@@ -14,8 +14,13 @@ export class Environment {
     this.sky = new Sky();
     this.sky.scale.setScalar(8000);
     const u = this.sky.material.uniforms;
-    u.turbidity.value = 2.6; u.rayleigh.value = 1.6; u.mieCoefficient.value = 0.0035; u.mieDirectionalG.value = 0.88;
+    u.turbidity.value = 2.0; u.rayleigh.value = 2.4; u.mieCoefficient.value = 0.002; u.mieDirectionalG.value = 0.86;
     this.sky.userData.noAO = true;
+    // the physical sky is very bright, so tone mapping flattens it to white: deepen and saturate it
+    this.sky.material.onBeforeCompile = (sh) => {
+      sh.fragmentShader = sh.fragmentShader.replace('gl_FragColor = vec4( retColor, 1.0 );',
+        'float skyL = dot( retColor, vec3( 0.3, 0.59, 0.11 ) );\nretColor = max( mix( vec3( skyL ), retColor, 1.45 ), 0.0 ) * 0.72;\ngl_FragColor = vec4( retColor, 1.0 );');
+    };
     scene.add(this.sky);
 
     this.sun = new THREE.DirectionalLight(0xffffff, 3);
@@ -100,7 +105,7 @@ export class Environment {
 
     const u = this.sky.material.uniforms;
     u.sunPosition.value.copy(dir);
-    u.rayleigh.value = 1.6 + golden * 1.6;
+    u.rayleigh.value = 2.4 + golden * 1.2;
     u.turbidity.value = 1.6 + golden * 4;
 
     // the sun light: follows the focus point so shadows stay crisp near the player
@@ -128,6 +133,7 @@ export class Environment {
       this.hemi.color.setHSL(0.6, 0.12, 0.45 + 0.4 * (1 - this.night));
       this.hemi.groundColor.setHSL(0.6, 0.08, (snow ? 0.32 : 0.16) + 0.2 * (1 - this.night));
     }
+    if (this.snowy && !G) { this.hemi.groundColor.setHSL(0.6, 0.1, 0.25 + 0.3 * (1 - this.night)); this.hemi.intensity += 0.25 * (1 - this.night); }   // sunlight bouncing off snow
     this.sky.visible = G < 0.5; this.clouds.visible = G < 0.5;
 
     const day = G ? new THREE.Color(snow ? 0xc9d0d8 : 0xaab3bd) : new THREE.Color(0xa9c0d8), dusk = new THREE.Color(G ? 0x9a9aa2 : 0xd9a27a), nightC = new THREE.Color(G ? 0x15181e : 0x0b1220);
@@ -135,7 +141,7 @@ export class Environment {
     this.scene.fog.color.copy(fog);
     this.scene.fog.density = this.fogBase * (1 + golden * 0.25 + this.night * 0.4) * (snow ? 2.6 : G ? 1.5 : 1);
     this.renderer.setClearColor(fog);
-    this.renderer.toneMappingExposure = 0.5 + 0.22 * (1 - this.night) + this.night * 0.35;
+    this.renderer.toneMappingExposure = (0.5 + 0.22 * (1 - this.night) + this.night * 0.35) * (this.snowy && !this.grey ? 0.85 : 1);
 
     this.starMat.opacity = this.night;
     this.stars.position.copy(focus);
@@ -156,7 +162,7 @@ export class Environment {
       const gk = 0.12 + 0.88 * (1 - this.night);
       this.envGround.material.color.setRGB(0.17 * gk, 0.18 * gk, 0.17 * gk);
       this.envCity.material.color.setRGB(0.22 * gk, 0.22 * gk, 0.23 * gk);
-      if (this.weather === 'snow') this.envGround.material.color.setRGB(0.6 * gk, 0.62 * gk, 0.66 * gk);
+      if (this.snowy) this.envGround.material.color.setRGB(0.6 * gk, 0.62 * gk, 0.66 * gk);
       if (this.envMap) this.envMap.dispose();
       this.envMap = this.pmrem.fromScene(this.envScene).texture;
       this.scene.environment = this.envMap;

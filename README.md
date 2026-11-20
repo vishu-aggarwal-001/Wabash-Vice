@@ -64,7 +64,7 @@ To turn hosting on for a copy of this repo: **Settings → Pages → Build and d
 
 ## 🆕 What's new in v0.3
 
-**Real people instead of mannequins.** The player, pedestrians, cops and paramedics are now realistic skinned 3D characters (a Ready Player Me man and a Mixamo woman) with motion-captured idle, walk and run animations. Procedural layers add driving, bike riding, sitting, punching, kicking, cowering, hands-up and getting knocked flat. Men get short hair, beanies, ball caps or cowboy hats, and outfits are recoloured so the crowd isn't all clones.
+**Real people instead of mannequins.** The player, pedestrians, cops and paramedics are realistic skinned 3D people built from MakeHuman's free assets: jackets and jeans, hoodies and cargo pants, knitted sweaters, sneakers and boots, and Criminal Russia-style cops in a light blue shirt, tie and cap. They're driven by motion-captured idle, walk and run animations. Procedural layers add driving, bike riding, sitting, punching, kicking, cowering, hands-up and getting knocked flat. Men get short hair, beanies, ball caps or cowboy hats, and outfits are recoloured so the crowd isn't all clones.
 
 **Criminal Russia-style gameplay**
 - **Jobs** from the phone (**Tab**): **Police Work** (road accidents, speeders to pull over, purse snatchers to chase and cuff, street fights, stolen cars to ram), **Taxi Driver**, **Paramedic** and **Boiler Express** deliveries. Every job has a work vehicle, a uniform, endless calls from the dispatcher, cash and XP, and ranks (Rookie → Chief of Police) that pay more.
@@ -74,7 +74,7 @@ To turn hosting on for a copy of this repo: **Settings → Pages → Build and d
 - **Health, armor, stamina and a karma meter** (bad ↔ good), medkits, and a phone shop for armor, medkits, healing and a lawyer.
 
 **Looks**
-- **Weather**: clear, overcast, or **snow**, which settles on roofs, lawns, trees and parked cars, with flakes falling around you. It changes every visit, or pick one in Settings.
+- **Weather**: clear, overcast, **snow & sunshine**, or **snowfall**, which settles on roofs, lawns, trees and parked cars, with flakes falling around you. It changes every visit, or pick one in Settings.
 - **Working traffic lights** (mast-arm signals) at ~400 real junctions, and AI traffic stops on red.
 - New HUD: health/armor/stamina bars, karma meter, job panel, dialogue subtitles.
 
@@ -142,7 +142,7 @@ src/script.js       tiny async mission-scripting runtime (say, goto, timer, fail
 src/jobs.js         Police / Taxi / Paramedic / Delivery jobs, calls, ranks
 src/story.js        Story mode, Chapter 1
 src/weather.js      clear / overcast / snow, snow-cover shader patch, snowfall
-data/chars/         man.glb, woman.glb and anims.json (retargetable mocap clips)
+data/chars/mh/      the townspeople (MakeHuman, see tools/make_people/), data/chars/anims.json mocap clips
 tools/charlab.html  dev page to preview characters/poses and re-extract the clips
 src/env.js          sky, sun, moon, stars, clouds, fog, day/night
 src/hud.js          speedometer, minimap, full map, menus
@@ -187,7 +187,8 @@ This is the honest path from v0.1 toward the “better than GTA *at Lafayette*�
 ## ⚠️ Notes
 
 - Textures are CC0 (public domain) photo scans from [Poly Haven](https://polyhaven.com). Thank you, Poly Haven!
-- Character models and mocap clips come from the [three.js examples](https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf) (a Ready Player Me avatar, and Mixamo's Michelle and X Bot animations), used for this non-commercial fan project.
+- People are built with [MakeHuman](http://www.makehumancommunity.org/) / MPFB2 from CC0 community assets, plus these CC-BY 4.0 assets from the MakeHuman asset repository: the hooded sweat jacket and the shirt with tie by Elvaerwyn, the knitted sweaters by Mindfront, and the sneakers by culturalibre and punkduck. The police shirt texture was recoloured. See `tools/make_people/`.
+- Mocap clips come from Mixamo's X Bot in the [three.js examples](https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf).
 - Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), ODbL. Building heights that aren't in OSM are estimated, terrain is stylized, and the river valley shape is approximate.
 - This is a fan project. It is **not** affiliated with or endorsed by Purdue University, the City of Lafayette or West Lafayette, Rockstar Games, or any vehicle maker. All vehicle names are made up.
 - Code is MIT licensed (see `LICENSE`). Three.js is MIT licensed.
