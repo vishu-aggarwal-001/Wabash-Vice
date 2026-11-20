@@ -39,6 +39,7 @@ import { Audio } from './audio.js';
 import { People } from './people.js';
 import { Jobs } from './jobs.js';
 import { Story } from './story.js';
+import { Wardrobe, DEFAULT_LOOK } from './wardrobe.js';
 import { pickWeather, installSnowShader, Snowfall, snowy } from './weather.js';
 
 const QUALITY = {
@@ -116,6 +117,8 @@ class Game {
     await this.world.load((p, m) => { bar.style.width = (p * 100).toFixed(0) + '%'; msg.textContent = m; });
     msg.textContent = 'Casting the people of Lafayette…';
     this.people = new People();
+    this.save.look = Object.assign({}, DEFAULT_LOOK, this.save.look || {});
+    this.people.look = this.save.look;
     await this.people.load().catch((e) => console.warn('Character models failed to load, using simple figures', e));
     this.env = new Environment(this.scene, r, q, this.weather);
     this.world.setupLampLights(q.textures === 'lo' ? 3 : 6);
@@ -133,6 +136,7 @@ class Game {
     this.missions = new Missions(this);
     this.jobs = new Jobs(this);
     this.story = new Story(this);
+    this.wardrobe = new Wardrobe(this);
     if (this.save.player) { this.player.medkits = this.save.player.medkits ?? 2; this.player.armor = this.save.player.armor ?? 0; }
     this.hud = new HUD(this);
     this.headlight = new THREE.SpotLight(0xfff1d6, 0, 90, 0.55, 0.45, 1.2);
@@ -160,6 +164,7 @@ class Game {
 
   start() {
     $('start').hidden = true; $('hud').hidden = false;
+    this.people?.ok && this.people.loadRest();   // stream the rest of the townspeople in the background
     this.started = true; this.paused = false;
     this.audio.start();
     if (!this.save.seenHelp) { this.hud.big('WABASH VICE', 'West Lafayette & Lafayette, Indiana — press F1 for controls'); this.save.seenHelp = true; this.persist(); }
@@ -276,7 +281,7 @@ class Game {
 
   persist() {
     try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify({ v3: true, money: this.money, gears: this.save.gears || [], settings: this.settings, hours: this.env?.hours, seenHelp: this.save.seenHelp, karma: this.save.karma || 0, jobs: this.save.jobs, story: this.save.story, player: { medkits: this.player?.medkits ?? 2, armor: Math.round(this.player?.armor || 0) } }));
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ v3: true, money: this.money, gears: this.save.gears || [], settings: this.settings, hours: this.env?.hours, seenHelp: this.save.seenHelp, karma: this.save.karma || 0, jobs: this.save.jobs, story: this.save.story, look: this.save.look, owned: this.save.owned, player: { medkits: this.player?.medkits ?? 2, armor: Math.round(this.player?.armor || 0) } }));
     } catch { /* ignore */ }
   }
   addMoney(n) { this.money = Math.max(0, this.money + n); this.persist(); }
@@ -466,6 +471,13 @@ class Game {
   // ---------------------------------------------------------------- camera
   updateCamera(dt, inp) {
     const cam = this.camera, v = this.vehicle, w = this.world, sens = this.settings.sensitivity;
+    if (this.wardrobe?.open && !v) {   // changing room: look at the player from the front-right
+      const p = this.player.pos, a = this.player.yaw + 0.35;
+      cam.position.set(p.x + Math.sin(a) * 2.7, p.y + 1.35, p.z + Math.cos(a) * 2.7);
+      cam.lookAt(p.x, p.y + 1.0, p.z); cam.fov = 45; cam.updateProjectionMatrix();
+      this.player.mesh.visible = true;
+      return;
+    }
     if (inp.lookX || inp.lookY) this.lookIdle = 0; else this.lookIdle += dt;
     this.camYaw -= inp.lookX * 0.0028 * sens;
     this.camPitch = Math.max(-0.45, Math.min(1.25, this.camPitch + inp.lookY * 0.0022 * sens));
@@ -563,12 +575,16 @@ class Game {
     if (this.started) {
       if (pr.has('phone') && !this.hud.menuOpen && !this.hud.mapOpen) this.hud.togglePhone();
       if (pr.has('map') && !this.hud.phoneOpen) this.hud.toggleMap();
+      if (pr.has('pause') && this.wardrobe?.open) { this.wardrobe.hide(); pr.delete('pause'); }
       if (pr.has('pause')) { if (this.hud.phoneOpen) this.hud.togglePhone(false); else if (this.hud.mapOpen) this.hud.toggleMap(false); else this.hud.toggleMenu(!this.hud.menuOpen, 'settings'); }
       if (pr.has('vehicles')) this.hud.toggleMenu(!this.hud.menuOpen, 'vehicles');
       if (pr.has('help')) $('help').hidden = !$('help').hidden;
     }
     if (!this.paused && this.started && dt > 1e-4) this.step(dt, inp);
-    else if (this.started) this.updateCamera(0, { lookX: 0, lookY: 0, wheel: 0 });
+    else if (this.started) {
+      if (this.wardrobe?.open) { this.player.char.update(dt, 'idle', 0); this.player.mesh.rotation.y = this.player.yaw; }
+      this.updateCamera(0, { lookX: 0, lookY: 0, wheel: 0 });
+    }
     this.input.endFrame();
     this.render();
   }
@@ -645,6 +661,7 @@ class Game {
     for (const a of this.actors.slice()) a.update(dt);
     for (const sc of this.scripts.slice()) sc.update(dt);
     this.jobs.update(dt);
+    this.wardrobe.update(dt);
     if (pr.has('endjob') && this.jobs.active) this.jobs.end();
     this.updateGPS(dt);
     // environment

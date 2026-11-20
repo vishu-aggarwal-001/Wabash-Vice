@@ -1,5 +1,6 @@
 // People: the player on foot, and the same model reused for pedestrians.
 import * as THREE from 'three';
+import { lookItems as lookItemsFn } from './wardrobe.js';
 
 const G = 9.81;
 const mats = new Map();
@@ -94,7 +95,10 @@ export class LegacyHuman {
   get attacking() { return this.punchT > 0 || this.kickT > 0; }
 }
 export function makeHuman(people, kind = 'man', opts = {}) {
-  if (people?.ok) { try { return people.make(kind, opts); } catch (e) { console.warn(e); } }
+  if (people?.ok) {
+    try { return kind === 'player' && people.templates.body ? people.makePlayer(people.look) : people.make(kind, opts); }
+    catch (e) { console.warn(e); }
+  }
   const legacy = { player: { shirt: 0xcfb991, pants: 0x1b1b1b, skin: 0xd8a47f, hair: 0x1a1208 }, cop: { shirt: 0x1d2a4a, pants: 0x141a2c, cap: 0x141a2c }, medic: { shirt: 0xe8eef5, pants: 0x2c3d63 } }[kind] || {};
   return new LegacyHuman(legacy);
 }
@@ -109,6 +113,11 @@ export class Player {
     this.yaw = 0; this.onGround = true; this.swimming = false; this.hp = 100; this.armor = 0; this.stamina = 1; this.medkits = 2;
     this.phase = 0; this.mode = 'idle'; this.vehicle = null; this.down = 0; this.jumpHeld = false;
     this.events = [];
+  }
+  // wardrobe: re-dress the player (ignored while in a work uniform)
+  applyLook(people, look) {
+    if (this.outfit && this.outfit !== 'player') return;
+    if (this.char.wear) this.char.wear(people, lookItemsFn(look));
   }
   // swap the whole character (uniform for jobs) while keeping position and state
   setOutfit(people, kind) {

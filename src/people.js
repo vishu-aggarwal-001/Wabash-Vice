@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as skClone } from 'three/addons/utils/SkeletonUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { lookItems } from './wardrobe.js';
 
 const D = Math.PI / 180;
 // native ground speed of each clip (m/s) so feet don't slide
@@ -114,21 +115,52 @@ function retarget(scene, anims, hips, restHips) {
 export class People {
   constructor() { this.ok = false; this.matCache = new Map(); }
 
-  // MakeHuman (CC0) townspeople built by tools/make_people (Blender + MPFB2), Mixamo skeletons
+  // MakeHuman (CC0) townspeople built by tools/make_people (Blender + MPFB2), Mixamo skeletons.
+  // A core set loads before the game starts; the rest stream in while you play.
   async load(base = '') {
-    const L = new GLTFLoader();
-    L.setMeshoptDecoder(MeshoptDecoder);
-    const names = ['player', 'cop', 'm_hoodie', 'm_sweater', 'm_denim', 'm_old', 'm_asian', 'f_casual', 'f_sweater', 'f_asian'];
-    const [anims, ...models] = await Promise.all([
-      fetch(base + 'data/chars/anims.json').then(r => r.json()),
-      ...names.map(n => L.loadAsync(base + `data/chars/mh/${n}.glb`)),
-    ]);
+    this.base = base;
+    this.L = new GLTFLoader();
+    this.L.setMeshoptDecoder(MeshoptDecoder);
     this.templates = {};
-    names.forEach((n, i) => { this.templates[n] = this.prep(models[i], anims); });
-    this.men = names.filter(n => n.startsWith('m_'));
-    this.women = names.filter(n => n.startsWith('f_'));
+    this.anims = await fetch(base + 'data/chars/anims.json').then(r => r.json());
+    await Promise.all(CORE.map(n => this.loadOne(n)));
+    // the player's current clothes, so they never appear half-dressed
+    if (this.look) await Promise.all(lookItems(this.look).map(id => this.loadItem(id)));
     this.ok = true;
   }
+  loadItem(id) {
+    this.items ||= {};
+    return (this.items[id] ||= this.L.loadAsync(this.base + `data/chars/wardrobe/${id}.glb`).then((g) => {
+      g.scene.traverse((o) => {
+        if (!o.isMesh) return;
+        o.castShadow = true; o.frustumCulled = false;
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of mats) { m.defines = { ...(m.defines || {}), NO_SNOW: '' }; m.envMapIntensity = 0.6; }
+      });
+      return g;
+    }).catch((e) => { console.warn('wardrobe item failed', id, e); return null; }));
+  }
+  // the player: one body + whatever they're wearing
+  makePlayer(look) {
+    const T = this.templates.body;
+    if (!T) return this.make('man');
+    const model = skClone(T.scene);
+    const root = new THREE.Group();
+    const s = 1.8 / T.height;
+    model.scale.multiplyScalar(s); model.position.y = -T.minY * s;
+    root.add(model);
+    const c = new Character(root, model, T, 'player');
+    c.wear(this, lookItems(look));
+    return c;
+  }
+  async loadOne(n) {
+    try { this.templates[n] = this.prep(await this.L.loadAsync(this.base + `data/chars/mh/${n}.glb`), this.anims); }
+    catch (e) { console.warn('could not load person', n, e); }
+  }
+  loadRest() { return Promise.all(EXTRA.map(n => this.loadOne(n))); }
+  get men() { return Object.keys(this.templates).filter(n => n.startsWith('m_')); }
+  get women() { return Object.keys(this.templates).filter(n => n.startsWith('f_')); }
+  get cops() { return Object.keys(this.templates).filter(n => n.startsWith('cop')); }
 
   prep(gltf, anims) {
     const scene = gltf.scene;
@@ -168,7 +200,7 @@ export class People {
   // kind: man | woman | cop | medic | player
   make(kind = 'man', opts = {}) {
     const pick = (a) => a[Math.floor(Math.random() * a.length)];
-    const tplName = opts.template || (kind === 'player' ? 'player' : kind === 'cop' || kind === 'medic' ? 'cop' : kind === 'woman' ? pick(this.women) : pick(this.men));
+    const tplName = opts.template && this.templates[opts.template] ? opts.template : (kind === 'player' ? 'player' : kind === 'cop' ? pick(this.cops) : kind === 'medic' ? 'cop' : kind === 'woman' ? pick(this.women) : pick(this.men));
     const T = this.templates[tplName];
     const model = skClone(T.scene);
     const female = tplName.startsWith('f_');
@@ -180,7 +212,7 @@ export class People {
       if (/body|eyebrow|eyelash|low-poly|short0|long0|bob0|ponytail/i.test(n)) return;
       if (kind === 'cop') o.material = this.material(o.material, /pants/i.test(n) ? 0x4a5372 : 0xffffff);
       else if (kind === 'medic') o.material = this.material(o.material, /shirt/i.test(n) ? 0xf2f2f2 : /pants/i.test(n) ? 0x5a6d9a : 0xffffff);
-      else if (kind !== 'player' && tint && !/shoe|boot|sneaker/i.test(n) && Math.random() < 0.6) o.material = this.material(o.material, tint);
+      else if (kind !== 'player' && tint && !/shoe|boot|sneaker|oxford|leather|suit_tie|worksuit|beard|moustache|hat|cap|bag/i.test(n) && !/tracksuit/.test(tplName) && Math.random() < 0.5) o.material = this.material(o.material, tint);
     });
     const root = new THREE.Group();
     const s = (opts.height ?? (female ? 1.66 : 1.79) * (opts.vary === false || kind === 'player' ? 1 : 0.95 + Math.random() * 0.08)) / T.height;
@@ -188,12 +220,15 @@ export class People {
     model.position.y = -T.minY * s;
     root.add(model);
     const r = Math.random();
-    const style = opts.head ?? (kind === 'cop' ? 'police' : kind === 'man' && !female ? (r < 0.18 ? 'beanie' : r < 0.3 ? 'cap' : 'none') : kind === 'woman' && r < 0.15 ? 'beanie' : 'none');
+    const ownHat = /hoodie|worker/.test(tplName);
+    const style = opts.head ?? (kind === 'cop' ? 'police' : ownHat ? 'none' : kind === 'man' && !female ? (r < 0.14 ? 'beanie' : r < 0.22 ? 'cap' : 'none') : kind === 'woman' && r < 0.12 ? 'beanie' : 'none');
     if (style !== 'none') headwear(model, style, opts.hairColor, T.height * s);
     return new Character(root, model, T, kind);
   }
 }
-const TINTS = [null, null, 0xd8d0c8, 0xb8c6d8, 0xc9b8a8, 0x9aa8b8, 0xc8c8c8, 0xd9c7b0];
+const TINTS = [null, null, null, 0xd8d0c8, 0xb8c6d8, 0xc9b8a8, 0xc8c8c8, 0xd9c7b0];
+const CORE = ['body', 'cop', 'm_leather', 'm_tracksuit', 'm_hoodie', 'm_sweater', 'f_casual', 'f_sweater'];
+const EXTRA = ['cop2', 'cop3', 'm_denim', 'm_old', 'm_asian', 'm_worker', 'm_viking', 'm_ginger', 'm_tattoo', 'm_business', 'f_asian', 'f_cardigan', 'f_sport', 'f_old'];
 
 function* meshes(o) { const st = [o]; while (st.length) { const x = st.pop(); if (x.isMesh) yield x; st.push(...x.children); } }
 
@@ -247,9 +282,12 @@ function headwear(model, style, hairColor, topY) {
     const col = style === 'police' ? 0x141a2c : [0x1f2c45, 0x111111, 0x8c1d1d, 0xcfb991, 0xeeeeee][Math.floor(Math.random() * 5)];
     const m = mat(col, null, 0.7);
     if (style === 'police') {
-      add(new THREE.CylinderGeometry(R * 1.05, R * 0.92, R * 0.62, 24), m, 0, 0.62, -0.04, -0.12, 0.92, 1, 1);
-      add(new THREE.CylinderGeometry(R * 0.98, R * 0.98, R * 0.06, 24, 1, false, -1.1, 2.2), mat(0x050505, null, 0.25), 0, 0.33, 0.2, -0.12, 0.92, 1, 1);
-      add(new THREE.CircleGeometry(R * 0.14, 10), new THREE.MeshStandardMaterial({ color: 0xd8b04a, metalness: 0.9, roughness: 0.3 }), 0, 0.7, 0.92, -0.12);
+      // peaked police cap: band, wide saucer crown, glossy visor and badge
+      add(new THREE.CylinderGeometry(R * 1.0, R * 0.98, R * 0.42, 28), mat(0x1b2130, null, 0.6), 0, 0.42, -0.02, -0.1, 0.94, 1, 1.02);
+      add(new THREE.CylinderGeometry(R * 1.36, R * 1.0, R * 0.34, 28), m, 0, 0.78, -0.06, -0.14, 0.94, 1, 1.02);
+      add(new THREE.CylinderGeometry(R * 1.36, R * 1.36, R * 0.05, 28), m, 0, 0.96, -0.08, -0.14, 0.94, 1, 1.02);
+      add(new THREE.CylinderGeometry(R * 1.0, R * 1.0, R * 0.04, 24, 1, false, -1.15, 2.3), mat(0x050505, null, 0.18), 0, 0.27, 0.36, 0.28, 0.92, 1, 1.15);
+      add(new THREE.CircleGeometry(R * 0.16, 12), new THREE.MeshStandardMaterial({ color: 0xd8b04a, metalness: 0.9, roughness: 0.3 }), 0, 0.68, 1.0, -0.1);
     } else {
       add(new THREE.SphereGeometry(R * 1.04, 24, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), m, 0, 0.14, -0.03, -0.2, 0.88, 0.95, 1.0);
       add(new THREE.CylinderGeometry(R * 0.8, R * 0.8, R * 0.05, 24, 1, false, -1.0, 2.0), m, 0, 0.2, 0.62, -0.08, 0.95, 1, 1.0);
@@ -343,6 +381,31 @@ export class Character {
     list.sort((a, b) => a[1].length - b[1].length);
     (pose.__o ||= new WeakMap()).set(this, list);
     return list;
+  }
+
+  // dress in wardrobe items: each is a skinned mesh re-bound to this character's own bones
+  async wear(people, ids) {
+    const token = (this.wearToken = (this.wearToken || 0) + 1);
+    const gltfs = await Promise.all(ids.map(id => people.loadItem(id)));
+    if (token !== this.wearToken) return;
+    this.itemMeshes ||= {};
+    for (const [id, meshes] of Object.entries(this.itemMeshes)) if (!ids.includes(id)) { for (const m of meshes) m.parent?.remove(m); delete this.itemMeshes[id]; }
+    ids.forEach((id, i) => {
+      if (this.itemMeshes[id] || !gltfs[i]) return;
+      const out = [];
+      gltfs[i].scene.traverse((o) => {
+        if (!o.isSkinnedMesh) return;
+        const bones = o.skeleton.bones.map(b => this.bones[b.name.replace(/^mixamorig:?/, '')]);
+        if (bones.some(b => !b)) return;
+        const m = new THREE.SkinnedMesh(o.geometry, o.material);
+        m.castShadow = true; m.frustumCulled = false;
+        m.position.copy(o.position); m.quaternion.copy(o.quaternion); m.scale.copy(o.scale);
+        (this.model.getObjectByName(o.parent?.name) || this.model).add(m);
+        m.bind(new THREE.Skeleton(bones, o.skeleton.boneInverses), o.bindMatrix);
+        out.push(m);
+      });
+      this.itemMeshes[id] = out;
+    });
   }
 
   punch() { if (this.punchT <= 0) { this.punchT = 0.42; return true; } return false; }

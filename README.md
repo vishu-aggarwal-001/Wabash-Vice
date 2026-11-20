@@ -66,6 +66,13 @@ To turn hosting on for a copy of this repo: **Settings → Pages → Build and d
 
 **Real people instead of mannequins.** The player, pedestrians, cops and paramedics are realistic skinned 3D people built from MakeHuman's free assets: jackets and jeans, hoodies and cargo pants, knitted sweaters, sneakers and boots, and Criminal Russia-style cops in a light blue shirt, tie and cap. They're driven by motion-captured idle, walk and run animations. Procedural layers add driving, bike riding, sitting, punching, kicking, cowering, hands-up and getting knocked flat. Men get short hair, beanies, ball caps or cowboy hats, and outfits are recoloured so the crowd isn't all clones.
 
+**Wardrobe, shops and barbers**
+- Buy clothes, hats and glasses at **Wabash Threads** (purple markers: downtown and Chauncey) and haircuts and beards at **Levee Barbers** (teal marker). Walk into the marker and press **J**.
+- 50+ items that mix and match: leather jacket, tracksuit, hoodies, knit sweaters, suit, overalls, cargo and tracksuit pants, boots and sneakers, ushanka, flat cap, fedora, bowler, beanies, sunglasses and frames, 8 haircuts, beards.
+- Change into anything you own any time from the phone (**Tab → Wardrobe**). Your look is saved.
+
+**22 different townspeople**: bald guys in leather jackets and tracksuits, hoodies and flat caps, workers in overalls, a businessman, older folks, three different cops in peaked caps, shirts and ties, and six women. Each has their own sculpted face.
+
 **Criminal Russia-style gameplay**
 - **Jobs** from the phone (**Tab**): **Police Work** (road accidents, speeders to pull over, purse snatchers to chase and cuff, street fights, stolen cars to ram), **Taxi Driver**, **Paramedic** and **Boiler Express** deliveries. Every job has a work vehicle, a uniform, endless calls from the dispatcher, cash and XP, and ranks (Rookie → Chief of Police) that pay more.
 - **Story mode: Chapter 1**, five missions for Dee, who runs a garage behind the courthouse downtown: a test drive, a debt collection in Chauncey Village, stealing a muscle car from Wabash Landing, a river run up the Wabash, and the Homecoming street race against AI rivals.
@@ -187,7 +194,7 @@ This is the honest path from v0.1 toward the “better than GTA *at Lafayette*�
 ## ⚠️ Notes
 
 - Textures are CC0 (public domain) photo scans from [Poly Haven](https://polyhaven.com). Thank you, Poly Haven!
-- People are built with [MakeHuman](http://www.makehumancommunity.org/) / MPFB2 from CC0 community assets, plus these CC-BY 4.0 assets from the MakeHuman asset repository: the hooded sweat jacket and the shirt with tie by Elvaerwyn, the knitted sweaters by Mindfront, and the sneakers by culturalibre and punkduck. The police shirt texture was recoloured. See `tools/make_people/`.
+- People and wardrobe items are built with [MakeHuman](http://www.makehumancommunity.org/) / MPFB2 from CC0 community assets, plus these CC-BY 4.0 assets from the MakeHuman asset repository: the hooded sweat jacket and the shirt with tie by Elvaerwyn, the knitted sweaters, cardigan and several hats by Mindfront, the flat cap, slouchy beanie and trilby by Elvaerwyn, the bowler hat and sneakers by culturalibre, and the sneakers and handbag by punkduck. The police shirt texture was recoloured. See `tools/make_people/`.
 - Mocap clips come from Mixamo's X Bot in the [three.js examples](https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf).
 - Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), ODbL. Building heights that aren't in OSM are estimated, terrain is stylized, and the river valley shape is approximate.
 - This is a fan project. It is **not** affiliated with or endorsed by Purdue University, the City of Lafayette or West Lafayette, Rockstar Games, or any vehicle maker. All vehicle names are made up.
