@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { Vehicle, CATALOG } from './vehicles.js';
 import { makeHuman } from './player.js';
 import { Actor } from './actors.js';
+import { gunMesh } from './guns.js';
 
 const TRAFFIC_TYPES = ['sedan', 'sedan', 'sedan', 'hatch', 'hatch', 'suv', 'suv', 'pickup', 'pickup', 'taxi', 'bus', 'truck', 'muscle', 'gt', 'sportbike', 'police', 'wagon', 'classic', 'classic', 'luxury', 'compact', 'compact', 'crossover', 'crossover', 'jeep', 'hauler', 'van', 'van', 'pony', 'rally', 'roadster', 'limo', 'gtr', 'dragster'];
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -297,7 +298,7 @@ export class Police {
     if (this.wanted > before) this.g.hud.toast(`★ ${why}`, 'warn');
   }
   clear() {
-    this.wanted = 0;
+    this.wanted = 0; this.armed = false;
     for (const c of this.foot || []) { c.mode = 'goto'; c.target = c.car ? c.car.pos : c.pos.clone(); c.hostile = false; c.leaving = true; }
     for (const u of this.units) { u.v.sirenOn = false; u.leaving = true; }
     if (this.heli) { this.g.scene.remove(this.heli.v.mesh); this.heli = null; }
@@ -428,11 +429,39 @@ export class Police {
     }
     for (let i = this.foot.length - 1; i >= 0; i--) {
       const c = this.foot[i];
-      if (c.removed) { this.foot.splice(i, 1); continue; }
+      if (c.removed) { if (c.gun) { this.g.scene.remove(c.gun); c.gun = null; } this.foot.splice(i, 1); continue; }
       const far = c.pos.distanceTo(target) > 160;
-      if ((c.leaving && c.car && c.pos.distanceTo(c.car.pos) < 2.5) || far || (c.isDown && c.down > 50)) { c.remove(); this.foot.splice(i, 1); if (c.unit) c.unit.footed = false; continue; }
+      if ((c.leaving && c.car && c.pos.distanceTo(c.car.pos) < 2.5) || far || (c.isDown && c.down > 50)) { if (c.gun) { this.g.scene.remove(c.gun); c.gun = null; } c.remove(); this.foot.splice(i, 1); if (c.unit) c.unit.footed = false; continue; }
       if (playerVeh && !c.leaving && c.car && !c.car.dead) { c.mode = 'goto'; c.target = c.car.pos; c.after = 'idle'; c.onArrive = () => { c.remove(); if (c.unit) c.unit.footed = false; }; }
       else if (!playerVeh && this.wanted > 0 && c.mode !== 'fight' && !c.leaving) { c.mode = 'fight'; c.onArrive = null; }
+    }
+    // once you've fired a gun (or at 4+ stars) the police shoot back
+    const armed = (this.armed && this.wanted >= 1) || this.wanted >= 4;
+    const tgt = playerVeh ? playerVeh.pos : target;
+    for (const c of this.foot) {
+      const show = armed && !c.isDown && !c.leaving && !c.removed;
+      if (show && !c.gun) { c.gun = gunMesh('pistol'); this.g.scene.add(c.gun); c.shootT = 0.8 + Math.random(); }
+      if (c.gun) {
+        if (!show) { this.g.scene.remove(c.gun); c.gun = null; if (!c.removed && !c.isDown && c.mode === 'aim') c.mode = 'fight'; continue; }
+        const d = c.pos.distanceTo(tgt);
+        const los = this.w.lineBlocked(c.pos.x, c.pos.y + 1.5, c.pos.z, tgt.x, tgt.y + 1.2, tgt.z) > 0.97;
+        c.mode = d < 22 && d > 2.5 && los ? 'aim' : 'fight';
+        const hand = c.char.bones?.RightHand;
+        if (hand) { hand.getWorldPosition(c.gun.position); if (c.mode === 'aim') c.gun.lookAt(tgt.x, tgt.y + 1.1, tgt.z); else c.gun.rotation.set(1.15, c.yaw, 0, 'YXZ'); }
+        c.shootT -= dt;
+        if (c.mode === 'aim' && c.shootT <= 0 && this.g.player.hp > 0) {
+          c.shootT = 0.9 + Math.random() * 0.9;
+          const from = c.gun.localToWorld(new THREE.Vector3(0, 0.05, 0.16));
+          this.g.guns.enemyShot(from, Math.max(0.1, 0.4 - d / 60), 5 + Math.random() * 4);
+        }
+      }
+    }
+    // officers lean out of the window at 3+ stars
+    if (armed && this.wanted >= 3) for (const u of this.units) {
+      if (u.leaving || u.footed || u.block || u.v.dead) continue;
+      const d = u.v.pos.distanceTo(tgt);
+      u.shootT = (u.shootT ?? 1.5) - dt;
+      if (d < 30 && u.shootT <= 0) { u.shootT = 1.4 + Math.random(); this.g.guns.enemyShot(u.v.pos.clone().setY(u.v.pos.y + 1.4), Math.max(0.06, 0.28 - d / 100), 5 + Math.random() * 3); }
     }
     // a unit whose officer is out on foot stays parked
     for (const u of this.units) if (u.footed) { u.v.update(dt, { throttle: 0, steer: 0, handbrake: true }, this.g.fx); }

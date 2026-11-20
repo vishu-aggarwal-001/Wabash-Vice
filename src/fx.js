@@ -60,6 +60,9 @@ export class FX {
       } else if (kind === 'water') {   // hose / cannon jet: velocity comes from v
         m.color.setRGB(0.75, 0.86, 1); o.life = 1.1; o.size = 0.32 + Math.random() * 0.22; o.grow = 0.9; o.fade = 0.5; o.gravity = true; o.noDrag = true;
         o.vel.set(r() * 0.6, r() * 0.6, r() * 0.6);
+      } else if (kind === 'blood') {   // small dark-red puff where a bullet hits a person
+        m.color.setRGB(0.42, 0.02, 0.03); o.life = 0.45; o.size = 0.18; o.grow = 1.4; o.fade = 0.85; o.gravity = true;
+        o.vel.set(r() * 2, 0.6 + Math.random() * 1.2, r() * 2);
       } else if (kind === 'blacksmoke') {   // thick smoke column over a fire
         m.color.setHSL(0, 0, 0.06 + Math.random() * 0.1); o.life = 4 + Math.random() * 2; o.size = 2.2; o.grow = 4; o.fade = 0.6;
         o.vel.set(r() * 1.2 + 0.6, 3 + Math.random() * 2, r() * 1.2);

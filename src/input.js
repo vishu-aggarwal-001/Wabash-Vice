@@ -24,8 +24,8 @@ export class Input {
     addEventListener('mousemove', (e) => {
       if (this.mouse.locked || this.mouse.drag) { this.mouse.dx += e.movementX; this.mouse.dy += e.movementY; }
     });
-    canvas.addEventListener('mousedown', (e) => { if (e.button === 2) this.mouse.drag = true; if (e.button === 0 && this.mouse.locked) this.pressed.add('punch'); });
-    addEventListener('mouseup', () => { this.mouse.drag = false; });
+    canvas.addEventListener('mousedown', (e) => { if (e.button === 2) this.mouse.drag = true; if (e.button === 0 && this.mouse.locked) { this.pressed.add('punch'); this.mouse.down = true; } });
+    addEventListener('mouseup', () => { this.mouse.drag = false; this.mouse.down = false; });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     canvas.addEventListener('wheel', (e) => { this.mouse.wheel += Math.sign(e.deltaY); }, { passive: true });
     this.setupTouch();

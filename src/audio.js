@@ -109,6 +109,7 @@ export class Audio {
   }
   crash(intensity) { this.oneShot('lowpass', Math.min(0.9, 0.15 + intensity * 0.03), 0.35 + Math.min(0.6, intensity * 0.02), 900); this.oneShot('highpass', Math.min(0.4, intensity * 0.015), 0.25, 3000); }
   splash() { this.oneShot('bandpass', 0.5, 0.9, 1200); }
+  gunshot(vol = 1) { this.oneShot('lowpass', Math.min(1, 0.7 * vol), 0.3, 1400); this.oneShot('highpass', Math.min(0.6, 0.35 * vol), 0.09, 2600); this.oneShot('bandpass', 0.25 * vol, 0.5, 300); }
   whoosh() { this.oneShot('bandpass', 0.12, 0.18, 1800); }
   punch(dmg = 20) { this.oneShot('lowpass', 0.45 + dmg * 0.006, 0.14, 420); this.oneShot('bandpass', 0.18, 0.06, 2400); }
   // two-tone phone ring / radio chirp for dispatcher calls

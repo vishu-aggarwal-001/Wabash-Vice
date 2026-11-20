@@ -48,7 +48,8 @@ To turn hosting on for a copy of this repo: **Settings → Pages → Build and d
 | Fast-forward time | hold **T** | |
 | Menu, settings, fast travel | **Esc** | Start |
 | Punch or swing / kick | **Click** or **Q** / **E** | X / B |
-| Switch melee weapon | **Z** | |
+| Switch weapon | **Z** | |
+| Shoot (with a gun out) | **Click** or **Q**, aim with the mouse (hold for the SMG) | X |
 | Answer a choice (pay the bribe?) | **Y** / **N** | |
 | Use a medkit (on foot) | **H** | |
 | Phone: jobs, story, shop, stats | **Tab** | Back/View |
@@ -81,7 +82,11 @@ To turn hosting on for a copy of this repo: **Settings → Pages → Build and d
 
 **Three new jobs**: **CityBus Driver** (stop at each stop, people get on and off, keep to the timetable), **Firefighter** (house, car and dumpster fires with real flames and smoke; park the engine and the water cannon locks on) and **Vic's Chop Shop** (find the car on order, steal it, deliver it clean).
 
-**Melee weapons** at **Levee Pawn & Loan** (red marker downtown): brass knuckles, baseball bat, lead pipe, hockey stick, crowbar, golf club and sledgehammer. Your character grips them and swings them over the shoulder. **Z** switches. No guns: this map has a real university campus in it.
+**Weapons** at **Levee Pawn & Loan** (red marker downtown):
+- Melee: brass knuckles, baseball bat, lead pipe, hockey stick, crowbar, golf club, sledgehammer (gripped and swung over the shoulder).
+- **Guns**: 9mm pistol, submachine gun (full auto), pump shotgun, hunting rifle, plus ammo. The camera goes over your shoulder with a crosshair; bullets hit people and cars and are stopped by walls.
+- **The police respond**: every shot gives you a star, hitting people gives more, shooting a cop gives three. Once you've fired, cops draw their pistols and shoot back, and at 3+ stars they shoot from their cruisers too.
+- **Z** switches weapons. Purdue's campus is a gun-free zone: guns stay holstered there.
 
 **Police roadblocks**: at 3 stars and above, two cruisers block the road ahead of you.
 

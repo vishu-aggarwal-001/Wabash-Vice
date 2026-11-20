@@ -29,6 +29,8 @@ const PUNCH_GUARD = { LeftArm: [-45, 0, -12], RightArm: [-45, 0, 12], LeftForeAr
 const PUNCH_HIT = { RightArm: [-88, 0, 4], RightForeArm: [-4, 0, 0], LeftArm: [-45, 0, -12], LeftForeArm: [-110, 0, -25], Spine: [6, -28, 0] };
 export const SWING_UP = { Spine: [0, -30, 0], RightArm: [0, 0, -60], RightForeArm: [0, 0, -110], RightHand: [-75, 0, 0], LeftArm: [-70, -40, 0], LeftForeArm: [-60, 0, 0] };
 export const SWING_HIT = { Spine: [6, 35, 0], RightArm: [-80, 40, 0], RightForeArm: [-10, 0, 0], RightHand: [70, 0, 0], LeftArm: [-60, 30, 0], LeftForeArm: [-30, 0, 0] };
+export const AIM_1H = { RightArm: [-86, 6, 0], RightForeArm: [-6, 0, 0], RightHand: [0, 0, 0], Spine: [0, -8, 0] };
+export const AIM_2H = { RightArm: [-80, 18, 0], RightForeArm: [-25, 0, 0], LeftArm: [-82, -38, 0], LeftForeArm: [-30, 0, 0], Spine: [0, -14, 0] };
 const KICK = { RightUpLeg: [-100, 0, 0], RightLeg: [10, 0, 0], LeftArm: [-20, 0, 30], RightArm: [-20, 0, -30], Spine: [-18, 0, 0] };
 
 const _q = new THREE.Quaternion(), _p = new THREE.Quaternion(), _r = new THREE.Quaternion(), _e = new THREE.Euler();
@@ -358,6 +360,8 @@ export class Character {
         this.apply(PUNCH_HIT, hit);
       }
     }
+    this.aimW = (this.aimW || 0) + ((this.aiming ? 1 : 0) - (this.aimW || 0)) * Math.min(1, dt * 14 + (this.aiming ? 0.2 : 0));
+    if (this.aimW > 0.01) this.apply(this.twoHand ? AIM_2H : AIM_1H, this.aimW);
     if (this.kickT > 0) { this.kickT -= dt; const p = 1 - this.kickT / 0.55; this.apply(KICK, Math.sin(Math.min(1, p) * Math.PI)); }
     // whole-body: lying down / swimming / leaning on a bike
     const lie = mode === 'down' ? -Math.PI / 2 : mode === 'swim' ? 1.25 : 0;

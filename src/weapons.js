@@ -2,6 +2,7 @@
 // hand bone from the bind pose), swung with the punch button. Z cycles what you own.
 import * as THREE from 'three';
 import { textTexture } from './textures.js';
+import { GUNS } from './guns.js';
 
 export const WEAPONS = [
   { id: 'fists', name: 'Fists', price: 0, dmg: 1, reach: 0, icon: '✊' },
@@ -12,6 +13,7 @@ export const WEAPONS = [
   { id: 'crowbar', name: 'Crowbar', price: 450, dmg: 2.4, reach: 0.5, icon: '🪛', swing: true },
   { id: 'golf', name: 'Golf club', price: 600, dmg: 2.2, reach: 0.9, icon: '⛳', swing: true },
   { id: 'sledge', name: 'Sledgehammer', price: 950, dmg: 3.1, reach: 0.65, icon: '🔨', swing: true, slow: true },
+  ...Object.entries(GUNS).map(([id, G]) => ({ id, name: G.name, price: G.price, lvl: G.lvl, dmg: 1, reach: 0, icon: '🔫', gun: true })),
 ];
 export const byWeapon = Object.fromEntries(WEAPONS.map(w => [w.id, w]));
 const PAWN = { name: 'Levee Pawn & Loan', at: [40.4176, -86.8903], color: 0xe23b3b };
@@ -55,6 +57,7 @@ export function attachWeapon(char, id) {
   char.weapon = byWeapon[id] || byWeapon.fists;
   if (!id || id === 'fists') return;
   const hand = char.bones?.RightHand; if (!hand) return;
+  const gun = char.weapon.gun;
   let skin = null; char.model.traverse(o => { if (!skin && o.isSkinnedMesh && o.skeleton.bones.includes(hand)) skin = o; });
   if (!skin) return;
   const sk = skin.skeleton, i = sk.bones.indexOf(hand);
@@ -70,6 +73,7 @@ export function attachWeapon(char, id) {
     const ang = f === 'Thumb' ? (k === 1 ? 0.2 : 0.5) : [0, 1.35, 1.5, 1.0][k];
     char.grip.push([b, b.quaternion.clone(), new THREE.Quaternion().setFromAxisAngle(ax, ang)]);
   }
+  if (gun) return;   // guns are placed in world space by Guns (they follow the aim)
   const w = weaponMesh(id);
   w.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), axis);
   // grip: a bit toward the fingers, and scaled back to metres in bone space
@@ -131,7 +135,7 @@ export class Pawn {
   buildUI() {
     const el = this.el = document.createElement('div');
     el.className = 'shopui'; el.hidden = true;
-    el.innerHTML = `<div class="wpanel"><div class="whead"><b style="color:#ff6a6a">${PAWN.name}</b><span>Blunt instruments only — no questions asked. Press Z to switch weapons.</span></div>
+    el.innerHTML = `<div class="wpanel"><div class="whead"><b style="color:#ff6a6a">${PAWN.name}</b><span>Bats behind the door, guns behind the counter. Z switches weapons. Every shot brings the police — and campus is gun-free.</span></div>
       <div class="wlist"></div><div class="wfoot"><span class="money" style="flex:1;text-align:center;color:#7ee36a;font-weight:800"></span><button class="close">Done (Esc)</button></div></div>`;
     document.body.appendChild(el);
     el.querySelector('.close').onclick = () => this.hide();
@@ -147,18 +151,32 @@ export class Pawn {
   }
   render() {
     const g = this.g, list = this.el.querySelector('.wlist'); list.innerHTML = '';
+    const head = (t) => { const h = document.createElement('h4'); h.textContent = t; h.style.cssText = 'margin:10px 2px 6px;color:#ff8a8a'; list.appendChild(h); };
+    head('Melee');
     for (const w of WEAPONS) {
+      if (w.gun && !WEAPONS[WEAPONS.indexOf(w) - 1]?.gun) head('Guns');
       const has = g.save.weapons.includes(w.id), eq = g.save.weapon === w.id;
+      const locked = w.lvl && g.prog.level < w.lvl && !has;
+      const G = w.gun ? GUNS[w.id] : null;
+      const info = G ? `damage ${G.dmg}${G.pellets > 1 ? '×' + G.pellets : ''} · ${G.mag}-round mag${G.auto ? ' · full auto' : ''}` : `damage ×${w.dmg}${w.reach ? ' · reach +' + w.reach + 'm' : ''}`;
       const b = document.createElement('button'); b.className = 'witem' + (eq ? ' eq' : '');
-      b.innerHTML = `<span>${w.icon} ${w.name} <em style="color:#999;font-style:normal;font-size:12px">· damage ×${w.dmg}${w.reach ? ' · reach +' + w.reach + 'm' : ''}</em></span><small>${eq ? 'HOLDING' : has ? 'OWNED' : '$' + w.price}</small>`;
+      b.innerHTML = `<span>${w.icon} ${w.name} <em style="color:#999;font-style:normal;font-size:12px">· ${info}</em></span><small${locked ? ' class="lock"' : ''}>${eq ? 'HOLDING' : has ? 'OWNED' : locked ? 'level ' + w.lvl : '$' + w.price.toLocaleString()}</small>`;
       b.onclick = () => {
         if (!has) {
+          if (locked) { g.hud.toast(`Reach level ${w.lvl} to buy the ${w.name}`, 'warn'); return; }
           if (g.money < w.price) { g.hud.toast('Not enough money', 'warn'); return; }
           g.addMoney(-w.price); g.save.weapons.push(w.id); g.audio.chime(true);
+          if (G) g.guns.give(w.id, G.ammo);
         }
         this.equip(w.id); this.render();
       };
       list.appendChild(b);
+      if (G && has) {
+        const a = document.createElement('button'); a.className = 'witem'; a.style.marginLeft = '18px'; a.style.width = 'calc(100% - 18px)';
+        a.innerHTML = `<span>+ ${G.mag * 2} rounds <em style="color:#999;font-style:normal;font-size:12px">· you have ${g.guns.reserve(w.id) + (g.guns.mag[w.id] || 0)}</em></span><small>$${G.ammoPrice}</small>`;
+        a.onclick = () => { if (g.money < G.ammoPrice) { g.hud.toast('Not enough money', 'warn'); return; } g.addMoney(-G.ammoPrice); g.guns.give(w.id, G.mag * 2); g.audio.chime(true); this.render(); };
+        list.appendChild(a);
+      }
     }
     this.el.querySelector('.money').textContent = '$' + g.money.toLocaleString();
   }

@@ -83,6 +83,7 @@ export class Actor {
     switch (this.mode) {
       case 'idle': if (d < 10) face = Math.atan2(dx, dz); break;
       case 'wave': anim = 'wave'; face = Math.atan2(dx, dz); break;
+      case 'aim': face = Math.atan2(dx, dz); break;   // stands and points a gun (police)
       case 'hands_up': anim = 'hands_up'; face = Math.atan2(dx, dz); break;
       case 'cower': anim = 'cower'; break;
       case 'lying': anim = 'down'; this.hittable = false; break;
@@ -142,6 +143,7 @@ export class Actor {
     const hs = Math.hypot(this.vel.x, this.vel.z);
     if (face === null && hs > 0.3) face = Math.atan2(this.vel.x, this.vel.z);
     if (face !== null) this.yaw += wrap(face - this.yaw) * Math.min(1, dt * 10);
+    this.char.aiming = this.mode === 'aim';
     this.char.update(dt, anim || (hs > 3.6 ? 'run' : hs > 0.3 ? 'walk' : 'idle'), hs);
     this.mesh.position.copy(this.pos); this.mesh.rotation.y = this.yaw;
   }

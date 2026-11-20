@@ -43,6 +43,7 @@ import { Wardrobe, DEFAULT_LOOK } from './wardrobe.js';
 import { Progression } from './progression.js';
 import { Garage } from './garage.js';
 import { Pawn, byWeapon } from './weapons.js';
+import { Guns } from './guns.js';
 import { pickWeather, installSnowShader, Snowfall, snowy } from './weather.js';
 
 const QUALITY = {
@@ -141,6 +142,7 @@ class Game {
     this.story = new Story(this);
     this.wardrobe = new Wardrobe(this);
     this.garage = new Garage(this);
+    this.guns = new Guns(this);
     this.pawn = new Pawn(this);
     this.prog = new Progression(this);
     if (this.save.player) { this.player.medkits = this.save.player.medkits ?? 2; this.player.armor = this.save.player.armor ?? 0; }
@@ -287,7 +289,7 @@ class Game {
 
   persist() {
     try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify({ v3: true, money: this.money, gears: this.save.gears || [], settings: this.settings, hours: this.env?.hours, seenHelp: this.save.seenHelp, xp: this.save.xp || 0, talents: this.save.talents, karma: this.save.karma || 0, jobs: this.save.jobs, story: this.save.story, look: this.save.look, owned: this.save.owned, myCar: this.save.myCar || null, weapons: this.save.weapons, weapon: this.save.weapon, player: { medkits: this.player?.medkits ?? 2, armor: Math.round(this.player?.armor || 0) } }));
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ v3: true, money: this.money, gears: this.save.gears || [], settings: this.settings, hours: this.env?.hours, seenHelp: this.save.seenHelp, xp: this.save.xp || 0, talents: this.save.talents, karma: this.save.karma || 0, jobs: this.save.jobs, story: this.save.story, look: this.save.look, owned: this.save.owned, myCar: this.save.myCar || null, weapons: this.save.weapons, weapon: this.save.weapon, ammo: this.save.ammo, player: { medkits: this.player?.medkits ?? 2, armor: Math.round(this.player?.armor || 0) } }));
     } catch { /* ignore */ }
   }
   addMoney(n) { this.money = Math.max(0, this.money + n); this.persist(); }
@@ -536,18 +538,21 @@ class Game {
       height = p.swimming ? 0.6 : 1.55;
       target = new THREE.Vector3(p.pos.x, p.pos.y + height, p.pos.z);
       dist = 4.4 * zoom * [1, 1.6, 0.35][this.camMode];
+      if (this.guns?.id && this.camMode !== 2) { dist = 3.1 * zoom; target.y += 0.1; }   // over the right shoulder with a gun out
       if (p.parachute) dist = 9;
       fov = 62 + Math.min(8, Math.hypot(p.vel.x, p.vel.z) * 0.8);
     }
     cam.up.set(0, 1, 0);
     // where the camera wants to be for a given pitch (with an over-the-shoulder offset on foot)
-    const shoulder = v ? 0 : 0.45 * Math.min(1, dist / 3);
+    const gunCam = !v && this.guns?.id && this.camMode !== 2;
+    const shoulder = v ? 0 : gunCam ? -0.72 : 0.45 * Math.min(1, dist / 3);
     const camAt = (pitch) => {
       const cp = Math.cos(pitch), sp = Math.sin(pitch);
       return new THREE.Vector3(target.x - Math.sin(this.camYaw) * cp * dist + Math.cos(this.camYaw) * shoulder, target.y + sp * dist, target.z - Math.cos(this.camYaw) * cp * dist - Math.sin(this.camYaw) * shoulder);
     };
     let desired = camAt(this.camPitch);
-    const lookAt = new THREE.Vector3(target.x, target.y + (v ? 0.4 : 0.15), target.z);
+    const lookAt = gunCam ? new THREE.Vector3(target.x + Math.cos(this.camYaw) * shoulder, target.y + 0.15, target.z - Math.sin(this.camYaw) * shoulder)
+      : new THREE.Vector3(target.x, target.y + (v ? 0.4 : 0.15), target.z);
     let lookDir = lookAt.clone().sub(desired).normalize();
     const keep = 0.35;   // metres kept between the lens and any wall
     let t = w.cameraClear(target, desired);
@@ -641,12 +646,16 @@ class Game {
         this.airTime = 0;
       }
       if (this.player.mesh.parent !== this.scene) this.player.char.update(dt, 'ride', 0);
+      this.guns.update(dt, inp, pr); this.guns.late();
       if ((v.type === 'car' || v.type === 'bike') && v.inWater > 1.5) { this.exitVehicle(true); this.hud.toast('Your vehicle sank in the Wabash!'); }
       if (v.type === 'plane' && pr.has('enter') && v.airborne) { /* handled above */ }
     } else {
       const pl = this.player;
       if (pr.has('horn') && pl.useMedkit()) { this.hud.toast(`+50 health  (${pl.medkits} medkits left)`, 'good'); this.audio.chime(true); }
-      pl.update(dt, { x: inp.moveX, y: inp.moveY, run: inp.shift, jump: inp.jump, punch: pr.has('punch'), kick: pr.has('kick') }, this.camYaw);
+      const gunUsed = this.guns.update(dt, inp, pr);
+      pl.update(dt, { x: inp.moveX, y: inp.moveY, run: inp.shift, jump: inp.jump, punch: pr.has('punch') && !this.guns.id && !gunUsed, kick: pr.has('kick') }, this.camYaw);
+      if (this.guns.aimT > 0 && this.guns.id) { pl.yaw = this.camYaw; pl.mesh.rotation.y = pl.yaw; }
+      this.guns.late();
       for (const e of pl.events) if (e === 'punch' || e === 'kick') { const wp = e === 'punch' ? byWeapon[this.save.weapon] || byWeapon.fists : byWeapon.fists; this.melee(e === 'kick' ? 34 : 22 * wp.dmg, (e === 'kick' ? 1.8 : 1.5) + wp.reach, wp.swing ? 0.24 : 0.16); }
       if (pl.parachute) {
         if (!this.chute) {
