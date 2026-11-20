@@ -43,12 +43,27 @@ const OUTFITS = {
 function retarget(scene, anims, hips, restHips) {
   const Q = () => new THREE.Quaternion();
   const strip = (n) => n && n.replace(/^mixamorig:?/, '');
-  const Rs = {}, RsInv = {}, srcLocalRest = {}, order = anims._rest.map(([n, p, q]) => [strip(n), strip(p), q]);
+  const Rs = {}, RsInv = {}, srcLocalRest = {}, order = anims._rest.map(([n, p, q, pos]) => [strip(n), strip(p), q, pos]);
   for (const [n, , q] of order) { Rs[n] = Q().fromArray(q); RsInv[n] = Rs[n].clone().invert(); }
   for (const [n, p] of order) srcLocalRest[n] = p ? RsInv[p].clone().multiply(Rs[n]) : Rs[n].clone();
   const tBones = []; scene.traverse((o) => { if (o.isBone) tBones.push(o); });
   const Rt = {}, rootW = {};
   for (const b of tBones) { Rt[b.name] = b.getWorldQuaternion(Q()); if (!b.parent.isBone) rootW[b.name] = b.parent.getWorldQuaternion(Q()); }
+  // Rest poses can differ (this source is a T-pose, Ready Player Me rests in an A-pose with arms
+  // 60° down). For every bone with a single child, find the rotation C that turns the source's rest
+  // bone direction into the target's; the retarget then maps "same direction" onto "same direction".
+  const Cinv = {};
+  const sPos = {}, sKids = {};
+  for (const [n, par, , p] of order) { if (p) sPos[n] = new THREE.Vector3().fromArray(p); if (par) (sKids[par] ||= []).push(n); }
+  const tByName = {}; for (const b of tBones) tByName[b.name] = b;
+  for (const b of tBones) {
+    const kids = sKids[b.name];
+    if (!kids || kids.length !== 1 || !sPos[b.name] || !sPos[kids[0]] || !tByName[kids[0]]) continue;
+    const ds = sPos[kids[0]].clone().sub(sPos[b.name]).normalize();
+    const dt = tByName[kids[0]].getWorldPosition(new THREE.Vector3()).sub(b.getWorldPosition(new THREE.Vector3())).normalize();
+    if (ds.lengthSq() < 0.5 || dt.lengthSq() < 0.5) continue;
+    Cinv[b.name] = Q().setFromUnitVectors(ds, dt).invert();
+  }
   const hipsParentInv = hips.parent.matrixWorld.clone().invert();
   const o0 = new THREE.Vector3().applyMatrix4(hipsParentInv);
   const clips = {};
@@ -74,7 +89,9 @@ function retarget(scene, anims, hips, restHips) {
       for (const b of tBones) {
         const pw = b.parent.isBone ? Wt[b.parent.name] : rootW[b.name];
         if (out[b.name]) {
-          Wt[b.name] = Ws[b.name].clone().multiply(RsInv[b.name]).multiply(Rt[b.name]);
+          Wt[b.name] = Ws[b.name].clone().multiply(RsInv[b.name]);
+          if (Cinv[b.name]) Wt[b.name].multiply(Cinv[b.name]);
+          Wt[b.name].multiply(Rt[b.name]);
           const local = pw.clone().invert().multiply(Wt[b.name]);
           out[b.name].push(local.x, local.y, local.z, local.w);
         } else Wt[b.name] = pw.clone().multiply(b.quaternion);
@@ -202,7 +219,7 @@ function headwear(model, style, hairColor) {
   if (!head) return;
   const hp = head.getWorldPosition(new THREE.Vector3()), tp = top ? top.getWorldPosition(new THREE.Vector3()) : hp.clone().add(new THREE.Vector3(0, 0.2, 0));
   const R = hp.distanceTo(tp) * 0.5;                       // ~ skull radius
-  const c = hp.clone().lerp(tp, 0.36);
+  const c = hp.clone().lerp(tp, 0.47);
   const g = new THREE.Group(); g.position.copy(c);
   const add = (geo, m, x, y, z, rx = 0, sx = 1, sy = 1, sz = 1) => { const o = new THREE.Mesh(geo, m); o.position.set(x * R, y * R, z * R); o.rotation.x = rx; o.scale.set(sx, sy, sz); o.castShadow = true; g.add(o); return o; };
   const hc = hairColor ?? HAIR[Math.floor(Math.random() * HAIR.length)];

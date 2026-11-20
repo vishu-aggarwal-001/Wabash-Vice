@@ -18,7 +18,8 @@ window.extract = async (files) => {
     if (!out._rest) {
       // source skeleton rest pose: world rotations + hierarchy order, used to retarget onto other rigs
       const rest = []; const q = new THREE.Quaternion();
-      g.scene.traverse((o) => { if (o.isBone) { o.getWorldQuaternion(q); rest.push([o.name.replace('mixamorig:', ''), o.parent.isBone ? o.parent.name.replace('mixamorig:', '') : null, q.toArray().map(x => +x.toFixed(6))]); } });
+      const wp = new THREE.Vector3();
+      g.scene.traverse((o) => { if (o.isBone) { o.getWorldQuaternion(q); o.getWorldPosition(wp); rest.push([o.name.replace('mixamorig:', ''), o.parent.isBone ? o.parent.name.replace('mixamorig:', '') : null, q.toArray().map(x => +x.toFixed(6)), wp.toArray().map(x => +x.toFixed(5))]); } });
       out._rest = rest;
     }
     for (const clip of g.animations) {
