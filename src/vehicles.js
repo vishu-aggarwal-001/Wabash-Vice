@@ -20,6 +20,22 @@ export const CATALOG = [
   { id: 'muscle', name: 'Riverside Muscle', cat: 'Cars', type: 'car', style: 'muscle', L: 5.0, W: 1.98, color: 0x8a1d1d, stripe: 0xf2f2f2, max: 72, accel: 12, grip: 7.5, wheel: 0.37, mass: 1600 },
   { id: 'suv', name: 'Tippecanoe SUV', cat: 'Cars', type: 'car', style: 'suv', L: 4.9, W: 2.0, color: 'random', max: 52, accel: 7.5, grip: 8, wheel: 0.4, mass: 2100 },
   { id: 'pickup', name: 'Prairie Pickup', cat: 'Cars', type: 'car', style: 'pickup', L: 5.7, W: 2.05, color: 'random', max: 50, accel: 7.5, grip: 8, wheel: 0.42, mass: 2300 },
+  { id: 'wagon', name: 'Klondike Wagon', cat: 'Cars', type: 'car', style: 'hatch', L: 4.9, W: 1.84, color: 'random', max: 49, accel: 7.5, grip: 8.5, wheel: 0.34, mass: 1550 },
+  { id: 'classic', name: '1979 Monon Classic', cat: 'Cars', type: 'car', style: 'sedan', L: 5.3, W: 1.96, color: 'random', max: 48, accel: 7, grip: 7, wheel: 0.36, mass: 1750 },
+  { id: 'luxury', name: 'Prophetstown Luxury', cat: 'Cars', type: 'car', style: 'sedan', L: 5.15, W: 1.94, color: 0x0b0c0e, max: 70, accel: 10.5, grip: 9.5, wheel: 0.37, mass: 1950 },
+  { id: 'limo', name: 'Executive Limo', cat: 'Cars', type: 'car', style: 'sedan', L: 6.6, W: 2.0, color: 0x0b0c0e, max: 55, accel: 7, grip: 8, wheel: 0.37, mass: 2600 },
+  { id: 'compact', name: 'Ivy Compact', cat: 'Cars', type: 'car', style: 'hatch', L: 3.6, W: 1.68, color: 'random', max: 44, accel: 8, grip: 9, wheel: 0.3, mass: 950 },
+  { id: 'rally', name: 'Tippecanoe Rally', cat: 'Cars', type: 'car', style: 'hatch', L: 4.2, W: 1.86, color: 0x1e5aa8, stripe: 0xf2c014, max: 64, accel: 12.5, grip: 10.5, wheel: 0.34, mass: 1250 },
+  { id: 'roadster', name: 'Harrison Roadster', cat: 'Cars', type: 'car', style: 'coupe', L: 4.1, W: 1.82, color: 0xb0121b, max: 68, accel: 11.5, grip: 10, wheel: 0.34, mass: 1100 },
+  { id: 'gtr', name: 'Tecumseh GT-R', cat: 'Cars', type: 'car', style: 'coupe', L: 4.7, W: 1.94, color: 0x3d4249, max: 85, accel: 15, grip: 11, wheel: 0.36, mass: 1650 },
+  { id: 'supercar', name: 'Ross-Ade Supercar', cat: 'Cars', type: 'car', style: 'hyper', L: 4.5, W: 2.0, color: 0xe2580f, max: 90, accel: 16.5, grip: 11, wheel: 0.36, mass: 1400 },
+  { id: 'dragster', name: 'Levee Drag Muscle', cat: 'Cars', type: 'car', style: 'muscle', L: 5.1, W: 2.0, color: 0x0b0c0e, stripe: 0xcfb991, max: 80, accel: 15, grip: 7.5, wheel: 0.38, mass: 1700 },
+  { id: 'pony', name: 'Columbian Pony Car', cat: 'Cars', type: 'car', style: 'muscle', L: 4.8, W: 1.92, color: 0xf2c014, stripe: 0x111111, max: 70, accel: 11.5, grip: 8, wheel: 0.36, mass: 1500 },
+  { id: 'jeep', name: 'Battle Ground 4x4', cat: 'Cars', type: 'car', style: 'suv', L: 4.3, W: 1.9, color: 0x123d26, max: 46, accel: 7.5, grip: 9, wheel: 0.44, mass: 1800, offroad: true },
+  { id: 'crossover', name: 'Lindberg Crossover', cat: 'Cars', type: 'car', style: 'suv', L: 4.6, W: 1.88, color: 'random', max: 54, accel: 8.5, grip: 8.5, wheel: 0.38, mass: 1700 },
+  { id: 'hauler', name: 'Ag Hauler HD', cat: 'Cars', type: 'car', style: 'pickup', L: 6.1, W: 2.15, color: 'random', max: 52, accel: 8.5, grip: 8, wheel: 0.45, mass: 2900 },
+  { id: 'van', name: 'Wabash Van', cat: 'Big rigs', type: 'car', style: 'box', L: 5.4, W: 2.1, color: 'random', boxH: 2.5, max: 44, accel: 6.5, grip: 8, wheel: 0.38, mass: 2600 },
+  { id: 'tanker', name: 'Fuel Tanker', cat: 'Big rigs', type: 'car', style: 'box', L: 10, W: 2.5, color: 0xf0f0f0, extra: 'tanker', boxH: 3.2, max: 34, accel: 3.8, grip: 7, wheel: 0.52, mass: 16000 },
   { id: 'police', name: 'Lafayette PD Cruiser', cat: 'Emergency', type: 'car', style: 'sedan', L: 5.0, W: 1.95, color: 0x111317, extra: 'police', max: 66, accel: 11, grip: 9.5, wheel: 0.36, mass: 1800 },
   { id: 'taxi', name: 'Boiler Cab', cat: 'Cars', type: 'car', style: 'sedan', L: 4.9, W: 1.86, color: 0xf2c014, extra: 'taxi', max: 52, accel: 8, grip: 8.5, wheel: 0.34, mass: 1500 },
   { id: 'ambulance', name: 'Ambulance', cat: 'Emergency', type: 'car', style: 'box', L: 6.4, W: 2.3, color: 0xf4f4f2, extra: 'ambulance', boxH: 2.9, max: 46, accel: 6, grip: 7.5, wheel: 0.42, mass: 4200 },
@@ -92,8 +108,8 @@ function extrudeProfile(pts, width, mat, bevel = 0.08, taper = null) {
 
 const BRAKE = new THREE.MeshStandardMaterial({ color: 0x5a5c60, metalness: 0.8, roughness: 0.45 });
 const wheelCache = new Map();
-function wheelGeo(r, w) {
-  const k = r.toFixed(2) + w.toFixed(2);
+function wheelGeo(r, w, spokes = 5) {
+  const k = r.toFixed(2) + w.toFixed(2) + ':' + spokes;
   if (wheelCache.has(k)) return wheelCache.get(k);
   // tyre: lathe of a rounded profile (sidewall bulge), axis along X
   const prof = [];
@@ -104,20 +120,21 @@ function wheelGeo(r, w) {
   const parts = [];
   const disc = new THREE.CylinderGeometry(rim, rim, w * 0.5, 24); disc.rotateZ(Math.PI / 2); disc.translate(-w * 0.05, 0, 0);
   const hub = new THREE.CylinderGeometry(rim * 0.22, rim * 0.22, w * 0.62, 12); hub.rotateZ(Math.PI / 2);
-  for (let i = 0; i < 5; i++) { const sp = new THREE.BoxGeometry(w * 0.2, rim * 0.95, rim * 0.16); sp.translate(w * 0.18, rim * 0.45, 0); sp.rotateX(i / 5 * Math.PI * 2); parts.push(sp); }
+  const thin = spokes > 6 ? 0.55 : 1;
+  for (let i = 0; i < spokes; i++) { const sp = new THREE.BoxGeometry(w * 0.2, rim * 0.95, rim * 0.16 * thin); sp.translate(w * 0.18, rim * 0.45, 0); sp.rotateX(i / spokes * Math.PI * 2); parts.push(sp); }
   const lip = new THREE.TorusGeometry(rim * 0.97, 0.018, 6, 28); lip.rotateY(Math.PI / 2); lip.translate(w * 0.28, 0, 0);
   const out = { tyre, disc, hub, spokes: parts, lip };
   wheelCache.set(k, out);
   return out;
 }
-function wheel(r, w, side = 1) {
-  const G = wheelGeo(r, w);
+function wheel(r, w, side = 1, spokes = 5, rimMat = RIM) {
+  const G = wheelGeo(r, w, spokes);
   const g = new THREE.Group();
   const t = new THREE.Mesh(G.tyre, TIRE); t.castShadow = true; g.add(t);
   const d = new THREE.Mesh(G.disc, BRAKE); g.add(d);
-  const h = new THREE.Mesh(G.hub, RIM); g.add(h);
-  for (const sp of G.spokes) g.add(new THREE.Mesh(sp, RIM));
-  g.add(new THREE.Mesh(G.lip, RIM));
+  const h = new THREE.Mesh(G.hub, rimMat); g.add(h);
+  for (const sp of G.spokes) g.add(new THREE.Mesh(sp, rimMat));
+  g.add(new THREE.Mesh(G.lip, rimMat));
   g.scale.x = side;   // mirror so spokes face outwards on both sides
   const spin = new THREE.Group(); spin.add(g);
   const steer = new THREE.Group(); steer.add(spin);
@@ -244,7 +261,14 @@ const STYLES = {
   pickup: { cl: 0.45, belt: 1.2, roof: 1.92, nose: 1.08, tail: 1.18, hood: 1.35, deck: 0, ws: 0.55, rs: 0.1, cab: 1.9 },
 };
 
-function carModel(spec, color) {
+// tuning catalogue (materials are cached so many cars share them)
+export const RIM_COLORS = { chrome: 0xc4c8ce, black: 0x1a1a1c, white: 0xeeeeee, bronze: 0x8c6a3a, gold: 0xd4a537 };
+const rimMats = {};
+const rimMat = (c) => rimMats[c] ||= (c === 'chrome' ? RIM : new THREE.MeshStandardMaterial({ color: RIM_COLORS[c], metalness: c === 'black' || c === 'white' ? 0.4 : 1, roughness: c === 'black' ? 0.35 : 0.2 }));
+const tintMats = {};
+const tintMat = (t) => tintMats[t] ||= (t === 1 ? GLASS : new THREE.MeshPhysicalMaterial({ color: [0x22323c, 0x030405, 0x010203, 0x000000][t], metalness: 0, roughness: [0.06, 0.06, 0.1, 0.14][t], clearcoat: [0.6, 0.6, 0.35, 0.25][t], clearcoatRoughness: 0.08, envMapIntensity: [0.7, 0.6, 0.4, 0.28][t] }));
+
+function carModel(spec, color, tune = {}) {
   const g = new THREE.Group();
   const { L, W } = spec;
   const body = paint(color);
@@ -270,6 +294,13 @@ function carModel(spec, color) {
         g.add(box(0.5, 0.2, L - 1.5, flat(0xd8d8d8, 0.4, 0.8), 0, H + 0.3, -0.5));
         for (let i = 0; i < 10; i++) g.add(box(0.6, 0.06, 0.06, flat(0xd8d8d8, 0.4, 0.8), 0, H + 0.42, -L / 2 + 1.5 + i * 0.75));
         g.add(box(W + 0.02, 0.18, L - 0.4, flat(0xf0d000, 0.5), 0, 1.0, 0));
+      }
+      if (spec.extra === 'tanker') {   // swap the box for a fuel tank
+        g.children.pop();
+        const tank = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, L - cabL - 0.6, 24), flat(0xd8dadc, 0.25, 0.9));
+        tank.rotation.x = Math.PI / 2; tank.position.set(0, 1.85, -cabL / 2 - 0.1); g.add(tank);
+        g.add(box(W - 0.5, 0.25, L - cabL - 0.4, flat(0x222222, 0.6), 0, 0.75, -cabL / 2));
+        for (const sx of [-1.105, 1.105]) g.add(box(0.02, 0.32, L - cabL - 1.4, flat(0xb0121b, 0.5), sx, 1.85, -cabL / 2 - 0.1));
       }
       if (spec.extra === 'truck') {
         g.add(box(W + 0.02, 0.6, L - cabL - 1, flat(0x7a1d2b, 0.5), 0, 2.0, -cabL / 2 - 0.05));
@@ -322,11 +353,21 @@ function carModel(spec, color) {
   const wb = Math.min(L * 0.62, L - 2 * r - 0.7), tw = W / 2 - 0.2;
   const axles = spec.style === 'bus' ? [L / 2 - 2.4, -L / 2 + 3.0] : [wb / 2, -wb / 2];
   for (const z of axles) for (const x of [tw, -tw]) {
-    const w = wheel(r, 0.26 + (spec.mass > 3000 ? 0.12 : 0), Math.sign(x));
+    const w = wheel(r, 0.26 + (spec.mass > 3000 ? 0.12 : 0), Math.sign(x), tune.spokes || 5, rimMat(tune.rim || 'chrome'));
     w.position.set(x, r, z);
     g.add(w); parts.wheels.push(w);
     if (z > 0) parts.front.push(w);
   }
+  // tuning: window tint, spoiler, ride height (body moves, wheels stay on the ground)
+  if (tune.tint !== undefined && tune.tint !== 1) g.traverse(o => { if (o.isMesh && o.material === GLASS) o.material = tintMat(tune.tint); });
+  if (tune.spoiler && !boxy && spec.style !== 'hyper') {
+    const st2 = STYLES[spec.style];
+    const wingMat = tune.spoiler === 1 ? body : flat(0x111111, 0.35, 0.3);
+    const [wy, wd, wwid, legs] = [[0, 0, 0, 0], [0.04, 0.12, 0.7, 0], [0.16, 0.26, 0.76, 0.13], [0.3, 0.32, 0.86, 0.27]][tune.spoiler];
+    const wing = box(W * wwid, 0.035, wd, wingMat, 0, st2.tail + wy, -L / 2 + 0.25); wing.rotation.x = -0.08; g.add(wing);
+    if (legs) for (const sx of [-0.45, 0.45]) g.add(box(0.04, legs, 0.08, flat(0x111111, 0.4), sx * W * wwid, st2.tail + wy - legs / 2, -L / 2 + 0.27));
+  }
+  if (tune.height) for (const o of g.children) if (!parts.wheels.includes(o)) o.position.y += tune.height * 0.05;
   g.userData.parts = parts;
   return { g, wb: axles[0] - axles[1], track: tw * 2 };
 }
@@ -486,8 +527,8 @@ function boatModel(spec) {
   return { g, wb: L * 0.6, track: W };
 }
 
-export function buildModel(spec, color) {
-  if (spec.type === 'car') return carModel(spec, color);
+export function buildModel(spec, color, tune = null) {
+  if (spec.type === 'car') return carModel(spec, color, tune || {});
   if (spec.type === 'bike') return bikeModel(spec, color);
   if (spec.type === 'plane') return planeModel(spec);
   if (spec.type === 'heli') return heliModel(spec);
@@ -502,8 +543,11 @@ export class Vehicle {
     this.spec = typeof spec === 'string' ? byId[spec] : spec;
     this.world = world;
     const color = opts.color ?? (this.spec.color === 'random' ? RANDOM_COLORS[Math.floor(Math.random() * RANDOM_COLORS.length)] : this.spec.color);
-    const { g, wb, track } = buildModel(this.spec, color);
+    this.color = color; this.tune = opts.tune || null;
+    const { g, wb, track } = buildModel(this.spec, color, this.tune);
     this.mesh = g; this.parts = g.userData.parts; this.wb = wb; this.track = track;
+    g.userData.own = new Set(g.children);
+    this.tunePerf = perfOf(this.tune);
     this.pos = new THREE.Vector3(); this.vel = new THREE.Vector3();
     this.yaw = 0; this.pitch = 0; this.roll = 0; this.yawRate = 0; this.steerAng = 0;
     this.q = new THREE.Quaternion();
@@ -531,6 +575,22 @@ export class Vehicle {
     this.onGround = true; this.throttle = 0;
     this.sync();
     return this;
+  }
+
+  // garage: rebuild the model with new paint / tint / rims / spoiler / height, keep everything else
+  retune(tune) {
+    this.tune = { ...tune };
+    if (tune.color !== undefined) this.color = tune.color;
+    const old = this.mesh, parent = old.parent;
+    const { g } = buildModel(this.spec, this.color, this.tune);
+    const own = old.userData.own;   // children the model builder made; anything else (rider, headlight) moves over
+    g.userData.own = new Set(g.children);
+    for (const c of [...old.children]) if (!own || !own.has(c)) g.add(c);
+    g.position.copy(old.position); g.quaternion.copy(old.quaternion); g.scale.copy(old.scale);
+    this.mesh = g; this.parts = g.userData.parts;
+    if (parent) { parent.remove(old); parent.add(g); }
+    this.tunePerf = perfOf(this.tune);
+    this.sync();
   }
 
   damage(n) {
@@ -575,11 +635,12 @@ export class Vehicle {
     if (onGround && !drowned) {
       let thr = c.throttle;
       if (this.hp <= 0) thr = 0;
-      let accel = s.accel * (1 - off * 0.25);
-      let maxV = s.max * (1 - off * 0.35);
+      const pm = this.perf || { accel: 1, max: 1, grip: 1, nitro: 1 };
+      let accel = s.accel * pm.accel * (1 - off * 0.25);
+      let maxV = s.max * pm.max * (1 - off * 0.35);
       if (c.boost && this.nitro > 0 && thr > 0 && s.type === 'car') {
         this.nitro = Math.max(0, this.nitro - dt * 0.22); accel *= 1.8; maxV *= 1.25; this.boosting = true;
-      } else this.nitro = Math.min(1, this.nitro + dt * 0.05);
+      } else this.nitro = Math.min(1, this.nitro + dt * 0.05 * pm.nitro);
       const k = accel / (maxV * maxV);
       if (thr > 0) {
         if (vf < -0.5) vf += 14 * dt * thr;             // braking while reversing
@@ -598,7 +659,7 @@ export class Vehicle {
       const target = c.steer * (s.type === 'bike' ? 0.5 : 0.62) / (1 + Math.abs(vf) / (s.type === 'bike' ? 26 : 20));
       this.steerAng += (target - this.steerAng) * Math.min(1, dt * 8);
       let yr = -vf * Math.tan(this.steerAng) / Math.max(1.5, this.wb);
-      const grip = c.handbrake ? 1.4 : s.grip * (1 - off * 0.3);
+      const grip = c.handbrake ? 1.4 : (s.grip * (this.perf?.grip || 1)) * (1 - off * 0.3);
       if (c.handbrake && Math.abs(vf) > 6) yr *= 1.45;
       this.yawRate += (yr - this.yawRate) * Math.min(1, dt * (c.handbrake ? 4 : 10));
       this.yaw += this.yawRate * dt;
@@ -708,7 +769,7 @@ export class Vehicle {
       vf = Math.max(vf, -6);
       const yr = -c.steer * (0.9 + Math.abs(vf) * 0.03) * Math.min(1, Math.abs(vf) / 4 + 0.15) * Math.sign(vf || 1);
       this.yawRate += (yr - this.yawRate) * Math.min(1, dt * 2.5);
-      vr *= Math.exp(-s.grip * dt);
+      vr *= Math.exp(-(s.grip * (this.perf?.grip || 1)) * dt);
       if (Math.abs(vf) > 4 && fx && Math.random() < 0.7) fx.emit('wake', this.rearPos().setY(0.2), null);
       if (Math.abs(vf) > 12 && fx && Math.random() < 0.3) fx.emit('splash', tmp2.copy(this.pos).addScaledVector(f, s.L * 0.3).setY(0.3), null);
     } else {
@@ -892,5 +953,8 @@ export class Vehicle {
     }
   }
 }
+
+// ECU chip stages
+export function perfOf(t) { const e = t?.ecu || 0; return { accel: 1 + [0, 0.1, 0.2, 0.32][e], max: 1 + [0, 0.04, 0.08, 0.12][e], grip: 1 + (t?.height < 0 ? 0.04 * -t.height : 0) }; }
 
 export const NO_INPUT = { throttle: 0, steer: 0, handbrake: false, up: false, down: false, yaw: 0, pitch: 0, roll: 0, boost: false };

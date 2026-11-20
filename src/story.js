@@ -30,9 +30,10 @@ export class Story {
       onEnd: (ok, msg) => {
         this.active = null;
         if (ok) {
-          g.addMoney(M.pay); g.karma(-2);
+          const pay = Math.round(M.pay * g.prog.payMult);
+          g.addMoney(pay); g.karma(-2); g.prog.add(150);
           if (i >= this.done) g.save.story.done = i + 1;
-          g.hud.big('MISSION PASSED', `${M.title}  •  +$${M.pay.toLocaleString()}`, 'pass');
+          g.hud.big('MISSION PASSED', `${M.title}  •  +$${pay.toLocaleString()}  •  +150 XP`, 'pass');
           g.audio.chime(true);
           if (i + 1 === CHAPTER.length) setTimeout(() => g.hud.big('CHAPTER 1 COMPLETE', 'Thanks for playing! The Golden Train Hypercar is waiting at Ross-Ade. More chapters coming soon.', 'pass'), 4000);
           else setTimeout(() => { g.audio.ring(); g.hud.toast(`📱 New message from Dee: "${CHAPTER[i + 1].blurb}" (Tab → Story)`, 'good'); }, 5000);

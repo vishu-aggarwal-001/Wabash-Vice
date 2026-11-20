@@ -25,6 +25,21 @@ export const JOBS = {
     desc: 'Drive the delivery truck to drop-offs across town before the clock runs out.',
     ranks: [['Courier', 0], ['Driver', 5], ['Senior Driver', 14], ['Route Boss', 30], ['Logistics King', 55]],
   },
+  bus: {
+    name: 'CityBus Driver', sub: 'Route stops', veh: 'bus', outfit: null, icon: '🚌', color: '#1e5aa8', karma: 1,
+    desc: 'Drive the CityBus route: stop at each bus stop, let people on and off, keep to the timetable.',
+    ranks: [['Trainee', 0], ['Driver', 4], ['Route Driver', 12], ['Senior Driver', 25], ['Depot Legend', 45]],
+  },
+  fire: {
+    name: 'Firefighter', sub: 'Fire calls', veh: 'fire', outfit: null, icon: '🚒', color: '#e2330f', karma: 3,
+    desc: 'Race the engine to fires, park up and the water cannon locks onto the flames. Put every fire out.',
+    ranks: [['Probie', 0], ['Firefighter', 4], ['Engineer', 12], ['Captain', 25], ['Fire Chief', 45]],
+  },
+  chop: {
+    name: "Vic's Chop Shop", sub: 'Car orders', veh: null, outfit: null, icon: '🔧', color: '#8a8f98', karma: -2, crime: true,
+    desc: 'Uncle Vic wants particular cars. Find the one on order, steal it and get it to the chop shop in one piece.',
+    ranks: [['Joyrider', 0], ['Car Thief', 4], ['Booster', 12], ['Ghost', 25], ['Gone in 60', 45]],
+  },
 };
 const HOSPITALS = [['Franciscan Health Lafayette Central', 40.4146, -86.8787], ['Purdue Student Health Center', 40.4279, -86.9178]];
 
@@ -48,7 +63,8 @@ export class Jobs {
     if (g.police.wanted > 0) { g.hud.toast('Lose the cops before you start work', 'warn'); return; }
     this.active = id; this.earned = 0; this.calls = 0; this.wait = 3;
     // work vehicle at the curb next to you
-    if (!g.vehicle || g.vehicle.spec.id !== J.veh) {
+    if (!J.veh) this.vehicle = null;
+    else if (!g.vehicle || g.vehicle.spec.id !== J.veh) {
       if (g.vehicle) g.exitVehicle(true);
       const S = new Script(g, 'tmp', () => {});
       const n = S.node(g.player.pos.x, g.player.pos.z);
@@ -59,7 +75,7 @@ export class Jobs {
       this.vehicle = v;
     } else this.vehicle = g.vehicle;
     if (J.outfit) g.player.setOutfit(g.people, J.outfit);
-    g.hud.big(J.name, `${this.rank(id).name} · your ${this.vehicle.spec.name} is waiting. Press X to end your shift.`);
+    g.hud.big(J.name, `${this.rank(id).name} · ${this.vehicle ? `your ${this.vehicle.spec.name} is waiting` : 'wait for the phone to ring'}. Press X to end your shift.`);
     g.audio.chime(true);
   }
 
@@ -89,6 +105,7 @@ export class Jobs {
     const pool = {
       police: [['ROAD ACCIDENT', policeAccident], ['SPEEDING CAR', policeSpeeder], ['THIEF ON THE RUN', policeThief], ['STREET FIGHT', policeBrawl], ['STOLEN CAR', policeStolen]],
       taxi: [['FARE', taxiFare]], medic: [['INJURED PERSON', medicCall]], delivery: [['PARCEL RUN', deliveryRun]],
+      bus: [['BUS ROUTE', busRoute]], fire: [['HOUSE FIRE', fireCall], ['CAR FIRE', fireCall], ['DUMPSTER FIRE', fireCall]], chop: [['CAR ORDER', chopOrder]],
     }[id];
     const r = this.rank(id).i;
     // early ranks don't get the hardest police calls
@@ -101,7 +118,8 @@ export class Jobs {
         if (this.call !== S) return;
         this.call = null; this.wait = 5 + Math.random() * 6;
         if (ok) {
-          const pay = Math.round((S.payout || 200) * this.mult(id));
+          const pay = Math.round((S.payout || 200) * this.mult(id) * g.prog.payMult);
+          g.prog.add(30);
           const before = this.rank(id).i;
           g.addMoney(pay); this.earned += pay; this.calls++;
           const st = this.stats(id); st.xp += 1; st.earned += pay;
@@ -363,4 +381,130 @@ async function deliveryRun(S, jobs, id) {
     g.audio.chime(true);
   }
   S.payout = total; S.result = '3 parcels delivered';
+}
+
+// ---------------------------------------------------------------- city bus
+async function busRoute(S, jobs, id) {
+  keepPanel(S, jobs, id);
+  const g = S.g, bus = jobs.vehicle;
+  let off = 0, riders = 0, total = 0, prev = S.here();
+  S.failIf(() => { off = g.vehicle !== bus ? off + 1 / 60 : 0; return off > 25 || bus.dead; }, () => bus.dead ? 'The bus was wrecked' : 'You left the bus');
+  const route = 4 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < route; i++) {
+    const p = S.somewhere(260, 520, prev), name = nearestLabel(g, p), c = S.curb(p, 1);
+    const n = 1 + Math.floor(Math.random() * 3), wait = [];
+    for (let k = 0; k < n; k++) wait.push(S.actor(Math.random() < 0.45 ? 'woman' : 'man', c.x + (k - 1) * 0.9, c.z + (k % 2) * 0.6, { mode: 'idle', label: k ? null : 'BUS STOP', labelColor: '#5aa9ff' }));
+    panel(S, jobs, id, `Stop ${i + 1}/${route}: ${name} · ${riders} on board`);
+    S.timer(travelTime(S, p, 35), 'You fell too far behind the timetable');
+    await S.goto(p.x, p.z, { r: 12, need: bus, stop: true, text: `Next stop: ${name}` });
+    const left = Math.max(0, S.deadline - S.time);
+    S.clearTimer();
+    // some get off, the waiting ones get on
+    const off2 = Math.min(riders, Math.floor(Math.random() * (riders + 1)));
+    for (let k = 0; k < off2; k++) { const e = S.curb(p, 1); S.actor(Math.random() < 0.45 ? 'woman' : 'man', e.x + k, e.z, { mode: 'idle' }); }
+    riders -= off2;
+    for (const w of wait) { w.setLabel(null); w.mode = 'goto'; w.target = bus.pos; }
+    await S.until(() => wait.every(w => w.pos.distanceTo(bus.pos) < 3.2) || S.time > 9999);
+    for (const w of wait) w.remove();
+    riders += n;
+    const fare = n * 18 + Math.round(left * 1.5);
+    total += fare;
+    S.toast(`${n} boarded${off2 ? `, ${off2} got off` : ''}  +$${fare}`, 'good');
+    g.audio.chime(true);
+    prev = p;
+  }
+  S.payout = total + 120; S.result = `Route complete · ${route} stops`;
+}
+
+// ---------------------------------------------------------------- firefighter
+async function fireCall(S, jobs, id) {
+  keepPanel(S, jobs, id);
+  const g = S.g, eng = jobs.vehicle, kind = S.jobTitle;
+  const p = S.somewhere(260, 700), yaw = S.roadYaw(p), where = nearestLabel(g, p);
+  await S.say('Dispatch', `Engine 1, ${kind.toLowerCase()} reported at ${where}. Roll out!`);
+  const fwd = { x: Math.sin(yaw), z: Math.cos(yaw) };
+  const count = kind === 'HOUSE FIRE' ? 4 : kind === 'CAR FIRE' ? 2 : 3;
+  const fires = [];
+  for (let i = 0; i < count; i++) {
+    const along = (i - (count - 1) / 2) * 11, c = S.curb({ x: p.x + fwd.x * along, z: p.z + fwd.z * along, y: p.y }, i % 2 ? -1 : 1);
+    fires.push({ x: c.x, z: c.z, y: g.world.groundAt(c.x, c.z).y, hp: 100 });
+  }
+  if (kind === 'CAR FIRE') { const v = S.car(['sedan', 'hatch', 'classic'][Math.floor(Math.random() * 3)], fires[0].x, fires[0].z, yaw + 0.3); v.hp = 12; v.noExplode = true; fires[0].y += 0.6; }
+  const light = new THREE.PointLight(0xff7a2a, 0, 40, 1.6); light.position.set(p.x, p.y + 4, p.z); g.scene.add(light);
+  S.onCleanup(() => g.scene.remove(light));
+  const tmpV = new THREE.Vector3(), from = new THREE.Vector3(), vel = new THREE.Vector3();
+  let spraying = null;
+  S.every((dt) => {
+    let live = 0;
+    for (const f of fires) if (f.hp > 0) {
+      live++;
+      const k = f.hp / 100;
+      const n = Math.random() < k * 0.6 ? 2 : 1;
+      for (let q = 0; q < n; q++) g.fx.emit('flame', tmpV.set(f.x + (Math.random() - 0.5) * 2.4 * k, f.y + 0.3, f.z + (Math.random() - 0.5) * 2.4 * k), null, 1);
+      if (Math.random() < 0.12) g.fx.emit('blacksmoke', tmpV.set(f.x, f.y + 3, f.z), null, 1);
+    }
+    light.intensity = live ? (8 + Math.random() * 6) * Math.min(1, live / 2) : 0;
+    // water cannon: auto-locks on the nearest fire when the engine is parked close
+    spraying = null;
+    if (g.vehicle === eng && eng.speed < 2) {
+      let bd = 26;
+      for (const f of fires) if (f.hp > 0) { const d = Math.hypot(f.x - eng.pos.x, f.z - eng.pos.z); if (d < bd) { bd = d; spraying = f; } }
+    }
+    if (spraying) {
+      const f = spraying;
+      from.set(0, 3.6, 1.2).applyQuaternion(eng.q).add(eng.pos);
+      const dx = f.x - from.x, dz = f.z - from.z, d = Math.hypot(dx, dz), t = Math.max(0.5, d / 18);
+      vel.set(dx / t, (f.y + 0.5 - from.y + 4.9 * t * t) / t, dz / t);
+      g.fx.emit('water', from, vel, 4);
+      if (Math.random() < 0.4) g.fx.emit('splash', tmpV.set(f.x, f.y + 0.3, f.z), null, 1);
+      f.hp -= (g.lastDt || 1 / 60) * 22;
+      if (f.hp <= 0) { g.fx.emit('smoke', tmpV.set(f.x, f.y + 1, f.z), null, 8); S.toast('Fire out!', 'good'); }
+    }
+  });
+  S.timer(travelTime(S, p, 35), 'The fire spread out of control before you arrived');
+  panel(S, jobs, id, 'Lights & siren (K) — hurry');
+  await S.goto(p.x, p.z, { r: 26, need: eng, text: `Get the engine to the ${kind.toLowerCase()} at ${where}` });
+  S.clearTimer();
+  panel(S, jobs, id, 'Park near the flames — the cannon aims itself');
+  S.timer(100, 'The fire spread out of control');
+  S.objective(() => `Put out the fires: ${fires.filter(f => f.hp <= 0).length}/${count}${spraying ? '  · spraying' : ' · park within 25 m of a fire'}`);
+  await S.until(() => fires.every(f => f.hp <= 0));
+  const left = Math.max(0, S.deadline - S.time);
+  S.clearTimer();
+  await S.say('Dispatch', 'Fire knocked down. Nice work, Engine 1.', 1.8);
+  S.payout = 260 + count * 60 + Math.round(left * 2); S.result = `${kind[0] + kind.slice(1).toLowerCase()} put out`;
+}
+
+// ---------------------------------------------------------------- chop shop
+const CHOP = { name: "Vic's Chop Shop", at: [40.4093, -86.8839] };
+const ORDERS = ['sedan', 'hatch', 'suv', 'pickup', 'muscle', 'gt', 'luxury', 'classic', 'pony', 'crossover', 'jeep', 'roadster', 'gtr', 'rally', 'wagon'];
+async function chopOrder(S, jobs, id) {
+  keepPanel(S, jobs, id);
+  const g = S.g, r = jobs.rank(id).i;
+  const pool = ORDERS.slice(0, Math.min(ORDERS.length, 6 + r * 3));
+  const want = pool[Math.floor(Math.random() * pool.length)];
+  const p = S.somewhere(300, 800), yaw = S.roadYaw(p), c = S.curb(p, 1);
+  const v = S.car(want, c.x, c.z, yaw);
+  const where = nearestLabel(g, p);
+  await S.say('Uncle Vic', `I got a buyer for a ${v.spec.name}. There's one parked near ${where}. Bring it to me clean.`);
+  S.blip(() => v.pos, '#ff3b3b', 6);
+  panel(S, jobs, id, `Steal the ${v.spec.name}`);
+  S.timer(travelTime(S, p, 60), 'The owner drove it away');
+  S.failIf(() => v.dead, 'The car was destroyed');
+  await S.until(() => g.vehicle === v);
+  S.clearTimer();
+  if (Math.random() < 0.45 - r * 0.05) { g.police.crime(1, 'Car theft'); S.toast('Car alarm! Someone called the cops', 'warn'); }
+  const shop = S.ll(...CHOP.at);
+  panel(S, jobs, id, `Deliver it to ${CHOP.name}`);
+  S.objective(() => `Take the ${v.spec.name} to ${CHOP.name}${g.police.wanted ? ' — lose the cops first' : ''}  (condition ${Math.round(v.hp)}%)`);
+  for (;;) {
+    await S.goto(shop.x, shop.z, { r: 10, need: v, stop: true, text: `Deliver the ${v.spec.name} to ${CHOP.name}` });
+    if (!g.police.wanted) break;
+    S.say('Uncle Vic', 'Are you crazy? Not with cops on your tail! Lose them and come back.', 2.2);
+    await S.until(() => g.police.wanted === 0);
+  }
+  const value = Math.round(v.spec.max * 9 * (0.3 + 0.7 * v.hp / 100));
+  g.exitVehicle(true);
+  await S.say('Uncle Vic', v.hp > 80 ? 'Not a scratch. You have good hands, kid.' : 'You call this clean? I take it anyway.', 1.8);
+  S.payout = value; S.result = `${v.spec.name} sold for parts`;
 }

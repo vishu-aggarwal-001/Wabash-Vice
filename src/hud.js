@@ -2,6 +2,7 @@
 import { CATALOG } from './vehicles.js';
 import { JOBS } from './jobs.js';
 import { CHAPTER } from './story.js';
+import { TALENTS } from './progression.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -58,7 +59,8 @@ export class HUD {
     } else {
       sp.hidden = true;
     }
-    $('phealth').style.width = Math.max(0, g.player.hp) + '%';
+    $('phealth').style.width = Math.max(0, g.player.hp / g.player.maxHP * 100) + '%';
+    const P = g.prog; $('lvl').textContent = `LV ${P.level}`; $('xpbar').style.width = (P.nextXP ? (P.xp - P.prevXP) / (P.nextXP - P.prevXP) * 100 : 100) + '%'; $('lvl').classList.toggle('pts', P.points > 0);
     $('pstam').style.width = g.player.stamina * 100 + '%';
     $('parmor').style.width = Math.max(0, g.player.armor) + '%';
     $('karma').style.left = (50 + (g.save.karma || 0) / 2) + '%';
@@ -125,6 +127,7 @@ export class HUD {
       app('🗺️', 'Map', '#6b4fd6', () => { this.togglePhone(false); this.toggleMap(true); });
       app('🚗', 'Vehicles', '#c0392b', () => { this.togglePhone(false); this.toggleMenu(true, 'vehicles'); });
       app('👕', 'Wardrobe', '#8b5cf6', () => { this.togglePhone(false); g.wardrobe.show(null); });
+      app('⬆️', 'Skills', '#d97706', () => this.phoneScreen('skills'));
       app('📊', 'Stats', '#555', () => this.phoneScreen('stats'));
       if (g.jobs.active) item(`End ${JOBS[g.jobs.active].name} shift`, `Earned $${g.jobs.earned.toLocaleString()} so far`, () => { g.jobs.end(); this.togglePhone(false); }).style.marginTop = '18px';
       if (g.story.active) item('Quit story mission', g.story.active.name, () => { g.story.cancel(); this.togglePhone(false); }).style.marginTop = '18px';
@@ -146,8 +149,16 @@ export class HUD {
       const buy = (title, sub, cost, ok, fn) => item(`${title} — $${cost}`, sub, () => { if (g.money < cost) return this.toast('Not enough money', 'warn'); if (!ok()) return this.toast('You already have the maximum', 'warn'); g.addMoney(-cost); fn(); this.toast(`Bought ${title}`, 'good'); this.phoneScreen('shop', false); });
       buy('Medkit', `+50 health, press H to use. You have ${g.player.medkits}/5`, 150, () => g.player.medkits < 5, () => g.player.medkits++);
       buy('Body armor', `Soaks up damage. Armor ${Math.round(g.player.armor)}%`, 500, () => g.player.armor < 100, () => { g.player.armor = 100; });
-      buy('Full heal', `Health ${Math.round(g.player.hp)}%`, 250, () => g.player.hp < 100, () => { g.player.hp = 100; });
+      buy('Full heal', `Health ${Math.round(g.player.hp)}/${g.player.maxHP}`, 250, () => g.player.hp < g.player.maxHP, () => { g.player.hp = g.player.maxHP; });
       buy('Lawyer', `Clears your wanted level (${g.police.wanted}★)`, 1000, () => g.police.wanted > 0, () => g.police.clear());
+    } else if (name === 'skills') {
+      const P = g.prog;
+      body.innerHTML = `<h3>Level ${P.level} · ${P.xp} XP${P.nextXP ? ` / ${P.nextXP}` : ''}</h3><p style="color:#ffd23f;margin:0 0 10px">${P.points} talent point${P.points === 1 ? '' : 's'} to spend</p>`;
+      for (const [k, T] of Object.entries(TALENTS)) {
+        const lv = P.t(k);
+        item(`${T.name}  ${'●'.repeat(lv)}${'○'.repeat(T.max - lv)}`, T.desc + (P.points > 0 && lv < T.max ? ' · <b style="color:#ffd23f">tap to upgrade</b>' : ''), () => { if (P.spend(k)) { this.toast(`${T.name} upgraded!`, 'good'); g.audio.chime(true); } this.phoneScreen('skills', false); });
+      }
+      item('How to earn XP', 'Story missions +150 · activities +80 · job calls +30 · Golden Gears +20 · stunt jumps +15');
     } else if (name === 'stats') {
       body.innerHTML = '<h3>Stats</h3>';
       const k = g.save.karma || 0;
@@ -356,10 +367,27 @@ export class HUD {
     for (const t of document.querySelectorAll('#menu [data-tab]')) t.classList.toggle('on', t.dataset.tab === name);
     for (const p of document.querySelectorAll('#menu .pane')) p.hidden = p.id !== 'pane-' + name;
   }
+  renderMyCar() {
+    const vg = $('vehgrid'); if (!vg) return;
+    let el = document.getElementById('mycar');
+    if (!el) { el = document.createElement('div'); el.id = 'mycar'; vg.prepend(el); }
+    const m = this.g.save.myCar, s = m && CATALOG.find(c => c.id === m.id);
+    el.innerHTML = '';
+    const h = document.createElement('h4'); h.textContent = 'Your car'; el.appendChild(h);
+    const row = document.createElement('div'); row.className = 'row'; el.appendChild(row);
+    const b = document.createElement('button');
+    if (s) {
+      const mods = [m.tune?.ecu ? 'Stage ' + m.tune.ecu : '', m.tune?.rim === 'gold' ? 'gold rims' : '', m.tune?.spoiler ? 'wing' : ''].filter(Boolean).join(' · ');
+      b.innerHTML = `<b>★ ${s.name}</b><small>${mods || 'tuned at Dee\'s'}</small>`;
+      b.style.borderColor = '#ff8a1a';
+      b.onclick = () => { this.toggleMenu(false); this.g.spawnMyCar(); };
+    } else { b.innerHTML = `<b>No car yet</b><small>take any car to Dee's Tune Shop (orange 🔧)</small>`; b.disabled = true; }
+    row.appendChild(b);
+  }
   toggleMenu(open = !this.menuOpen, tab = 'vehicles') {
     this.menuOpen = open;
     $('menu').hidden = !open;
-    if (open) { this.tab(tab); document.exitPointerLock?.(); $('gearcount').textContent = `${(this.g.save.gears || []).length}/30`; }
+    if (open) { this.tab(tab); this.renderMyCar(); document.exitPointerLock?.(); $('gearcount').textContent = `${(this.g.save.gears || []).length}/30`; }
     this.g.paused = open || this.mapOpen || this.phoneOpen;
   }
 }

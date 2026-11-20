@@ -126,12 +126,12 @@ export class Wardrobe {
     this.el.querySelector('#wsub').textContent = shop ? 'Click to buy and wear · things you own are free to change' : 'Change into anything you own · buy more at Wabash Threads and Levee Barbers (purple and teal markers on the map)';
     this.prevYaw = g.player.yaw;
     g.player.yaw = g.camYaw + Math.PI;
-    document.exitPointerLock?.();
+    document.exitPointerLock?.(); document.body.classList.add('shopping');
     g.paused = true;
     this.render();
   }
   hide() {
-    this.open = false; this.el.hidden = true;
+    this.open = false; this.el.hidden = true; document.body.classList.remove('shopping');
     for (const m of this.markers) m.grp.visible = true;
     this.g.paused = this.g.hud.menuOpen || this.g.hud.mapOpen || this.g.hud.phoneOpen;
   }

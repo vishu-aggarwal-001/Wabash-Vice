@@ -110,7 +110,7 @@ export class Player {
     this.mesh = this.char.mesh;
     scene.add(this.mesh);
     this.pos = new THREE.Vector3(); this.vel = new THREE.Vector3();
-    this.yaw = 0; this.onGround = true; this.swimming = false; this.hp = 100; this.armor = 0; this.stamina = 1; this.medkits = 2;
+    this.yaw = 0; this.onGround = true; this.swimming = false; this.hp = 100; this.maxHP = 100; this.staminaRegen = 1; this.armor = 0; this.stamina = 1; this.medkits = 2;
     this.phase = 0; this.mode = 'idle'; this.vehicle = null; this.down = 0; this.jumpHeld = false;
     this.events = [];
   }
@@ -146,8 +146,8 @@ export class Player {
     this.events.push('hurt');
   }
   useMedkit() {
-    if (this.medkits <= 0 || this.hp >= 100) return false;
-    this.medkits--; this.hp = Math.min(100, this.hp + 50); return true;
+    if (this.medkits <= 0 || this.hp >= this.maxHP) return false;
+    this.medkits--; this.hp = Math.min(this.maxHP, this.hp + 50); return true;
   }
   update(dt, input, camYaw) {
     this.events.length = 0;
@@ -163,7 +163,7 @@ export class Player {
     }
     const ml = Math.hypot(mx, mz);
     const running = input.run && ml > 0.1 && this.stamina > 0.05;
-    this.stamina = Math.max(0, Math.min(1, this.stamina + (running ? -0.12 : 0.2) * dt));
+    this.stamina = Math.max(0, Math.min(1, this.stamina + (running ? -0.12 : 0.2 * this.staminaRegen) * dt));
     const speed = this.swimming ? (running ? 2.8 : 1.6) : running ? 7.0 : 2.4;
     if (ml > 0.01) {
       mx /= Math.max(1, ml); mz /= Math.max(1, ml);

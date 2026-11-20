@@ -40,6 +40,8 @@ import { People } from './people.js';
 import { Jobs } from './jobs.js';
 import { Story } from './story.js';
 import { Wardrobe, DEFAULT_LOOK } from './wardrobe.js';
+import { Progression } from './progression.js';
+import { Garage } from './garage.js';
 import { pickWeather, installSnowShader, Snowfall, snowy } from './weather.js';
 
 const QUALITY = {
@@ -137,6 +139,8 @@ class Game {
     this.jobs = new Jobs(this);
     this.story = new Story(this);
     this.wardrobe = new Wardrobe(this);
+    this.garage = new Garage(this);
+    this.prog = new Progression(this);
     if (this.save.player) { this.player.medkits = this.save.player.medkits ?? 2; this.player.armor = this.save.player.armor ?? 0; }
     this.hud = new HUD(this);
     this.headlight = new THREE.SpotLight(0xfff1d6, 0, 90, 0.55, 0.45, 1.2);
@@ -281,14 +285,15 @@ class Game {
 
   persist() {
     try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify({ v3: true, money: this.money, gears: this.save.gears || [], settings: this.settings, hours: this.env?.hours, seenHelp: this.save.seenHelp, karma: this.save.karma || 0, jobs: this.save.jobs, story: this.save.story, look: this.save.look, owned: this.save.owned, player: { medkits: this.player?.medkits ?? 2, armor: Math.round(this.player?.armor || 0) } }));
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ v3: true, money: this.money, gears: this.save.gears || [], settings: this.settings, hours: this.env?.hours, seenHelp: this.save.seenHelp, xp: this.save.xp || 0, talents: this.save.talents, karma: this.save.karma || 0, jobs: this.save.jobs, story: this.save.story, look: this.save.look, owned: this.save.owned, myCar: this.save.myCar || null, player: { medkits: this.player?.medkits ?? 2, armor: Math.round(this.player?.armor || 0) } }));
     } catch { /* ignore */ }
   }
   addMoney(n) { this.money = Math.max(0, this.money + n); this.persist(); }
 
   // ---------------------------------------------------------------- vehicles
-  spawnVehicle(id, x, z, yaw, enter = true) {
-    const v = new Vehicle(id, this.world).place(x, z, yaw);
+  spawnVehicle(id, x, z, yaw, enter = true, opts = {}) {
+    const v = new Vehicle(id, this.world, opts).place(x, z, yaw);
+    if (opts.mine) v.mine = true;
     this.scene.add(v.mesh);
     this.parked.push(v);
     this.trimParked();
@@ -303,24 +308,28 @@ class Game {
       this.scene.remove(this.parked[far].mesh); this.parked.splice(far, 1);
     }
   }
-  spawnFromMenu(id) {
+  spawnMyCar() {
+    const m = this.save.myCar; if (!m || !byId[m.id]) return;
+    this.spawnFromMenu(m.id, { color: m.tune?.color, tune: m.tune, mine: true });
+  }
+  spawnFromMenu(id, opts = {}) {
     const s = byId[id], w = this.world, p = this.focus;
     if (this.vehicle) this.exitVehicle(true);
     if (s.type === 'plane' && Math.hypot(p.x - this.airportCenter[0], p.z - this.airportCenter[1]) > 900) {
       const R = this.runwaySpawn;
       this.hud.toast('Taking you to Purdue Airport, runway 10');
-      this.spawnVehicle(id, R.x, R.z, R.yaw); return;
+      this.spawnVehicle(id, R.x, R.z, R.yaw, true, opts); return;
     }
     if (s.type === 'boat') {
       const [rx] = this.riverPoint(p.z);
       if (Math.abs(rx - p.x) > 140 || !w.isWater(rx, p.z)) {
         const [, bz, wx] = this.boatLaunch;
         this.hud.toast('Taking you to the Wabash River');
-        this.spawnVehicle(id, wx + 8, bz, this.riverYaw(bz)); return;
+        this.spawnVehicle(id, wx + 8, bz, this.riverYaw(bz), true, opts); return;
       }
       let x = p.x; const dir = Math.sign(rx - p.x) || 1;
       for (let i = 0; i < 80 && !w.isWater(x, p.z); i++) x += dir * 2;
-      this.spawnVehicle(id, x + dir * 4, p.z, this.riverYaw(p.z)); return;
+      this.spawnVehicle(id, x + dir * 4, p.z, this.riverYaw(p.z), true, opts); return;
     }
     // in front of the player, clear of buildings (and on dry land)
     const yaw = this.camYaw;
@@ -334,7 +343,7 @@ class Game {
     for (const d of [7, 4, 10, 0]) {
       const x = ox + Math.sin(yaw) * d, z = oz + Math.cos(yaw) * d;
       const res = w.collide(x, z, Math.max(1, s.W / 2), p.y + 0.3, p.y + 2);
-      if (!res.hit || d === 0) { this.spawnVehicle(id, res.x, res.z, yaw); return; }
+      if (!res.hit || d === 0) { this.spawnVehicle(id, res.x, res.z, yaw, true, opts); return; }
     }
   }
   teleport(x, z, name) {
@@ -442,7 +451,7 @@ class Game {
     this.police.clear();
     this.addMoney(busted ? -250 : -100);
     const [x, z] = busted ? this.world.toWorld(40.4186, -86.8930) : this.startSpot;
-    this.player.place(x, z); this.player.hp = 100; this.player.down = 0; this.player.parachute = false; this.player.gone = false;
+    this.player.place(x, z); this.player.hp = this.player.maxHP; this.player.down = 0; this.player.parachute = false; this.player.gone = false;
     this.player.mesh.visible = true;
   }
 
@@ -471,6 +480,13 @@ class Game {
   // ---------------------------------------------------------------- camera
   updateCamera(dt, inp) {
     const cam = this.camera, v = this.vehicle, w = this.world, sens = this.settings.sensitivity;
+    if (this.garage?.open && v) {   // tune shop: slow orbit around the car
+      this.garage.orbit += 0.0025;
+      const p = v.pos, a = v.yaw + this.garage.orbit, R = v.spec.L * 0.95 + 2.2;
+      cam.position.set(p.x + Math.sin(a) * R, p.y + 1.7, p.z + Math.cos(a) * R);
+      cam.lookAt(p.x, p.y + 0.6, p.z); cam.fov = 50; cam.updateProjectionMatrix();
+      return;
+    }
     if (this.wardrobe?.open && !v) {   // changing room: look at the player from the front-right
       const p = this.player.pos, a = this.player.yaw + 0.35;
       cam.position.set(p.x + Math.sin(a) * 2.7, p.y + 1.35, p.z + Math.cos(a) * 2.7);
@@ -576,6 +592,7 @@ class Game {
       if (pr.has('phone') && !this.hud.menuOpen && !this.hud.mapOpen) this.hud.togglePhone();
       if (pr.has('map') && !this.hud.phoneOpen) this.hud.toggleMap();
       if (pr.has('pause') && this.wardrobe?.open) { this.wardrobe.hide(); pr.delete('pause'); }
+      if (pr.has('pause') && this.garage?.open) { this.garage.hide(); pr.delete('pause'); }
       if (pr.has('pause')) { if (this.hud.phoneOpen) this.hud.togglePhone(false); else if (this.hud.mapOpen) this.hud.toggleMap(false); else this.hud.toggleMenu(!this.hud.menuOpen, 'settings'); }
       if (pr.has('vehicles')) this.hud.toggleMenu(!this.hud.menuOpen, 'vehicles');
       if (pr.has('help')) $('help').hidden = !$('help').hidden;
@@ -617,7 +634,7 @@ class Game {
       // stunt jumps
       if ((v.type === 'car' || v.type === 'bike') && !v.onGround && v.inWater === 0) this.airTime += dt;
       else if (this.airTime > 0) {
-        if (this.airTime > 1.3 && v.onGround) { const b = Math.round(this.airTime * 160); this.addMoney(b); this.hud.toast(`STUNT JUMP! ${this.airTime.toFixed(1)}s airtime  +$${b}`, 'good'); this.audio.chime(true); }
+        if (this.airTime > 1.3 && v.onGround) { const b = Math.round(this.airTime * 160); this.addMoney(b); this.prog.add(15); this.hud.toast(`STUNT JUMP! ${this.airTime.toFixed(1)}s airtime  +$${b}`, 'good'); this.audio.chime(true); }
         this.airTime = 0;
       }
       if (this.player.mesh.parent !== this.scene) this.player.char.update(dt, 'ride', 0);
@@ -661,7 +678,10 @@ class Game {
     for (const a of this.actors.slice()) a.update(dt);
     for (const sc of this.scripts.slice()) sc.update(dt);
     this.jobs.update(dt);
-    this.wardrobe.update(dt);
+    // talents feed into the player and whatever they drive
+    this.player.maxHP = this.prog.maxHP; this.player.staminaRegen = 1 + 0.25 * this.prog.t('endurance');
+    if (v) { const dm = this.prog.driveMult, tu = v.tunePerf || { accel: 1, max: 1, grip: 1 }; v.perf = { accel: dm * tu.accel, max: tu.max, grip: (1 + 0.06 * this.prog.t('driving')) * tu.grip, nitro: 1 + 0.3 * this.prog.t('driving') }; }
+    this.wardrobe.update(dt); this.garage.update(dt);
     if (pr.has('endjob') && this.jobs.active) this.jobs.end();
     this.updateGPS(dt);
     // environment

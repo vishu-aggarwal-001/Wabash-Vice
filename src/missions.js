@@ -182,7 +182,7 @@ export class Missions {
     this.active = null; this.showCheckpoint(); g.setGPS(null);
     if (ok) {
       const pay = Math.round(A.m.id === 'delivery' ? 900 : A.m.id === 'race' ? 1500 : A.m.id === 'flight' ? 2500 : A.m.id === 'rooftop' ? 2000 : 1200) + Math.max(0, Math.round((A.limit - A.time) * 20));
-      g.addMoney(pay);
+      g.addMoney(pay); g.prog.add(80);
       g.hud.big('MISSION PASSED', `${A.m.name}  •  +$${pay.toLocaleString()}`, 'pass');
       g.audio.chime(true);
     } else {
@@ -207,7 +207,7 @@ export class Missions {
       if (Math.hypot(pos.x - s.x, pos.z - s.z) < 3 && Math.abs(pos.y + 1 - s.y) < 3.5) {
         this.group.remove(s.g); this.gears.splice(i, 1);
         g.save.gears = [...(g.save.gears || []), s.i];
-        g.addMoney(500);
+        g.addMoney(500); g.prog.add(20);
         g.hud.toast(`Golden Gear found! ${g.save.gears.length}/30  +$500`, 'good');
         g.audio.chime(true);
         g.persist();

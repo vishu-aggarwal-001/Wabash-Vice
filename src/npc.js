@@ -5,7 +5,7 @@ import { Vehicle, CATALOG } from './vehicles.js';
 import { makeHuman } from './player.js';
 import { Actor } from './actors.js';
 
-const TRAFFIC_TYPES = ['sedan', 'sedan', 'sedan', 'hatch', 'hatch', 'suv', 'suv', 'pickup', 'pickup', 'taxi', 'bus', 'truck', 'muscle', 'gt', 'sportbike', 'police'];
+const TRAFFIC_TYPES = ['sedan', 'sedan', 'sedan', 'hatch', 'hatch', 'suv', 'suv', 'pickup', 'pickup', 'taxi', 'bus', 'truck', 'muscle', 'gt', 'sportbike', 'police', 'wagon', 'classic', 'classic', 'luxury', 'compact', 'compact', 'crossover', 'crossover', 'jeep', 'hauler', 'van', 'van', 'pony', 'rally', 'roadster', 'limo', 'gtr', 'dragster'];
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
 export class Traffic {
@@ -418,7 +418,7 @@ export class Police {
       if (seen || this.heli && this.heli.v.pos.distanceTo(target) < 160) { this.unseen = 0; this.seenTime += dt; }
       else this.unseen += dt;
       if (this.seenTime > 50 && this.wanted < 5) { this.seenTime = 0; this.crime(1, 'The chase escalates'); }
-      if (this.unseen > 10 + this.wanted * 4) { this.g.hud.toast('You lost the cops', 'good'); this.clear(); }
+      if (this.unseen > (10 + this.wanted * 4) * (1 - 0.08 * (this.g.prog?.t('crime') || 0))) { this.g.hud.toast('You lost the cops', 'good'); this.clear(); }
     }
     if (this.heli && this.wanted < 3) { this.g.scene.remove(this.heli.v.mesh); this.heli = null; }
   }
