@@ -1,11 +1,11 @@
-// Realistic skinned people: a Ready Player Me man and a Mixamo woman, driven by
+// Realistic skinned people: Microsoft Rocketbox avatars (MIT licence, data/chars/rb), driven by
 // motion-captured idle / walk / run clips (data/chars/anims.json), plus procedural
 // layers for sitting, driving, riding, punching, getting knocked down and swimming.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as skClone } from 'three/addons/utils/SkeletonUtils.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { lookItems } from './wardrobe.js';
+import { dress, normalizeLook } from './outfit.js';
 
 const D = Math.PI / 180;
 // native ground speed of each clip (m/s) so feet don't slide
@@ -119,52 +119,65 @@ function retarget(scene, anims, hips, restHips) {
 export class People {
   constructor() { this.ok = false; this.matCache = new Map(); }
 
-  // MakeHuman (CC0) townspeople built by tools/make_people (Blender + MPFB2), Mixamo skeletons.
-  // A core set loads before the game starts; the rest stream in while you play.
+  // Rocketbox townspeople. A core set loads before the game starts; the rest stream in while you play.
   async load(base = '') {
     this.base = base;
     this.L = new GLTFLoader();
     this.L.setMeshoptDecoder(MeshoptDecoder);
-    this.templates = {};
-    this.anims = await fetch(base + 'data/chars/anims.json').then(r => r.json());
-    await Promise.all(CORE.map(n => this.loadOne(n)));
-    // the player's current clothes, so they never appear half-dressed
-    if (this.look) await Promise.all(lookItems(this.look).map(id => this.loadItem(id)));
+    this.templates = {}; this.loading = {}; this.masks = {};
+    [this.anims, this.index] = await Promise.all([fetch(base + 'data/chars/anims.json').then(r => r.json()), fetch(base + 'data/chars/rb/index.json').then(r => r.json())]);
+    this.meta = Object.fromEntries(this.index.map(m => [m.id, m]));
+    const look = normalizeLook(this.look);
+    const core = new Set([look.base, look.head, look.legs, look.feet, ...CORE].filter(id => id && this.meta[id]));
+    await Promise.all([...core].map(n => this.ensure(n)));
     this.ok = true;
   }
-  loadItem(id) {
-    this.items ||= {};
-    return (this.items[id] ||= this.L.loadAsync(this.base + `data/chars/wardrobe/${id}.glb`).then((g) => {
-      g.scene.traverse((o) => {
-        if (!o.isMesh) return;
-        o.castShadow = true; o.frustumCulled = false;
-        const mats = Array.isArray(o.material) ? o.material : [o.material];
-        for (const m of mats) { m.defines = { ...(m.defines || {}), NO_SNOW: '' }; m.envMapIntensity = 0.6; }
-      });
-      return g;
-    }).catch((e) => { console.warn('wardrobe item failed', id, e); return null; }));
+  ensure(id) {
+    if (!this.meta[id]) return Promise.resolve(null);
+    return (this.loading[id] ||= this.L.loadAsync(this.base + `data/chars/rb/${id}.glb`)
+      .then((g) => { const T = this.prep(g, this.anims); T.meta = this.meta[id]; T.id = id; this.templates[id] = T; return T; })
+      .catch((e) => { console.warn('could not load person', id, e); return null; }));
   }
-  // the player: one body + whatever they're wearing
+  // region mask of an avatar's body texture (0 top, 1 legs, 2 feet, 3 palms, 4 fingers), 256 px
+  mask(id) {
+    return (this.masks[id] ||= new Promise((res) => {
+      const im = new Image();
+      im.onload = () => {
+        const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d');
+        x.drawImage(im, 0, 0, 256, 256);
+        const d = x.getImageData(0, 0, 256, 256).data, cls = new Uint8Array(256 * 256);
+        for (let i = 0; i < cls.length; i++) cls[i] = Math.round(d[i * 4] / 50);
+        const alpha = {};
+        for (const k of [1, 2, 3, 4]) {
+          const a = document.createElement('canvas'); a.width = a.height = 256; const ax = a.getContext('2d'), id2 = ax.createImageData(256, 256);
+          for (let i = 0; i < cls.length; i++) if (cls[i] === k) id2.data[i * 4 + 3] = 255;
+          ax.putImageData(id2, 0, 0); alpha[k] = a;
+        }
+        res({ cls, alpha });
+      };
+      im.onerror = () => res(null);
+      im.src = this.base + `data/chars/rb/masks/${id}.png`;
+    }));
+  }
+  // the player: an avatar's body with a mixed-and-matched look (see outfit.js)
   makePlayer(look) {
-    const T = this.templates.body;
+    look = normalizeLook(look);
+    const T = this.templates[look.base] || this.templates[DEFAULT_PLAYER];
     if (!T) return this.make('man');
     const model = skClone(T.scene);
     const root = new THREE.Group();
-    const s = 1.8 / T.height;
+    const s = (look.g === 'f' ? 1.68 : 1.8) / T.height;
     model.scale.multiplyScalar(s); model.position.y = -T.minY * s;
     root.add(model);
     const c = new Character(root, model, T, 'player');
-    c.wear(this, lookItems(look));
+    dress(this, c, look);
     return c;
   }
-  async loadOne(n) {
-    try { this.templates[n] = this.prep(await this.L.loadAsync(this.base + `data/chars/mh/${n}.glb`), this.anims); }
-    catch (e) { console.warn('could not load person', n, e); }
-  }
-  loadRest() { return Promise.all(EXTRA.map(n => this.loadOne(n))); }
-  get men() { return Object.keys(this.templates).filter(n => n.startsWith('m_')); }
-  get women() { return Object.keys(this.templates).filter(n => n.startsWith('f_')); }
-  get cops() { return Object.keys(this.templates).filter(n => n.startsWith('cop')); }
+  loadRest() { return Promise.all(this.index.map(m => this.ensure(m.id))); }
+  pool(role, g) { return Object.keys(this.templates).filter(id => { const m = this.meta[id]; return (Array.isArray(role) ? role.includes(m.role) : m.role === role) && (!g || m.g === g); }); }
+  get men() { return this.pool(['civ', 'biz', 'worker'], 'm'); }
+  get women() { return this.pool(['civ', 'biz'], 'f'); }
+  get cops() { return this.pool('cop', 'm'); }
 
   prep(gltf, anims) {
     const scene = gltf.scene;
@@ -173,6 +186,7 @@ export class People {
       if (o.isMesh) {
         o.castShadow = true; o.receiveShadow = false; o.frustumCulled = false;
         if (/Teeth/.test(o.name)) o.visible = false;
+        if (/hair/.test(o.name)) o.receiveShadow = false;
         const mats = Array.isArray(o.material) ? o.material : [o.material];
         for (const m of mats) { m.defines = { ...(m.defines || {}), NO_SNOW: '' }; m.envMapIntensity = 0.6; if (m.map) m.map.anisotropy = 4; if (m.metalness > 0.5) m.metalness = 0.1; }
       }
@@ -204,35 +218,29 @@ export class People {
   // kind: man | woman | cop | medic | player
   make(kind = 'man', opts = {}) {
     const pick = (a) => a[Math.floor(Math.random() * a.length)];
-    const tplName = opts.template && this.templates[opts.template] ? opts.template : (kind === 'player' ? 'player' : kind === 'cop' ? pick(this.cops) : kind === 'medic' ? 'cop' : kind === 'woman' ? pick(this.women) : pick(this.men));
+    const want = ALIAS[opts.template] || opts.template;
+    const byKind = { cop: () => this.cops, swat: () => this.pool('swat'), medic: () => this.pool('medic', opts.female ? 'f' : null), fire: () => this.pool('fire'), woman: () => this.women, man: () => this.men };
+    let list = (byKind[kind] || byKind.man)();
+    if (kind === 'cop' && opts.female) list = this.pool('cop', 'f').concat(list).slice(0, 1);
+    if (!list.length) list = this.men.length ? this.men : Object.keys(this.templates);
+    const tplName = want && this.templates[want] ? want : pick(list);
     const T = this.templates[tplName];
     const model = skClone(T.scene);
-    const female = tplName.startsWith('f_');
-    // uniforms and a little colour variety in everyday clothes
-    const tint = TINTS[Math.floor(Math.random() * TINTS.length)];
-    model.traverse((o) => {
-      if (!o.isMesh) return;
-      const n = o.material.name || '';
-      if (/body|eyebrow|eyelash|low-poly|short0|long0|bob0|ponytail/i.test(n)) return;
-      if (kind === 'cop') o.material = this.material(o.material, /pants/i.test(n) ? 0x4a5372 : 0xffffff);
-      else if (kind === 'medic') o.material = this.material(o.material, /shirt/i.test(n) ? 0xf2f2f2 : /pants/i.test(n) ? 0x5a6d9a : 0xffffff);
-      else if (kind !== 'player' && tint && !/shoe|boot|sneaker|oxford|leather|suit_tie|worksuit|beard|moustache|hat|cap|bag/i.test(n) && !/tracksuit/.test(tplName) && Math.random() < 0.5) o.material = this.material(o.material, tint);
-    });
+    const female = T.meta?.g === 'f';
     const root = new THREE.Group();
     const s = (opts.height ?? (female ? 1.66 : 1.79) * (opts.vary === false || kind === 'player' ? 1 : 0.95 + Math.random() * 0.08)) / T.height;
     model.scale.multiplyScalar(s);
     model.position.y = -T.minY * s;
     root.add(model);
-    const r = Math.random();
-    const ownHat = /hoodie|worker/.test(tplName);
-    const style = opts.head ?? (kind === 'cop' ? 'police' : ownHat ? 'none' : kind === 'man' && !female ? (r < 0.14 ? 'beanie' : r < 0.22 ? 'cap' : 'none') : kind === 'woman' && r < 0.12 ? 'beanie' : 'none');
+    const style = opts.head && opts.head !== 'police' ? opts.head : 'none';
     if (style !== 'none') headwear(model, style, opts.hairColor, T.height * s);
     return new Character(root, model, T, kind);
   }
 }
-const TINTS = [null, null, null, 0xd8d0c8, 0xb8c6d8, 0xc9b8a8, 0xc8c8c8, 0xd9c7b0];
-const CORE = ['body', 'cop', 'm_leather', 'm_tracksuit', 'm_hoodie', 'm_sweater', 'f_casual', 'f_sweater'];
-const EXTRA = ['cop2', 'cop3', 'm_denim', 'm_old', 'm_asian', 'm_worker', 'm_viking', 'm_ginger', 'm_tattoo', 'm_business', 'f_asian', 'f_cardigan', 'f_sport', 'f_old'];
+const DEFAULT_PLAYER = 'Male_Adult_04';
+const CORE = ['Male_Adult_02', 'Male_Adult_09', 'Male_Adult_17', 'Business_Male_02', 'Female_Adult_05', 'Female_Adult_13', 'Police_Male_03', 'Security_Male_01'];
+// story characters by role
+const ALIAS = { m_business: 'Business_Male_07', m_leather: 'Business_Male_04', m_tracksuit: 'Male_Adult_17', m_tattoo: 'Delivery_Male_01', m_hoodie: 'Male_Adult_18', m_viking: 'Construction_Male_01', m_worker: 'Construction_Male_02', m_denim: 'Male_Adult_12', m_old: 'Male_Adult_03', f_sport: 'Business_Female_01' };
 
 function* meshes(o) { const st = [o]; while (st.length) { const x = st.pop(); if (x.isMesh) yield x; st.push(...x.children); } }
 
@@ -302,7 +310,7 @@ function headwear(model, style, hairColor, topY) {
 
 export class Character {
   constructor(root, model, T, kind) {
-    this.mesh = root; this.model = model; this.kind = kind;
+    this.mesh = root; this.model = model; this.kind = kind; this.T = T;
     this.bones = {};
     model.traverse((o) => { if (o.isBone) this.bones[o.name] = o; });
     this.mixer = new THREE.AnimationMixer(model);
@@ -398,30 +406,7 @@ export class Character {
     return list;
   }
 
-  // dress in wardrobe items: each is a skinned mesh re-bound to this character's own bones
-  async wear(people, ids) {
-    const token = (this.wearToken = (this.wearToken || 0) + 1);
-    const gltfs = await Promise.all(ids.map(id => people.loadItem(id)));
-    if (token !== this.wearToken) return;
-    this.itemMeshes ||= {};
-    for (const [id, meshes] of Object.entries(this.itemMeshes)) if (!ids.includes(id)) { for (const m of meshes) m.parent?.remove(m); delete this.itemMeshes[id]; }
-    ids.forEach((id, i) => {
-      if (this.itemMeshes[id] || !gltfs[i]) return;
-      const out = [];
-      gltfs[i].scene.traverse((o) => {
-        if (!o.isSkinnedMesh) return;
-        const bones = o.skeleton.bones.map(b => this.bones[b.name.replace(/^mixamorig:?/, '')]);
-        if (bones.some(b => !b)) return;
-        const m = new THREE.SkinnedMesh(o.geometry, o.material);
-        m.castShadow = true; m.frustumCulled = false;
-        m.position.copy(o.position); m.quaternion.copy(o.quaternion); m.scale.copy(o.scale);
-        (this.model.getObjectByName(o.parent?.name) || this.model).add(m);
-        m.bind(new THREE.Skeleton(bones, o.skeleton.boneInverses), o.bindMatrix);
-        out.push(m);
-      });
-      this.itemMeshes[id] = out;
-    });
-  }
+
 
   punch() { if (this.punchT <= 0) { this.punchT = 0.42; return true; } return false; }
   kick() { if (this.kickT <= 0) { this.kickT = 0.55; return true; } return false; }

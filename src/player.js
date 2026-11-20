@@ -1,6 +1,6 @@
 // People: the player on foot, and the same model reused for pedestrians.
 import * as THREE from 'three';
-import { lookItems as lookItemsFn } from './wardrobe.js';
+import { dress, normalizeLook } from './outfit.js';
 
 const G = 9.81;
 const mats = new Map();
@@ -96,7 +96,7 @@ export class LegacyHuman {
 }
 export function makeHuman(people, kind = 'man', opts = {}) {
   if (people?.ok) {
-    try { return kind === 'player' && people.templates.body ? people.makePlayer(people.look) : people.make(kind, opts); }
+    try { return kind === 'player' ? people.makePlayer(people.look) : people.make(kind, opts); }
     catch (e) { console.warn(e); }
   }
   const legacy = { player: { shirt: 0xcfb991, pants: 0x1b1b1b, skin: 0xd8a47f, hair: 0x1a1208 }, cop: { shirt: 0x1d2a4a, pants: 0x141a2c, cap: 0x141a2c }, medic: { shirt: 0xe8eef5, pants: 0x2c3d63 } }[kind] || {};
@@ -115,16 +115,25 @@ export class Player {
     this.events = [];
   }
   // wardrobe: re-dress the player (ignored while in a work uniform)
-  applyLook(people, look) {
+  async applyLook(people, look) {
     if (this.outfit && this.outfit !== 'player') return;
-    if (this.char.wear) this.char.wear(people, lookItemsFn(look));
+    look = normalizeLook(look);
+    await Promise.all([look.base, look.head, look.legs, look.feet].filter(Boolean).map(id => people.ensure(id)));
+    if (this.outfit && this.outfit !== 'player') return;
+    if (this.char.look?.base === look.base && this.char.T?.id === look.base) { dress(people, this.char, look); return; }
+    // a different body: rebuild the character, keep everything else
+    const old = this.mesh, parent = old.parent;
+    this.char = people.makePlayer(look);
+    this.mesh = this.char.mesh;
+    this.mesh.position.copy(old.position); this.mesh.rotation.copy(old.rotation); this.mesh.visible = old.visible;
+    if (parent) { parent.add(this.mesh); parent.remove(old); }
   }
   // swap the whole character (uniform for jobs) while keeping position and state
   setOutfit(people, kind) {
     if (this.outfit === kind || (!this.outfit && kind === 'player')) return;
     this.outfit = kind;
     const old = this.mesh, parent = old.parent;
-    this.char = makeHuman(people, kind);
+    this.char = makeHuman(people, kind, { female: people.look?.g === 'f', vary: false });
     this.mesh = this.char.mesh;
     this.mesh.position.copy(old.position); this.mesh.rotation.copy(old.rotation); this.mesh.visible = old.visible;
     if (parent) { parent.add(this.mesh); parent.remove(old); }

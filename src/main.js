@@ -39,7 +39,8 @@ import { Audio } from './audio.js';
 import { People } from './people.js';
 import { Jobs } from './jobs.js';
 import { Story } from './story.js';
-import { Wardrobe, DEFAULT_LOOK } from './wardrobe.js';
+import { Wardrobe } from './wardrobe.js';
+import { normalizeLook } from './outfit.js';
 import { Progression } from './progression.js';
 import { Garage } from './garage.js';
 import { Pawn, byWeapon } from './weapons.js';
@@ -121,7 +122,7 @@ class Game {
     await this.world.load((p, m) => { bar.style.width = (p * 100).toFixed(0) + '%'; msg.textContent = m; });
     msg.textContent = 'Casting the people of Lafayette…';
     this.people = new People();
-    this.save.look = Object.assign({}, DEFAULT_LOOK, this.save.look || {});
+    this.save.look = normalizeLook(this.save.look);
     this.people.look = this.save.look;
     await this.people.load().catch((e) => console.warn('Character models failed to load, using simple figures', e));
     this.env = new Environment(this.scene, r, q, this.weather);
@@ -289,7 +290,7 @@ class Game {
 
   persist() {
     try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify({ v3: true, money: this.money, gears: this.save.gears || [], settings: this.settings, hours: this.env?.hours, seenHelp: this.save.seenHelp, xp: this.save.xp || 0, talents: this.save.talents, karma: this.save.karma || 0, jobs: this.save.jobs, story: this.save.story, look: this.save.look, owned: this.save.owned, myCar: this.save.myCar || null, weapons: this.save.weapons, weapon: this.save.weapon, ammo: this.save.ammo, player: { medkits: this.player?.medkits ?? 2, armor: Math.round(this.player?.armor || 0) } }));
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ v3: true, money: this.money, gears: this.save.gears || [], settings: this.settings, hours: this.env?.hours, seenHelp: this.save.seenHelp, xp: this.save.xp || 0, talents: this.save.talents, karma: this.save.karma || 0, jobs: this.save.jobs, story: this.save.story, look: this.save.look, owned: this.save.owned, owned2: this.save.owned2, myCar: this.save.myCar || null, weapons: this.save.weapons, weapon: this.save.weapon, ammo: this.save.ammo, player: { medkits: this.player?.medkits ?? 2, armor: Math.round(this.player?.armor || 0) } }));
     } catch { /* ignore */ }
   }
   addMoney(n) { this.money = Math.max(0, this.money + n); this.persist(); }

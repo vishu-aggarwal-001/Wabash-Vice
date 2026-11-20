@@ -65,7 +65,16 @@ To turn hosting on for a copy of this repo: **Settings → Pages → Build and d
 
 ---
 
-## 🆕 What's new in v0.4: the Criminal Russia update
+## 🆕 What's new in v0.5: real people and a full character creator
+
+**65 realistic townspeople** from the Microsoft Rocketbox library: proper faces, natural proportions, real clothes. Students in hoodies and denim jackets, businessmen in suits, construction workers, footballers, women in blazers, leather jackets and dresses, cops in peaked caps and police vests, SWAT, paramedics and firefighters.
+
+**Build your own character, piece by piece.** Every part is separate and saved:
+- **Face & hair** (about 30 faces per gender), **skin tone** (5 shades) and **man or woman** at Levee Barbers
+- **Top**, **trousers** and **shoes** from any outfit, mixed freely; **gloves** (black, brown, white, red driving gloves, fingerless); **hats** (beanies, caps, flat caps, ushanka); **glasses** (sunglasses, gold aviators, frames) at Wabash Threads
+- Change into anything you own from the phone (**Tab → Wardrobe**).
+
+## What was new in v0.4: the Criminal Russia update
 
 **Story mode, Chapter 1: twelve missions.** Your big brother Danny ran a garage in downtown Lafayette until Lieutenant Kessler framed him for car theft. You arrive broke and work for Danny's partner Dee and then for **Uncle Vic**, the godfather of Lafayette, until you can bring Kessler down:
 1. New Life · 2. Valuable Cargo (a van of TVs that break on every bump) · 3. The Godfather · 4. Hot Wheels · 5. Police Control (bribe the checkpoint or run it) · 6. Debt · 7. Fastest Car (Homecoming race) · 8. River Run · 9. Traitor · 10. The Party (protect Vic from the Northside Crew) · 11. Escape (4 stars and roadblocks) · 12. Fuel Deal (steal Kessler's tanker and get it to Purdue Airport).
@@ -94,7 +103,7 @@ To turn hosting on for a copy of this repo: **Settings → Pages → Build and d
 
 ## What was new in v0.3
 
-**Real people instead of mannequins.** The player, pedestrians, cops and paramedics are realistic skinned 3D people built from MakeHuman's free assets: jackets and jeans, hoodies and cargo pants, knitted sweaters, sneakers and boots, and Criminal Russia-style cops in a light blue shirt, tie and cap. They're driven by motion-captured idle, walk and run animations. Procedural layers add driving, bike riding, sitting, punching, kicking, cowering, hands-up and getting knocked flat. Men get short hair, beanies, ball caps or cowboy hats, and outfits are recoloured so the crowd isn't all clones.
+**Skinned, animated people** driven by motion-captured idle, walk and run animations, with procedural layers for driving, bike riding, sitting, punching, kicking, cowering, hands-up and getting knocked flat. (In v0.5 the MakeHuman people were replaced by Rocketbox avatars.)
 
 **Wardrobe, shops and barbers**
 - Buy clothes, hats and glasses at **Wabash Threads** (purple markers: downtown and Chauncey) and haircuts and beards at **Levee Barbers** (teal marker). Walk into the marker and press **J**.
@@ -179,7 +188,7 @@ src/script.js       tiny async mission-scripting runtime (say, goto, timer, fail
 src/jobs.js         Police / Taxi / Paramedic / Delivery jobs, calls, ranks
 src/story.js        Story mode, Chapter 1
 src/weather.js      clear / overcast / snow, snow-cover shader patch, snowfall
-data/chars/mh/      the townspeople (MakeHuman, see tools/make_people/), data/chars/anims.json mocap clips
+data/chars/rb/      the townspeople (Microsoft Rocketbox, see tools/rocketbox/), data/chars/anims.json mocap clips
 tools/charlab.html  dev page to preview characters/poses and re-extract the clips
 src/env.js          sky, sun, moon, stars, clouds, fog, day/night
 src/hud.js          speedometer, minimap, full map, menus
@@ -224,7 +233,7 @@ This is the honest path from v0.1 toward the “better than GTA *at Lafayette*�
 ## ⚠️ Notes
 
 - Textures are CC0 (public domain) photo scans from [Poly Haven](https://polyhaven.com). Thank you, Poly Haven!
-- People and wardrobe items are built with [MakeHuman](http://www.makehumancommunity.org/) / MPFB2 from CC0 community assets, plus these CC-BY 4.0 assets from the MakeHuman asset repository: the hooded sweat jacket and the shirt with tie by Elvaerwyn, the knitted sweaters, cardigan and several hats by Mindfront, the flat cap, slouchy beanie and trilby by Elvaerwyn, the bowler hat and sneakers by culturalibre, and the sneakers and handbag by punkduck. The police shirt texture was recoloured. See `tools/make_people/`.
+- People are [Microsoft Rocketbox avatars](https://github.com/microsoft/Microsoft-Rocketbox) (MIT licence, © Microsoft), converted with Blender for the web by `tools/rocketbox/` (Mixamo bone names, one mesh per part, texture-region masks for mixing outfits).
 - Mocap clips come from Mixamo's X Bot in the [three.js examples](https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf).
 - Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), ODbL. Building heights that aren't in OSM are estimated, terrain is stylized, and the river valley shape is approximate.
 - This is a fan project. It is **not** affiliated with or endorsed by Purdue University, the City of Lafayette or West Lafayette, Rockstar Games, or any vehicle maker. All vehicle names are made up.

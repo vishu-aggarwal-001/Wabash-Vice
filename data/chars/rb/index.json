@@ -1,0 +1,458 @@
+[
+{
+"id": "Male_Adult_01",
+"g": "m",
+"name": "Striped tee & shorts",
+"role": "civ",
+"legs": "shorts"
+},
+{
+"id": "Male_Adult_02",
+"g": "m",
+"name": "Cream V-neck sweater",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Male_Adult_03",
+"g": "m",
+"name": "Grey tweed jacket",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Male_Adult_04",
+"g": "m",
+"name": "Black zip jacket",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Male_Adult_05",
+"g": "m",
+"name": "Utility vest",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Male_Adult_06",
+"g": "m",
+"name": "Red shirt",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Male_Adult_07",
+"g": "m",
+"name": "Grey blazer",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Male_Adult_08",
+"g": "m",
+"name": "Light blue shirt",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Male_Adult_09",
+"g": "m",
+"name": "Navy tee",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Male_Adult_10",
+"g": "m",
+"name": "Red track jacket",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Male_Adult_11",
+"g": "m",
+"name": "Olive tee",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Male_Adult_12",
+"g": "m",
+"name": "Denim jacket",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Male_Adult_13",
+"g": "m",
+"name": "Argyle sweater",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Male_Adult_14",
+"g": "m",
+"name": "Grey sweater",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Male_Adult_16",
+"g": "m",
+"name": "Blue print tee",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Male_Adult_17",
+"g": "m",
+"name": "Blue & white hoodie",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Male_Adult_18",
+"g": "m",
+"name": "Grey hoodie",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Male_Adult_20",
+"g": "m",
+"name": "Brown tee",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Male_Adult_21",
+"g": "m",
+"name": "White thobe",
+"role": "civ",
+"legs": "robe"
+},
+{
+"id": "Business_Male_01",
+"g": "m",
+"name": "Black suit, red tie",
+"role": "biz",
+"legs": "pants"
+},
+{
+"id": "Business_Male_02",
+"g": "m",
+"name": "Navy suit",
+"role": "biz",
+"legs": "pants"
+},
+{
+"id": "Business_Male_03",
+"g": "m",
+"name": "Charcoal suit",
+"role": "biz",
+"legs": "pants"
+},
+{
+"id": "Business_Male_04",
+"g": "m",
+"name": "Waistcoat",
+"role": "biz",
+"legs": "pants"
+},
+{
+"id": "Business_Male_05",
+"g": "m",
+"name": "Suit, purple shirt",
+"role": "biz",
+"legs": "pants"
+},
+{
+"id": "Business_Male_06",
+"g": "m",
+"name": "White shirt",
+"role": "biz",
+"legs": "pants"
+},
+{
+"id": "Business_Male_07",
+"g": "m",
+"name": "Shirt & tie",
+"role": "biz",
+"legs": "pants"
+},
+{
+"id": "Construction_Male_01",
+"g": "m",
+"name": "Plaid shirt & tool belt",
+"role": "worker",
+"legs": "pants",
+"nohead": true
+},
+{
+"id": "Construction_Male_02",
+"g": "m",
+"name": "Blue coveralls",
+"role": "worker",
+"legs": "pants"
+},
+{
+"id": "Construction_Male_04",
+"g": "m",
+"name": "Bib overalls",
+"role": "worker",
+"legs": "pants"
+},
+{
+"id": "Delivery_Male_01",
+"g": "m",
+"name": "Red plaid shirt",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Gardener_Male_01",
+"g": "m",
+"name": "Brown coveralls",
+"role": "worker",
+"legs": "pants"
+},
+{
+"id": "Sports_Male_02",
+"g": "m",
+"name": "Football kit",
+"role": "civ",
+"legs": "shorts"
+},
+{
+"id": "Sports_Male_04",
+"g": "m",
+"name": "Running vest",
+"role": "civ",
+"legs": "shorts"
+},
+{
+"id": "Police_Male_02",
+"g": "m",
+"name": "SWAT",
+"role": "swat",
+"legs": "pants"
+},
+{
+"id": "Police_Male_03",
+"g": "m",
+"name": "Police uniform",
+"role": "cop",
+"legs": "pants"
+},
+{
+"id": "Police_Male_06",
+"g": "m",
+"name": "Police vest",
+"role": "cop",
+"legs": "pants"
+},
+{
+"id": "Police_Male_07",
+"g": "m",
+"name": "Detective vest",
+"role": "cop",
+"legs": "pants"
+},
+{
+"id": "Security_Male_01",
+"g": "m",
+"name": "Patrol uniform",
+"role": "cop",
+"legs": "pants"
+},
+{
+"id": "Medical_Male_02",
+"g": "m",
+"name": "Paramedic",
+"role": "medic",
+"legs": "pants"
+},
+{
+"id": "Fire_Male_01",
+"g": "m",
+"name": "Turnout gear",
+"role": "fire",
+"legs": "pants"
+},
+{
+"id": "Fire_Male_06",
+"g": "m",
+"name": "Turnout gear",
+"role": "fire",
+"legs": "pants"
+},
+{
+"id": "Female_Adult_01",
+"g": "f",
+"name": "Pink blouse",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Female_Adult_02",
+"g": "f",
+"name": "White blouse & skirt",
+"role": "civ",
+"legs": "skirt"
+},
+{
+"id": "Female_Adult_03",
+"g": "f",
+"name": "Purple top",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Female_Adult_04",
+"g": "f",
+"name": "Brown leather jacket",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Female_Adult_05",
+"g": "f",
+"name": "Pink blazer",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Female_Adult_06",
+"g": "f",
+"name": "Headscarf & robe",
+"role": "civ",
+"legs": "robe"
+},
+{
+"id": "Female_Adult_07",
+"g": "f",
+"name": "Brown jacket",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Female_Adult_08",
+"g": "f",
+"name": "Grey tee",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Female_Adult_09",
+"g": "f",
+"name": "Long cardigan",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Female_Adult_11",
+"g": "f",
+"name": "Brown dress",
+"role": "civ",
+"legs": "skirt"
+},
+{
+"id": "Female_Adult_12",
+"g": "f",
+"name": "Black hoodie & shorts",
+"role": "civ",
+"legs": "shorts"
+},
+{
+"id": "Female_Adult_13",
+"g": "f",
+"name": "Grey vest top",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Female_Adult_14",
+"g": "f",
+"name": "Wrap cardigan",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Female_Adult_15",
+"g": "f",
+"name": "Blue blouse & skirt",
+"role": "civ",
+"legs": "skirt"
+},
+{
+"id": "Female_Adult_17",
+"g": "f",
+"name": "Green tee",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Female_Party_01",
+"g": "f",
+"name": "White tank & shorts",
+"role": "civ",
+"legs": "shorts"
+},
+{
+"id": "Female_Party_02",
+"g": "f",
+"name": "Patterned dress",
+"role": "civ",
+"legs": "skirt"
+},
+{
+"id": "Business_Female_01",
+"g": "f",
+"name": "Black suit",
+"role": "biz",
+"legs": "pants"
+},
+{
+"id": "Business_Female_02",
+"g": "f",
+"name": "Burgundy blazer",
+"role": "biz",
+"legs": "pants"
+},
+{
+"id": "Business_Female_03",
+"g": "f",
+"name": "Skirt suit",
+"role": "biz",
+"legs": "skirt"
+},
+{
+"id": "Business_Female_04",
+"g": "f",
+"name": "Pinstripe suit",
+"role": "biz",
+"legs": "pants"
+},
+{
+"id": "Sports_Female_02",
+"g": "f",
+"name": "Tank & joggers",
+"role": "civ",
+"legs": "pants"
+},
+{
+"id": "Security_Female_01",
+"g": "f",
+"name": "Patrol uniform",
+"role": "cop",
+"legs": "pants"
+},
+{
+"id": "Medical_Female_03",
+"g": "f",
+"name": "Paramedic",
+"role": "medic",
+"legs": "pants"
+}
+]

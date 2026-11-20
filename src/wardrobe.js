@@ -1,49 +1,50 @@
-// Wardrobe: buy clothes, hats, glasses at Wabash Threads, haircuts and beards at the
-// barber, and change into anything you own from the phone. Every item is a separate
-// skinned mesh fitted to the player's body (tools/make_people/gen_wardrobe.py), bound to
-// the player's own skeleton at runtime, so items mix and match freely.
+// Wardrobe: build your character piece by piece. Wabash Threads sells tops, trousers, shoes,
+// gloves, hats and glasses; Levee Barbers does faces & haircuts, skin tone and gender. Change
+// into anything you own from the phone. Looks are composited from Rocketbox avatars (outfit.js).
 import * as THREE from 'three';
 import { textTexture } from './textures.js';
 
-// slot, name, price; outfit = covers legs too
-export const ITEMS = [
-  // barber
-  ['hair', null, 'Shaved head', 15], ['hair', 'hair_short01', 'Buzz cut', 20], ['hair', 'hair_short02', 'Side part', 30], ['hair', 'hair_short03', 'Short back & sides', 30],
-  ['hair', 'hair_short04', 'Spiky crop', 35], ['hair', 'hair_afro', 'Afro', 55], ['hair', 'hair_long', 'Long hair', 50], ['hair', 'hair_ponytail', 'Ponytail', 45],
-  ['beard', null, 'Clean shaven', 10], ['beard', 'beard_stubble', 'Full stubble', 25], ['beard', 'beard_moustache', 'Moustache', 20], ['beard', 'beard_goatee', 'Goatee', 30], ['beard', 'beard_viking', 'Viking beard', 45],
-  // clothing store
-  ['hat', null, 'No hat', 0], ['hat', 'hat_knit', 'Knit beanie', 35], ['hat', 'hat_slouchy', 'Slouchy beanie', 40], ['hat', 'hat_flatcap', 'Flat cap', 60], ['hat', 'hat_newsboy', 'White newsboy cap', 55],
-  ['hat', 'hat_patrol', 'Camo patrol cap', 70], ['hat', 'hat_ushanka', 'Ushanka', 85], ['hat', 'hat_fishing', 'Fishing hat', 45], ['hat', 'hat_fedora', 'Fedora', 90], ['hat', 'hat_trilby', 'Trilby', 95], ['hat', 'hat_bowler', 'Bowler hat', 120],
-  ['glasses', null, 'No glasses', 0], ['glasses', 'glasses_sun', 'Sunglasses', 80], ['glasses', 'glasses_black', 'Black frames', 60], ['glasses', 'glasses_silver', 'Silver frames', 60], ['glasses', 'glasses_rimless', 'Rimless', 70], ['glasses', 'glasses_round', 'Round tinted', 75],
-  ['top', 'outfit_field', 'Field jacket & jeans', 250, true], ['top', 'outfit_leather', 'Black leather jacket & jeans', 450, true], ['top', 'outfit_denim', 'Denim shirt & jeans', 180, true],
-  ['top', 'outfit_stripes', 'Striped shirt & jeans', 160, true], ['top', 'outfit_whitetee', 'White tee & jeans', 120, true], ['top', 'outfit_bluetee', 'Blue tee & jeans', 120, true],
-  ['top', 'outfit_suit', 'Business suit', 650, true], ['top', 'outfit_overalls', 'Work overalls', 150, true],
-  ['top', 'top_hoodie', 'Black hoodie', 90], ['top', 'top_tracksuit', 'Tracksuit top', 110], ['top', 'top_knit_cream', 'Cream knit sweater', 95], ['top', 'top_knit_red', 'Red knit sweater', 95],
-  ['top', 'top_fisherman', 'Fisherman sweater', 85], ['top', 'top_polo', 'Polo shirt', 60], ['top', 'top_blackshirt', 'Black shirt', 70],
-  ['legs', 'legs_cargo', 'Grey cargo pants', 70], ['legs', 'legs_denim', 'Blue cargo pants', 75], ['legs', 'legs_khaki', 'Khaki cargo pants', 75], ['legs', 'legs_tracksuit', 'Tracksuit pants', 80], ['legs', 'legs_wool', 'Wool trousers', 90],
-  ['shoes', 'shoes_boots', 'Ankle boots', 110], ['shoes', 'shoes_red', 'Red high-tops', 95], ['shoes', 'shoes_slipons', 'Slip-ons', 60], ['shoes', 'shoes_workboots', 'Work boots', 120], ['shoes', 'shoes_oxford', 'Oxford shoes', 150],
-].map(([slot, id, name, price, outfit]) => ({ slot, id, name, price, outfit: !!outfit, key: slot + ':' + (id || 'none') }));
-export const byKey = Object.fromEntries(ITEMS.map(i => [i.key, i]));
-export const DEFAULT_LOOK = { hair: 'hair_short02', beard: null, hat: null, glasses: null, top: 'outfit_field', legs: 'legs_cargo', shoes: 'shoes_boots' };
-const DEFAULT_OWNED = ['hair:hair_short02', 'beard:none', 'hat:none', 'glasses:none', 'top:outfit_field', 'legs:legs_cargo', 'shoes:shoes_boots'];
-const SHOPS = [
-  { id: 'threads', name: 'Wabash Threads', sub: 'Clothes · hats · glasses', at: [40.4196, -86.8907], slots: ['top', 'legs', 'shoes', 'hat', 'glasses'], color: 0x8b5cf6 },
-  { id: 'threads2', name: 'Wabash Threads (Chauncey)', sub: 'Clothes · hats · glasses', at: [40.4234, -86.9085], slots: ['top', 'legs', 'shoes', 'hat', 'glasses'], color: 0x8b5cf6 },
-  { id: 'barber', name: "Levee Barbers", sub: 'Haircuts · beards', at: [40.4185, -86.8936], slots: ['hair', 'beard'], color: 0x14b8a6 },
-];
-const SLOT_NAMES = { top: 'Tops & outfits', legs: 'Pants', shoes: 'Shoes', hat: 'Hats', glasses: 'Glasses', hair: 'Haircut', beard: 'Beard' };
+import { DEFAULT_LOOK, DEFAULT_LOOK_F, GLOVES, SKIN, HATS, GLASSES, normalizeLook, thumb } from './outfit.js';
+export { DEFAULT_LOOK };
 
-// a look -> which item ids to show (an outfit replaces the pants)
-export function lookItems(look) {
-  const top = byKey['top:' + look.top];
-  return ['hair', 'beard', 'hat', 'glasses', 'top', 'legs', 'shoes'].map(s => (s === 'legs' && top?.outfit) ? null : look[s]).filter(Boolean);
+const PRICE_TOP = { civ: 140, biz: 480, worker: 110 };
+const SHOPS = [
+  { id: 'threads', name: 'Wabash Threads', sub: 'Clothes · shoes · gloves · hats · glasses', at: [40.4196, -86.8907], slots: ['top', 'legs', 'feet', 'gloves', 'hat', 'glasses'], color: 0x8b5cf6 },
+  { id: 'threads2', name: 'Wabash Threads', sub: 'Clothes · shoes · gloves · hats · glasses', at: [40.4234, -86.9085], slots: ['top', 'legs', 'feet', 'gloves', 'hat', 'glasses'], color: 0x8b5cf6 },
+  { id: 'barber', name: 'Levee Barbers', sub: 'Face & hair · skin tone', at: [40.4185, -86.8936], slots: ['head', 'skin', 'gender'], color: 0x14b8a6 },
+];
+const SLOT_NAMES = { head: 'Face & hair', top: 'Tops', legs: 'Trousers', feet: 'Shoes', gloves: 'Gloves', skin: 'Skin tone', hat: 'Hats', glasses: 'Glasses', gender: 'Man / woman' };
+const ALL_SLOTS = ['top', 'legs', 'feet', 'gloves', 'hat', 'glasses', 'head', 'skin', 'gender'];
+
+// every item for the current gender: { slot, id, name, price, img, key }
+export function catalogue(people, g) {
+  const out = [], donors = (people.index || []).filter(m => m.g === g && ['civ', 'biz', 'worker'].includes(m.role));
+  donors.forEach((m, n) => {
+    if (!m.nohead) out.push({ slot: 'head', id: m.id, name: `Face & hair ${n + 1}`, price: 60, img: 'face' });
+    out.push({ slot: 'top', id: m.id, name: m.name, price: PRICE_TOP[m.role] || 140, img: 'top' });
+    if (m.legs === 'pants') out.push({ slot: 'legs', id: m.id, name: `Trousers ${n + 1}`, price: m.role === 'biz' ? 160 : 85, img: 'legs' });
+    out.push({ slot: 'feet', id: m.id, name: `Shoes ${n + 1}`, price: m.role === 'biz' ? 140 : 75, img: 'feet' });
+  });
+  out.push({ slot: 'gloves', id: null, name: 'Bare hands', price: 0 });
+  for (const [id, [c, name]] of Object.entries(GLOVES)) out.push({ slot: 'gloves', id, name, price: 45, color: c });
+  for (const [v, name] of SKIN) out.push({ slot: 'skin', id: v, name, price: v === 0 ? 0 : 30 });
+  out.push({ slot: 'hat', id: null, name: 'No hat', price: 0 });
+  for (const [id, [, c, name]] of Object.entries(HATS)) out.push({ slot: 'hat', id, name, price: id === 'ushanka' ? 90 : 40, color: c });
+  out.push({ slot: 'glasses', id: null, name: 'No glasses', price: 0 });
+  for (const [id, [f, , , name]] of Object.entries(GLASSES)) out.push({ slot: 'glasses', id, name, price: 70, color: f });
+  out.push({ slot: 'gender', id: 'm', name: 'Man', price: 0 }, { slot: 'gender', id: 'f', name: 'Woman', price: 0 });
+  for (const it of out) it.key = it.slot + ':' + it.id;
+  return out;
 }
+const LOOK_SLOT = { head: 'head', top: 'base', legs: 'legs', feet: 'feet', gloves: 'gloves', skin: 'skin', hat: 'hat', glasses: 'glasses', gender: 'g' };
+const startOwned = (L) => ['head:' + L.head, 'top:' + L.base, 'legs:null', 'feet:null', 'gloves:null', 'skin:0', 'hat:null', 'glasses:null', 'gender:m', 'gender:f'];
 
 export class Wardrobe {
   constructor(g) {
     this.g = g;
-    g.save.look ||= { ...DEFAULT_LOOK };
-    g.save.owned = [...new Set([...(g.save.owned || []), ...DEFAULT_OWNED])];
+    g.save.look = normalizeLook(g.save.look);
+    if (!g.save.owned2) { g.save.owned2 = startOwned(g.save.look); }
+    g.save.owned2 = [...new Set([...g.save.owned2, ...startOwned(g.save.look)])];
     this.open = false; this.shop = null; this.slot = 'top';
     this.buildUI();
     this.markers = [];
@@ -67,13 +68,22 @@ export class Wardrobe {
     }
   }
 
-  get owned() { return new Set(this.g.save.owned); }
+  get owned() { return new Set(this.g.save.owned2); }
   equip(item) {
-    const look = this.g.save.look;
-    look[item.slot] = item.id;
-    if (item.slot === 'top' && !item.outfit && !look.legs) look.legs = 'legs_cargo';
-    this.g.player.applyLook(this.g.people, look);
-    this.g.persist();
+    const g = this.g;
+    let look = g.save.look;
+    if (item.slot === 'gender') {
+      if (look.g === item.id) return;
+      look = g.save.look = { ...(item.id === 'f' ? DEFAULT_LOOK_F : DEFAULT_LOOK), skin: look.skin, hat: look.hat, glasses: look.glasses, gloves: look.gloves };
+      g.save.owned2 = [...new Set([...g.save.owned2, ...startOwned(look)])];
+    } else {
+      look[LOOK_SLOT[item.slot]] = item.id;
+      // a top that isn't trousers-friendly keeps its own legs
+      if (item.slot === 'top' && g.people.meta[item.id]?.legs !== 'pants') look.legs = null;
+    }
+    g.people.look = look;
+    g.player.applyLook(g.people, look);
+    g.persist();
   }
 
   update(dt) {
@@ -111,6 +121,10 @@ export class Wardrobe {
 #wardrobe .witem { display: flex; justify-content: space-between; align-items: center; width: 100%; text-align: left; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08); color: #fff; padding: 10px 12px; border-radius: 8px; margin-bottom: 6px; cursor: pointer; font: inherit; }
 #wardrobe .witem:hover { background: rgba(207,185,145,.2); } #wardrobe .witem.eq { border-color: #7ddc6a; background: rgba(125,220,106,.12); }
 #wardrobe .witem small { color: #9fe38a; font-weight: 700; } #wardrobe .witem small.buy { color: #ffd23f; } #wardrobe .witem small.lock { color: #888; font-weight: 400; }
+#wardrobe .wgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 6px; align-content: start; }
+#wardrobe .wtile { flex-direction: column; justify-content: flex-start; gap: 4px; margin: 0; padding: 6px; text-align: center; font-size: 12px; }
+#wardrobe .wtile img { width: 72px; height: 72px; border-radius: 6px; object-fit: cover; }
+#wardrobe .wtile i { width: 40px; height: 40px; border-radius: 50%; border: 2px solid #fff3; margin: 8px 0; }
 #wardrobe .wfoot { display: flex; gap: 6px; align-items: center; padding: 10px 12px; border-top: 1px solid #333; } #wardrobe #wmoney { flex: 1; text-align: center; color: #7ee36a; font-weight: 800; }`;
     document.head.appendChild(css);
   }
@@ -120,7 +134,7 @@ export class Wardrobe {
     this.shop = shop; this.open = true; this.el.hidden = false;
     for (const m of this.markers) m.grp.visible = false;
     g.hud.bigT = 0; g.hud.promptT = 0; for (const id of ['big', 'prompt', 'toast']) document.getElementById(id)?.classList.remove('show');
-    this.slots = shop ? shop.slots : ['top', 'legs', 'shoes', 'hat', 'glasses', 'hair', 'beard'];
+    this.slots = shop ? shop.slots : ALL_SLOTS;
     if (!this.slots.includes(this.slot)) this.slot = this.slots[0];
     this.el.querySelector('#wtitle').textContent = shop ? shop.name : 'Wardrobe';
     this.el.querySelector('#wsub').textContent = shop ? 'Click to buy and wear · things you own are free to change' : 'Change into anything you own · buy more at Wabash Threads and Levee Barbers (purple and teal markers on the map)';
@@ -137,25 +151,33 @@ export class Wardrobe {
   }
   render() {
     const g = this.g, owned = this.owned, look = g.save.look;
+    const items = catalogue(g.people, look.g);
     const tabs = this.el.querySelector('#wtabs'); tabs.innerHTML = '';
     for (const s of this.slots) { const b = document.createElement('button'); b.textContent = SLOT_NAMES[s]; b.className = s === this.slot ? 'on' : ''; b.onclick = () => { this.slot = s; this.render(); }; tabs.appendChild(b); }
-    const list = this.el.querySelector('#wlist'); list.innerHTML = '';
-    for (const it of ITEMS.filter(i => i.slot === this.slot)) {
-      const has = owned.has(it.key) || it.price === 0, eq = (look[it.slot] || null) === it.id;
-      const b = document.createElement('button'); b.className = 'witem' + (eq ? ' eq' : '');
+    const list = this.el.querySelector('#wlist'); list.innerHTML = ''; list.className = 'wlist wgrid';
+    const cur = (it) => { const v = look[LOOK_SLOT[it.slot]]; return (v ?? null) === it.id || (it.slot === 'skin' && (v || 0) === it.id); };
+    for (const it of items.filter(i => i.slot === this.slot)) {
+      const has = owned.has(it.key) || it.price === 0, eq = cur(it);
+      const blocked = it.slot === 'legs' && g.people.meta[look.base]?.legs !== 'pants';
+      const b = document.createElement('button'); b.className = 'witem wtile' + (eq ? ' eq' : '');
+      const pic = it.img ? thumb(g.people, it.id, it.img) : null;
+      const sw = pic ? `<img src="${pic}" alt="">` : it.color !== undefined ? `<i style="background:#${it.color.toString(16).padStart(6, '0')}"></i>` : '';
       const tag = eq ? '<small>WEARING</small>' : has ? '<small>OWNED</small>' : this.shop ? `<small class="buy">$${it.price}</small>` : '<small class="lock">in store</small>';
-      b.innerHTML = `<span>${it.name}</span>${tag}`;
+      b.innerHTML = `${sw}<span>${it.name}</span>${tag}`;
+      if (blocked) b.style.opacity = 0.45;
       b.onclick = () => {
+        if (blocked) { g.hud.toast('This top comes with its own skirt or shorts — pick a top with trousers first', 'warn'); return; }
         if (!has) {
-          if (!this.shop) { g.hud.toast(`Buy the ${it.name} at ${it.slot === 'hair' || it.slot === 'beard' ? 'Levee Barbers' : 'Wabash Threads'}`, 'warn'); return; }
+          if (!this.shop) { g.hud.toast(`Buy this at ${['head', 'skin', 'gender'].includes(it.slot) ? 'Levee Barbers' : 'Wabash Threads'}`, 'warn'); return; }
           if (g.money < it.price) { g.hud.toast('Not enough money', 'warn'); return; }
-          g.addMoney(-it.price); g.save.owned.push(it.key); g.audio.chime(true);
+          g.addMoney(-it.price); g.save.owned2.push(it.key); g.audio.chime(true);
           g.hud.toast(`Bought: ${it.name}  −$${it.price}`, 'good');
         }
-        this.equip(it); this.render();
+        this.equip(it); setTimeout(() => this.render(), 30);
       };
       list.appendChild(b);
     }
+    if (!this.fetched && items.some(i => i.img && !thumb(g.people, i.id, i.img))) { this.fetched = true; g.people.loadRest().then(() => { if (this.open) this.render(); }); }
     this.el.querySelector('#wmoney').textContent = '$' + g.money.toLocaleString();
   }
 }

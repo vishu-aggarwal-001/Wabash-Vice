@@ -31,7 +31,7 @@ export const JOBS = {
     ranks: [['Trainee', 0], ['Driver', 4], ['Route Driver', 12], ['Senior Driver', 25], ['Depot Legend', 45]],
   },
   fire: {
-    name: 'Firefighter', sub: 'Fire calls', veh: 'fire', outfit: null, icon: '🚒', color: '#e2330f', karma: 3,
+    name: 'Firefighter', sub: 'Fire calls', veh: 'fire', outfit: 'fire', icon: '🚒', color: '#e2330f', karma: 3,
     desc: 'Race the engine to fires, park up and the water cannon locks onto the flames. Put every fire out.',
     ranks: [['Probie', 0], ['Firefighter', 4], ['Engineer', 12], ['Captain', 25], ['Fire Chief', 45]],
   },
