@@ -49,6 +49,7 @@ import { pickWeather, installSnowShader, Snowfall, snowy } from './weather.js';
 import { circleBox, overBox, boxBox, resolveCars } from './collide.js';
 import { Home } from './home.js';
 import { Talk } from './talk.js';
+import { Contacts } from './contacts.js';
 
 const QUALITY = {
   low: { pixelRatio: 1, shadows: 1024, shadowRange: 80, drawDistance: 1400, bloom: false, msaa: 0, ao: false, grade: false, textures: 'lo', treeCards: 14, traffic: 14, peds: 10, lamps: 1500, treeShadows: false },
@@ -159,6 +160,7 @@ class Game {
     this.home = new Home(this);
     this.startSpot = this.home.spawn; this.startYaw = this.home.yaw;
     this.talk = new Talk(this);
+    this.contacts = new Contacts(this);
     { const ft = $('travel'), b = document.createElement('button'); b.textContent = '🏠 Home'; b.onclick = () => { this.hud.toggleMenu(false); this.teleport(...this.home.spawn, 'home'); }; ft?.prepend(b); }
     this.player.roofAt = (x, z, y) => this.carRoofAt(x, z, y);
     const [sx, sz] = this.startSpot;
@@ -465,13 +467,13 @@ class Game {
   wasted() {
     if (this.deathT > 0) return;
     this.deathT = 3.5; this.hud.big('WASTED', 'Respawning at home  •  -$100', 'wasted'); this.audio.stinger();
-    this.missions.cancel(); this.story.active?.fail('You were wasted'); this.jobs.end(true);
+    this.missions.cancel(); this.story.active?.fail('You were wasted'); this.contacts?.active?.fail('You were wasted'); this.jobs.end(true);
   }
   busted() {
     if (this.deathT > 0) return;
     this.deathT = 3.5; this.bustedFlag = true;
     this.hud.big('BUSTED', 'Lafayette PD fined you $250', 'busted'); this.audio.stinger();
-    this.missions.cancel(); this.story.active?.fail('You were busted'); this.jobs.end(true);
+    this.missions.cancel(); this.story.active?.fail('You were busted'); this.contacts?.active?.fail('You were busted'); this.jobs.end(true);
   }
   respawn() {
     if (this.vehicle) this.exitVehicle(true);
@@ -724,7 +726,7 @@ class Game {
     // talents feed into the player and whatever they drive
     this.player.maxHP = this.prog.maxHP; this.player.staminaRegen = 1 + 0.25 * this.prog.t('endurance');
     if (v) { const dm = this.prog.driveMult, tu = v.tunePerf || { accel: 1, max: 1, grip: 1 }; v.perf = { accel: dm * tu.accel, max: tu.max, grip: (1 + 0.06 * this.prog.t('driving')) * tu.grip, nitro: 1 + 0.3 * this.prog.t('driving') }; }
-    this.wardrobe.update(dt); this.garage.update(dt); this.pawn.update(dt); this.home.update(dt); this.talk.update(dt, pr);
+    this.wardrobe.update(dt); this.garage.update(dt); this.pawn.update(dt); this.home.update(dt); this.contacts.update(); this.talk.update(dt, pr);
     if (pr.has('weapon') && !this.vehicle) this.pawn.cycle();
     if (pr.has('endjob') && this.jobs.active) this.jobs.end();
     this.updateGPS(dt);

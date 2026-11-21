@@ -70,6 +70,12 @@ To turn hosting on for a copy of this repo: **Settings → Pages → Build and d
 
 - **You have a home.** You start at your house in West Lafayette with your own car in the driveway (the one you tuned at Dee's, otherwise the Boilermaker GT). Walk up to the 🏠 front door to save and heal. You respawn there, your car comes back if it got wrecked, and **Esc → Fast travel → 🏠 Home** takes you there.
 - **Talk to anyone** (Criminal Russia style). Walk up to a person, press **G**, and pick a line: chat, ask their name, ask for work (sets your GPS), ask the way, compliment, insult, or rob them. Everyone has a name, a job and a mood, and they remember you. Insult or rob the wrong guy and he'll fight you. If you're wanted, you can try to bribe a cop.
+- **Street contacts with missions.** Four people around town hand out work when you talk to them, two jobs each (💬 on the map, phone → **Contacts**):
+  - **T-Bone** (levee): a time trial, then a pink-slip race where you win the other guy's GT-R.
+  - **Mrs. Kowalski** (Chauncey): steal her husband's '79 Monon back from thugs, then deliver six pies without breaking them.
+  - **Professor Lin** (Memorial Union): chase down a laptop thief, then get him to Purdue Airport for his flight.
+  - **Rico** (downtown): carry a hot package and shake the cops, then take on the Northside Crew.
+  - Ordinary people sometimes ask for a favour when you ask about work: a ride across town, or catching the guy who stole their bag.
 - **Cars are solid.** Box-shaped collisions with real impulses and spin: you can't walk or drive through parked, traffic or police cars any more. Hit a parked car and it skids away. Traffic brakes for cars stopped in its lane, and traffic no longer spawns on top of other cars.
 - **You can jump onto cars** and stand on their roofs. Pedestrians stop instead of walking through you.
 - **Snappier on foot.** You jog by default, Shift sprints, Alt walks, and you turn and accelerate faster.

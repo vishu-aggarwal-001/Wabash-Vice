@@ -75,7 +75,7 @@ export class Missions {
 
   start(m) {
     const g = this.g;
-    if (g.story?.active) { g.hud.toast('Finish your story mission first', 'warn'); return; }
+    if (g.story?.active || g.contacts?.active) { g.hud.toast('Finish your current mission first', 'warn'); return; }
     if (g.jobs?.active) g.jobs.end(true);
     if (!this.vehicleOk(m.need, g.vehicle)) {
       if (g.vehicle) g.exitVehicle(true);

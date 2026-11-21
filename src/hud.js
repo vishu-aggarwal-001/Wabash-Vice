@@ -127,16 +127,25 @@ export class HUD {
       app('🗺️', 'Map', '#6b4fd6', () => { this.togglePhone(false); this.toggleMap(true); });
       app('🚗', 'Vehicles', '#c0392b', () => { this.togglePhone(false); this.toggleMenu(true, 'vehicles'); });
       app('👕', 'Wardrobe', '#8b5cf6', () => { this.togglePhone(false); g.wardrobe.show(null); });
+      app('💬', 'Contacts', '#0e8fc7', () => this.phoneScreen('contacts'));
       app('⬆️', 'Skills', '#d97706', () => this.phoneScreen('skills'));
       app('📊', 'Stats', '#555', () => this.phoneScreen('stats'));
       if (g.jobs.active) item(`End ${JOBS[g.jobs.active].name} shift`, `Earned $${g.jobs.earned.toLocaleString()} so far`, () => { g.jobs.end(); this.togglePhone(false); }).style.marginTop = '18px';
       if (g.story.active) item('Quit story mission', g.story.active.name, () => { g.story.cancel(); this.togglePhone(false); }).style.marginTop = '18px';
+      if (g.contacts?.active) item('Quit current job', g.contacts.active.name, () => { g.contacts.active.fail('You walked away'); this.togglePhone(false); }).style.marginTop = '18px';
     } else if (name === 'jobs') {
       body.innerHTML = '<h3>Jobs</h3>';
       for (const [id, J] of Object.entries(JOBS)) {
         const r = g.jobs.rank(id);
         const on = g.jobs.active === id;
         item(`${J.icon} ${J.name}${on ? ' — ON SHIFT' : ''}`, `${J.desc}<br>Rank: <b>${r.name}</b>${r.next !== null ? ` · ${r.next - r.xp} calls to next rank` : ' · max rank'}`, () => { if (on) g.jobs.end(); else g.jobs.start(id); this.togglePhone(false); });
+      }
+    } else if (name === 'contacts') {
+      body.innerHTML = '<h3>Contacts</h3><p style="opacity:.75;font-size:13px;margin:0 0 10px">People around town who have work for you. Find them, press G to talk. Tap one to set your GPS.</p>';
+      for (const a of g.contacts.actors) {
+        const C = a.contact, st = g.contacts.stage(C), met = a.persona.met;
+        const next = C.missions[st];
+        item(`${met ? C.name : '??? (' + C.role + ')'}  ${'●'.repeat(st)}${'○'.repeat(C.missions.length - st)}`, next ? `Next: <b>${next.title}</b> · near ${g.world.roadNameAt(a.pos.x, a.pos.z) || g.world.districtAt(a.pos.x, a.pos.z)}` : 'All jobs done', () => { g.setGPS(a.pos.x, a.pos.z, true); this.toast(`GPS set to ${met ? C.name : 'the contact'}`, 'good'); this.togglePhone(false); });
       }
     } else if (name === 'story') {
       body.innerHTML = '<h3>Chapter 1 — Wabash Vice</h3>';

@@ -9,6 +9,7 @@ const WOMEN = ['Emma', 'Priya', 'Kayla', 'Maria', 'Jess', 'Aaliyah', 'Megan', 'S
 const JOBS = ['Purdue student', 'grad student', 'line cook', 'mechanic', 'nurse at IU Health Arnett', 'bartender on Main Street', 'Subaru plant worker', 'barista in Chauncey', 'delivery driver', 'professor', 'contractor', 'retired', 'security guard', 'barber'];
 const MOODS = ['friendly', 'friendly', 'chill', 'grumpy', 'nervous', 'chatty'];
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
+const nearestPlace = (g, p) => g.world.roadNameAt(p.x, p.z) || g.world.districtAt(p.x, p.z) || 'town';
 
 const GREET = {
   friendly: ['Hey there! Need something?', 'Oh, hi! What\'s up?', 'Hey! You lost or something?'],
@@ -63,6 +64,7 @@ export class Talk {
     };
     for (const p of g.traffic.peds) if (!p.fly && !(p.down > 0) && p.mesh.visible) consider(p, 'ped');
     for (const c of g.police.foot || []) if (!c.isDown && !c.leaving) consider(c, 'cop');
+    for (const a of g.contacts?.actors || []) if (a.mesh.visible && !g.contacts.active) consider(a, 'contact');
     return best;
   }
 
@@ -97,7 +99,7 @@ export class Talk {
     if (this.touchBtn) this.touchBtn.style.opacity = n ? 1 : 0.35;
     if (!n) return;
     const P = this.persona(n.o, n.kind);
-    g.hud.prompt(`Press G to talk to ${P.met ? P.name : n.kind === 'cop' ? 'the officer' : 'this ' + (P.female ? 'woman' : 'guy')}`);
+    g.hud.prompt(`Press G to talk to ${P.met ? P.name : n.kind === 'cop' ? 'the officer' : n.kind === 'contact' ? 'this ' + (P.female ? 'lady' : 'guy') + ' 💬' : 'this ' + (P.female ? 'woman' : 'guy')}`);
     if (pr.has('talk')) this.start(n);
   }
 
@@ -107,6 +109,7 @@ export class Talk {
     const P = this.persona(n.o, n.kind);
     if (n.kind === 'ped') n.o.talking = 0.5;
     if (n.kind === 'cop') return this.copRoot();
+    if (n.kind === 'contact') return this.g.contacts.dialog(this, n.o);
     let line;
     if (P.robbed) line = pick(['You again?! Get away from me!', 'Haven\'t you taken enough?']);
     else if (P.respect < -1) line = pick(['Oh great, it\'s you.', 'What now?']);
@@ -160,9 +163,11 @@ export class Talk {
   }
   work() {
     const g = this.g, f = g.focus;
+    if (this.who.kind === 'ped' && g.contacts?.offerFavour(this, this.who.o)) return;
     const tips = [];
     for (const m of g.missions.markers || []) tips.push([Math.hypot(m.x - f.x, m.z - f.z), m.x, m.z, `${pick(['Some guy', 'A friend of mine', 'This dude'])} ${g.world.roadNameAt(m.x, m.z) ? 'over on ' + g.world.roadNameAt(m.x, m.z) : 'across town'} is looking for someone who can drive. Look for the yellow marker.`]);
     if (g.garage?.marker) tips.push([Math.hypot(g.garage.marker.x - f.x, g.garage.marker.z - f.z) + 400, g.garage.marker.x, g.garage.marker.z, 'Fix up a car at the garage downtown and you can win the street races.']);
+    for (const a of g.contacts?.actors || []) if (g.contacts.stage(a.contact) < a.contact.missions.length) tips.push([Math.hypot(a.pos.x - f.x, a.pos.z - f.z) + 150, a.pos.x, a.pos.z, `Go see ${a.contact.name} near ${nearestPlace(g, a.pos)}. ${a.contact.kind === 'woman' ? 'She' : 'He'} always needs help with something.`]);
     tips.sort((a, b) => a[0] - b[0]);
     const t = tips[0];
     if (t && Math.random() < 0.8) {

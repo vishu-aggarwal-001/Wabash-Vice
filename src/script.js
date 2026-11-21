@@ -158,7 +158,7 @@ export class Script {
   car(id, x, z, yaw = 0, opts = {}) {
     const v = spawnCar(this.g, id, x, z, yaw, opts);
     this.g.parked.push(v);
-    if (!opts.keep) this.onCleanup(() => { if (this.g.vehicle !== v) { this.g.scene.remove(v.mesh); const i = this.g.parked.indexOf(v); if (i >= 0) this.g.parked.splice(i, 1); } });
+    if (!opts.keep) this.onCleanup(() => { if (this.g.vehicle !== v && !v.keep) { this.g.scene.remove(v.mesh); const i = this.g.parked.indexOf(v); if (i >= 0) this.g.parked.splice(i, 1); } });
     return v;
   }
   // a car with an AI at the wheel
@@ -167,7 +167,7 @@ export class Script {
     const i = this.g.parked.indexOf(v); if (i >= 0) this.g.parked.splice(i, 1);   // not enterable while driven
     const d = new Driver(this.g, v, opts);
     this.drivers.push(d);
-    this.onCleanup(() => { if (this.g.vehicle !== v) this.g.scene.remove(v.mesh); });
+    this.onCleanup(() => { if (this.g.vehicle !== v && !v.keep) this.g.scene.remove(v.mesh); });
     return d;
   }
   release(d) { const i = this.drivers.indexOf(d); if (i >= 0) this.drivers.splice(i, 1); d.v.driver = null; if (!this.g.parked.includes(d.v)) this.g.parked.push(d.v); }

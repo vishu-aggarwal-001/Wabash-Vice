@@ -32,6 +32,7 @@ export class Story {
   start(i) {
     const g = this.g, M = CHAPTER[i];
     if (this.active) return;
+    if (g.contacts?.active) { g.hud.toast('Finish your current job first', 'warn'); return; }
     if (g.jobs.active) g.jobs.end(true);
     if (i > this.done) { g.hud.toast('Finish the earlier missions first', 'warn'); return; }
     g.missions.cancel();

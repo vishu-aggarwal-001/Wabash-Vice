@@ -59,7 +59,7 @@ export class Jobs {
   start(id) {
     const g = this.g, J = JOBS[id];
     if (this.active) this.end(true);
-    if (g.story.active) { g.hud.toast('Finish your story mission first', 'warn'); return; }
+    if (g.story.active || g.contacts?.active) { g.hud.toast('Finish your story mission first', 'warn'); return; }
     if (g.police.wanted > 0) { g.hud.toast('Lose the cops before you start work', 'warn'); return; }
     this.active = id; this.earned = 0; this.calls = 0; this.wait = 3;
     // work vehicle at the curb next to you
