@@ -6,7 +6,7 @@
 
 Every street, all 13,500 buildings, the Wabash River, the bridges, Purdue's campus, downtown Lafayette and Purdue Airport come from real OpenStreetMap data, at real 1:1 scale (about 6.8 km × 5.5 km). It runs in any modern browser. There's no install and no build step.
 
-> **Status: v0.3: realistic people, jobs, a story chapter, fist fights, snow and traffic lights.** It isn't GTA 6. That took a studio of thousands of people about a decade. What it is: a real, working open-world game of your actual hometown that you can keep improving. See the [Roadmap](#roadmap).
+> **Status: v0.6: a home with your own car, solid collisions, talking to people, and a big speed-up.** It isn't GTA 6. That took a studio of thousands of people about a decade. What it is: a real, working open-world game of your actual hometown that you can keep improving. See the [Roadmap](#roadmap).
 
 ---
 
@@ -35,7 +35,8 @@ To turn hosting on for a copy of this repo: **Settings → Pages → Build and d
 
 | | Keyboard / mouse | Gamepad |
 |---|---|---|
-| Move / drive | **W A S D** | Left stick, RT/LT |
+| Move / drive | **W A S D** (Shift sprint, Alt walk) | Left stick, RT/LT |
+| Talk to someone | **G**, then **1–4** or click an answer | 💬 button |
 | Look | **Mouse** (click the game to capture it) or right-drag | Right stick |
 | Enter / exit vehicle | **F** (works on traffic too, i.e. carjacking) | Y |
 | Run / nitro / afterburner | **Shift** | LS click / X |
@@ -65,7 +66,16 @@ To turn hosting on for a copy of this repo: **Settings → Pages → Build and d
 
 ---
 
-## 🆕 What's new in v0.5: real people and a full character creator
+## 🆕 What's new in v0.6: home, solid cars, talking, and a lot faster
+
+- **You have a home.** You start at your house in West Lafayette with your own car in the driveway (the one you tuned at Dee's, otherwise the Boilermaker GT). Walk up to the 🏠 front door to save and heal. You respawn there, your car comes back if it got wrecked, and **Esc → Fast travel → 🏠 Home** takes you there.
+- **Talk to anyone** (Criminal Russia style). Walk up to a person, press **G**, and pick a line: chat, ask their name, ask for work (sets your GPS), ask the way, compliment, insult, or rob them. Everyone has a name, a job and a mood, and they remember you. Insult or rob the wrong guy and he'll fight you. If you're wanted, you can try to bribe a cop.
+- **Cars are solid.** Box-shaped collisions with real impulses and spin: you can't walk or drive through parked, traffic or police cars any more. Hit a parked car and it skids away. Traffic brakes for cars stopped in its lane, and traffic no longer spawns on top of other cars.
+- **You can jump onto cars** and stand on their roofs. Pedestrians stop instead of walking through you.
+- **Snappier on foot.** You jog by default, Shift sprints, Alt walks, and you turn and accelerate faster.
+- **Much faster.** About 13× fewer triangles per frame: smaller render chunks, distance culling, a low-detail far terrain, lighter tree trunks, and cheaper shadows on Low. Below 20 fps the game no longer runs in slow motion.
+
+## What was new in v0.5: real people and a full character creator
 
 **65 realistic townspeople** from the Microsoft Rocketbox library: proper faces, natural proportions, real clothes. Students in hoodies and denim jackets, businessmen in suits, construction workers, footballers, women in blazers, leather jackets and dresses, cops in peaked caps and police vests, SWAT, paramedics and firefighters.
 

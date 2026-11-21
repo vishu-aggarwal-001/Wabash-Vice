@@ -1,8 +1,8 @@
 // Keyboard + mouse + gamepad + touch, merged into one input snapshot per frame.
 const ACTIONS = {
   KeyF: 'enter', Enter: 'enter', KeyM: 'map', KeyV: 'vehicles', Escape: 'pause', KeyP: 'pause',
-  KeyC: 'camera', KeyR: 'radio', KeyH: 'horn', KeyK: 'siren', KeyL: 'lights', KeyG: 'gps', F1: 'help', KeyJ: 'mission',
-  KeyQ: 'punch', KeyE: 'kick', Tab: 'phone', KeyY: 'yes', KeyN: 'no', KeyX: 'endjob', KeyZ: 'weapon',
+  KeyC: 'camera', KeyR: 'radio', KeyH: 'horn', KeyK: 'siren', KeyL: 'lights', F1: 'help', KeyJ: 'mission',
+  KeyQ: 'punch', KeyE: 'kick', KeyG: 'talk', Digit1: 'opt1', Digit2: 'opt2', Digit3: 'opt3', Digit4: 'opt4', Tab: 'phone', KeyY: 'yes', KeyN: 'no', KeyX: 'endjob', KeyZ: 'weapon',
 };
 
 export class Input {
@@ -13,7 +13,7 @@ export class Input {
     this.canvas = canvas; this.enabled = true;
     addEventListener('keydown', (e) => {
       if (e.target.tagName === 'INPUT') return;
-      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'F1'].includes(e.code)) e.preventDefault();
+      if (['Space', 'AltLeft', 'AltRight', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'F1'].includes(e.code)) e.preventDefault();
       if (!this.keys.has(e.code) && ACTIONS[e.code]) this.pressed.add(ACTIONS[e.code]);
       this.keys.add(e.code);
     });
@@ -82,6 +82,7 @@ export class Input {
       shift: k('ShiftLeft') || k('ShiftRight') || tb.has('boost'),
       down: k('KeyZ') || k('ControlLeft') || tb.has('down'),
       up: k('Space') || tb.has('up') || tb.has('jump'),
+      walk: k('AltLeft') || k('AltRight') || k('CapsLock'),
       timeFast: k('KeyT'),
       lookX: 0, lookY: 0,
       touch: this.touch.active || tb.size > 0,

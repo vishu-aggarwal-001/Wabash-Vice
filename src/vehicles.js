@@ -581,7 +581,8 @@ export class Vehicle {
     this.driver = null; this.kinematic = false; this.sirenOn = false; this.drifting = 0;
     this.rotorSpeed = 0; this.inWater = 0; this.lean = 0; this.headlights = false;
     this.radius = Math.min(this.spec.W, this.spec.L) / 2;
-    this.height = this.spec.type === 'car' ? (this.spec.boxH || 1.6) : 1.5;
+    const ROOF = { coupe: 1.28, hyper: 1.18, sedan: 1.47, hatch: 1.5, muscle: 1.36, suv: 1.82, pickup: 1.85, bus: 3.1 };
+    this.height = this.spec.type === 'car' ? (this.spec.boxH || ROOF[this.spec.style] || 1.5) : this.spec.type === 'bike' ? 1.1 : 1.5;
     this.events = [];
   }
   get type() { return this.spec.type; }
@@ -690,7 +691,10 @@ export class Vehicle {
       this.yaw += this.yawRate * dt;
       // lateral grip with slip: centripetal force keeps velocity aligned
       const slip = Math.abs(vr);
-      vr *= Math.exp(-grip * dt);
+      // tyres pull the sideways slide back in line; a car nobody is driving (shoved, crashed) slides
+      // on with ~1g of friction instead of stopping dead, so hits actually send cars skidding
+      if (c !== NO_INPUT) vr *= Math.exp(-grip * dt);
+      else vr -= Math.sign(vr) * Math.min(Math.abs(vr), Math.min(grip * Math.abs(vr), 9.5) * dt);
       this.drifting = slip > 3 ? Math.min(1, slip / 10) : 0;
       if (this.drifting && fx && Math.random() < 0.6) fx.emit(off ? 'dust' : 'tyre', this.rearPos(), null);
       if (off && Math.abs(vf) > 10 && fx && Math.random() < 0.15) fx.emit('dust', this.rearPos(), null);

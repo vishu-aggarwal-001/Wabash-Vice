@@ -5,6 +5,7 @@ import { Vehicle, CATALOG } from './vehicles.js';
 import { makeHuman } from './player.js';
 import { Actor } from './actors.js';
 import { gunMesh } from './guns.js';
+import { boxBox, resolveCars } from './collide.js';
 
 const TRAFFIC_TYPES = ['sedan', 'sedan', 'sedan', 'hatch', 'hatch', 'suv', 'suv', 'pickup', 'pickup', 'taxi', 'bus', 'truck', 'muscle', 'gt', 'sportbike', 'police', 'wagon', 'classic', 'classic', 'luxury', 'compact', 'compact', 'crossover', 'crossover', 'jeep', 'hauler', 'van', 'van', 'pony', 'rally', 'roadster', 'limo', 'gtr', 'dragster'];
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -43,6 +44,8 @@ export class Traffic {
     const car = { v, a, b, t: 0, speed: 8, cruise: (v.spec.id === 'bus' || v.spec.id === 'truck' ? 9 : 11) + Math.random() * 5, ai: true, honk: 0, wrecked: 0 };
     this.edge(car);
     this.place(car, 0.001);
+    const others = [...this.cars.map(c => c.v), ...this.g.parked, ...(this.g.police?.units || []).map(u => u.v)];
+    if (others.some(o => Math.hypot(o.pos.x - v.pos.x, o.pos.z - v.pos.z) < (o.spec.L + v.spec.L) / 2 + 2)) { this.g.scene.remove(v.mesh); return; }
     this.cars.push(car);
   }
 
@@ -134,6 +137,7 @@ export class Traffic {
         if (toLine > -1 && (sig === 2 || toLine > c.speed * 1.2)) target = Math.min(target, Math.max(0, toLine * 0.7));
       }
       for (const o of this.cars) if (o !== c) check(o.v.pos.x, o.v.pos.z, o.ai ? o.speed : 0);
+      for (const pv of this.g.parked) if (pv !== playerVeh && Math.abs(pv.pos.x - v.pos.x) < 25 && Math.abs(pv.pos.z - v.pos.z) < 25) check(pv.pos.x, pv.pos.z, 0);
       if (playerVeh) check(playerVeh.pos.x, playerVeh.pos.z, playerVeh.speed * 0.5);
       else if (player) check(player.pos.x, player.pos.z, 0);
       for (const p of this.g.police?.units || []) check(p.v.pos.x, p.v.pos.z, p.v.speed);
@@ -147,41 +151,18 @@ export class Traffic {
       v.headlights = this.g.env.night > 0.4;
       v.sync(dt);
     }
-    // vehicle-vs-vehicle contacts with the player's vehicle and between dynamic cars
-    if (playerVeh && playerVeh.type !== 'plane' && playerVeh.type !== 'heli' || playerVeh && playerVeh.onGround) {
-      for (const c of this.cars) {
-        if (c.v === playerVeh) continue;
-        this.contact(playerVeh, c);
-      }
-      for (const u of this.g.police?.units || []) this.contact(playerVeh, { v: u.v, ai: false, cop: true });
-    }
+    // vehicle-vs-vehicle contacts are handled for everything at once in Game.vehicleContacts()
     this.updatePeds(dt, focus, playerVeh);
   }
 
+  // box-vs-box contact between a driven vehicle and a traffic car (used by mission drivers)
   contact(pv, c) {
     const v = c.v;
-    const dx = v.pos.x - pv.pos.x, dz = v.pos.z - pv.pos.z, dy = Math.abs(v.pos.y - pv.pos.y);
-    const R = pv.radius + v.radius + Math.min(pv.spec.L, v.spec.L) * 0.25;
-    const d = Math.hypot(dx, dz);
-    if (d > R || d < 1e-3 || dy > 2.5) return;
-    const nx = dx / d, nz = dz / d;
-    const rel = (pv.vel.x - v.vel.x) * nx + (pv.vel.z - v.vel.z) * nz;
+    if (v === pv || Math.abs(v.pos.y - pv.pos.y) > 2.5) return;
+    const hit = boxBox(pv, v); if (!hit) return;
     if (c.ai) this.wreck(c, null);
-    const m1 = pv.spec.mass, m2 = v.spec.mass;
-    const push = (R - d);
-    pv.pos.x -= nx * push * m2 / (m1 + m2); pv.pos.z -= nz * push * m2 / (m1 + m2);
-    v.pos.x += nx * push * m1 / (m1 + m2); v.pos.z += nz * push * m1 / (m1 + m2);
-    if (rel > 0) {
-      const j = rel * 1.3 / (1 / m1 + 1 / m2);
-      pv.vel.x -= nx * j / m1; pv.vel.z -= nz * j / m1;
-      v.vel.x += nx * j / m2; v.vel.z += nz * j / m2;
-      if (!v.kinematic) v.yawRate += (Math.random() - 0.5) * rel * 0.15;
-      if (rel > 3) {
-        pv.damage(rel * 0.7 * Math.min(1, m2 / m1)); v.damage(rel * 1.2);
-        this.g.onCrash(rel, pv.pos);
-        if (c.cop || v.spec.id === 'police') this.g.police.crime(1, 'Hit a police car');
-      }
-    }
+    const rel = resolveCars(pv, v, hit);
+    if (rel > 3) { pv.damage(rel * 0.7 * Math.min(1, v.spec.mass / pv.spec.mass)); v.damage(rel * 1.2); }
   }
 
   // ---------------------------------------------------------------- pedestrians
@@ -194,7 +175,7 @@ export class Traffic {
     const char = makeHuman(this.g.people, r < 0.3 ? 'woman' : 'man');
     const mesh = char.mesh;
     this.g.scene.add(mesh);
-    const p = { char, mesh, hp: 100, a, b, t: Math.random() * 10, side: Math.random() < 0.5 ? 1 : -1, speed: 1.1 + Math.random() * 0.6, phase: Math.random() * 6, pos: new THREE.Vector3(), vel: new THREE.Vector3(), yaw: 0, down: 0, flee: 0, fly: false };
+    const p = { char, mesh, female: r < 0.3, hp: 100, a, b, t: Math.random() * 10, side: Math.random() < 0.5 ? 1 : -1, speed: 1.1 + Math.random() * 0.6, phase: Math.random() * 6, pos: new THREE.Vector3(), vel: new THREE.Vector3(), yaw: 0, down: 0, flee: 0, fly: false };
     const A = this.w.gNodes[a], B = this.w.gNodes[b];
     p.len = Math.max(0.1, Math.hypot(B[0] - A[0], B[2] - A[2]));
     this.peds.push(p);
@@ -226,7 +207,10 @@ export class Traffic {
       p.cower = Math.max(0, (p.cower || 0) - dt);
       const sp = p.cower > 0 ? 0 : p.flee > 0 ? 5.5 : p.speed;
       p.flee = Math.max(0, p.flee - dt);
-      p.t += sp * dt;
+      const me = !pv && this.g.player;
+      const blocked = me && p.flee <= 0 && Math.hypot(me.pos.x - p.pos.x, me.pos.z - p.pos.z) < 1.1 && ((me.pos.x - p.pos.x) * Math.sin(p.yaw) + (me.pos.z - p.pos.z) * Math.cos(p.yaw)) > 0;
+      if (p.talking > 0) { p.talking -= dt; p.yaw += wrap(Math.atan2(me ? me.pos.x - p.pos.x : 0, me ? me.pos.z - p.pos.z : 1) - p.yaw) * Math.min(1, dt * 6); anim('idle', 0); p.mesh.rotation.y = p.yaw; continue; }
+      if (!blocked) p.t += sp * dt;
       if (p.t >= p.len) {
         const nb = w.gAdj[p.b].filter(n => n !== p.a);
         const nxt = nb.length ? nb[Math.floor(Math.random() * nb.length)] : p.a;
@@ -244,7 +228,7 @@ export class Traffic {
       const wy = Math.atan2(dx, dz);
       p.yaw += wrap(wy - p.yaw) * Math.min(1, dt * 5);
       p.phase += dt * sp * 2.4;
-      anim(p.cower > 0 ? 'cower' : p.flee > 0 ? 'run' : 'walk', p.cower > 0 ? 0 : sp);
+      anim(p.cower > 0 ? 'cower' : p.flee > 0 ? 'run' : blocked ? 'idle' : 'walk', p.cower > 0 || blocked ? 0 : sp);
       p.mesh.position.copy(p.pos); p.mesh.rotation.y = p.yaw;
       // hit by the player's vehicle
       if (pv && !pv.airborne) {

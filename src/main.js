@@ -46,6 +46,9 @@ import { Garage } from './garage.js';
 import { Pawn, byWeapon } from './weapons.js';
 import { Guns } from './guns.js';
 import { pickWeather, installSnowShader, Snowfall, snowy } from './weather.js';
+import { circleBox, overBox, boxBox, resolveCars } from './collide.js';
+import { Home } from './home.js';
+import { Talk } from './talk.js';
 
 const QUALITY = {
   low: { pixelRatio: 1, shadows: 1024, shadowRange: 80, drawDistance: 1400, bloom: false, msaa: 0, ao: false, grade: false, textures: 'lo', treeCards: 14, traffic: 14, peds: 10, lamps: 1500, treeShadows: false },
@@ -86,7 +89,7 @@ class Game {
     r.setPixelRatio(Math.min(devicePixelRatio, q.pixelRatio));
     r.setSize(innerWidth, innerHeight);
     r.shadowMap.enabled = q.shadows > 0;
-    r.shadowMap.type = THREE.PCFSoftShadowMap;
+    r.shadowMap.type = q.textures === 'lo' ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;   // soft shadows cost a lot on laptop GPUs
     r.toneMapping = THREE.ACESFilmicToneMapping;
     r.outputColorSpace = THREE.SRGBColorSpace;
     this.scene = new THREE.Scene();
@@ -152,10 +155,17 @@ class Game {
     this.headlight = new THREE.SpotLight(0xfff1d6, 0, 90, 0.55, 0.45, 1.2);
     this.headlight.position.set(0, 1, 1.5); this.headlight.target.position.set(0, 0, 30);
     this.spawnShowcase();
+    // you live here: start at home, next to your own car
+    this.home = new Home(this);
+    this.startSpot = this.home.spawn; this.startYaw = this.home.yaw;
+    this.talk = new Talk(this);
+    { const ft = $('travel'), b = document.createElement('button'); b.textContent = '🏠 Home'; b.onclick = () => { this.hud.toggleMenu(false); this.teleport(...this.home.spawn, 'home'); }; ft?.prepend(b); }
+    this.player.roofAt = (x, z, y) => this.carRoofAt(x, z, y);
     const [sx, sz] = this.startSpot;
     this.player.place(sx, sz);
     this.player.yaw = this.camYaw = this.startYaw ?? Math.PI;
     this.focus.copy(this.player.pos);
+    this.world.updateCulling(this.focus);
     // warm-up render so the GPU compiles shaders behind the loading screen
     bar.style.width = '100%'; msg.textContent = 'Compiling shaders…';
     this.updateCamera(0.016, { lookX: 0, lookY: 0, wheel: 0 });
@@ -454,7 +464,7 @@ class Game {
   }
   wasted() {
     if (this.deathT > 0) return;
-    this.deathT = 3.5; this.hud.big('WASTED', 'Respawning at the Purdue Memorial Union  •  -$100', 'wasted'); this.audio.stinger();
+    this.deathT = 3.5; this.hud.big('WASTED', 'Respawning at home  •  -$100', 'wasted'); this.audio.stinger();
     this.missions.cancel(); this.story.active?.fail('You were wasted'); this.jobs.end(true);
   }
   busted() {
@@ -470,6 +480,7 @@ class Game {
     this.addMoney(busted ? -250 : -100);
     const [x, z] = busted ? this.world.toWorld(40.4186, -86.8930) : this.startSpot;
     this.player.place(x, z); this.player.hp = this.player.maxHP; this.player.down = 0; this.player.parachute = false; this.player.gone = false;
+    if (!busted) { this.player.yaw = this.camYaw = this.home.yaw; this.home.restoreCar(); }
     this.player.mesh.visible = true;
   }
 
@@ -605,7 +616,7 @@ class Game {
 
   // ---------------------------------------------------------------- loop
   frame() {
-    const dt = Math.min(0.05, this.clock.getDelta());
+    const dt = Math.min(0.1, this.clock.getDelta());   // up to 10 fps still runs in real time (physics sub-steps below)
     this.fpsT += dt; this.frames++;
     if (this.fpsT > 1) { $('fps').textContent = `${this.frames} fps${this.dynScale < 0.99 ? ' · ' + Math.round(this.dynScale * 100) + '% res' : ''}`; this.adaptResolution(this.frames / this.fpsT); this.frames = 0; this.fpsT = 0; }
     const inp = this.input.read();
@@ -613,6 +624,7 @@ class Game {
     if (this.started) {
       if (pr.has('phone') && !this.hud.menuOpen && !this.hud.mapOpen) this.hud.togglePhone();
       if (pr.has('map') && !this.hud.phoneOpen) this.hud.toggleMap();
+      if (pr.has('pause') && this.talk?.open) { this.talk.close(); pr.delete('pause'); }
       if (pr.has('pause') && this.wardrobe?.open) { this.wardrobe.hide(); pr.delete('pause'); }
       if (pr.has('pause') && this.garage?.open) { this.garage.hide(); pr.delete('pause'); }
       if (pr.has('pause') && this.pawn?.open) { this.pawn.hide(); pr.delete('pause'); }
@@ -646,7 +658,7 @@ class Game {
     if (v) {
       const ctl = this.vehicleControls(inp, v);
       v.headlights = this.env.night > 0.35;
-      const sub = dt > 1 / 50 ? 2 : 1;
+      const sub = Math.max(1, Math.ceil(dt / 0.017));
       for (let i = 0; i < sub; i++) v.update(dt / sub, this.deathT > 0 ? null : ctl, this.fx);
       this.headlight.intensity = v.headlights && v.type !== 'plane' ? 60 : 0;
       for (const e of v.events) {
@@ -668,7 +680,14 @@ class Game {
       const pl = this.player;
       if (pr.has('horn') && pl.useMedkit()) { this.hud.toast(`+50 health  (${pl.medkits} medkits left)`, 'good'); this.audio.chime(true); }
       const gunUsed = this.guns.update(dt, inp, pr);
-      pl.update(dt, { x: inp.moveX, y: inp.moveY, run: inp.shift, jump: inp.jump, punch: pr.has('punch') && !this.guns.id && !gunUsed, kick: pr.has('kick') }, this.camYaw);
+      const pin = { x: inp.moveX, y: inp.moveY, run: inp.shift, walk: inp.walk, jump: inp.jump, punch: pr.has('punch') && !this.guns.id && !gunUsed, kick: pr.has('kick') };
+      if (this.talk?.open) { pin.x = pin.y = 0; pin.jump = pin.punch = pin.kick = false; }
+      const psub = Math.max(1, Math.ceil(dt / 0.025));
+      for (let i = 0; i < psub; i++) {
+        pl.update(dt / psub, pin, this.camYaw);
+        if (i < psub - 1) { pin.jump = pin.punch = pin.kick = false; pl.events.length = 0; }
+        this.playerVsCars(pl);
+      }
       if (this.guns.aimT > 0 && this.guns.id) { pl.yaw = this.camYaw; pl.mesh.rotation.y = pl.yaw; }
       this.guns.late();
       for (const e of pl.events) if (e === 'punch' || e === 'kick') { const wp = e === 'punch' ? byWeapon[this.save.weapon] || byWeapon.fists : byWeapon.fists; this.melee(e === 'kick' ? 34 : 22 * wp.dmg, (e === 'kick' ? 1.8 : 1.5) + wp.reach, wp.swing ? 0.24 : 0.16); }
@@ -683,11 +702,7 @@ class Game {
         if (pl.onGround || pl.swimming) { pl.parachute = false; }
       } else if (this.chute) this.chute.visible = false;
       for (const e of pl.events) if (e === 'hurt') this.shake = 0.5;
-      // traffic hits the player on foot
-      for (const c of [...this.traffic.cars, ...this.police.units]) {
-        const cv = c.v;
-        if (cv.speed > 4 && cv.pos.distanceTo(pl.pos) < cv.radius + 0.8 && Math.abs(cv.pos.y - pl.pos.y) < 2) { pl.knock(cv.vel.clone().multiplyScalar(0.8)); this.audio.crash(cv.speed * 0.4); }
-      }
+
     }
     // explosions of any vehicle
     for (const pv of [...this.parked, ...this.traffic.cars.map(c => c.v), ...this.police.units.map(u => u.v)]) {
@@ -696,6 +711,7 @@ class Game {
     if (v?.events.includes('explode')) this.handleExplosion(v);
     for (const pv of this.parked) if (pv !== v && !pv.kinematic && (pv.speed > 0.05 || !pv.onGround || pv.burn > 0 || pv.type === 'boat' || pv.type === 'heli' && pv.rotorSpeed > 0.01)) pv.update(dt, null, this.fx);
 
+    this.vehicleContacts();
     this.resolveMelee(dt);
     this.focus.copy(v ? v.pos : this.player.pos);
     if (this.player.hp <= 0 && this.deathT <= 0) this.wasted();
@@ -708,7 +724,7 @@ class Game {
     // talents feed into the player and whatever they drive
     this.player.maxHP = this.prog.maxHP; this.player.staminaRegen = 1 + 0.25 * this.prog.t('endurance');
     if (v) { const dm = this.prog.driveMult, tu = v.tunePerf || { accel: 1, max: 1, grip: 1 }; v.perf = { accel: dm * tu.accel, max: tu.max, grip: (1 + 0.06 * this.prog.t('driving')) * tu.grip, nitro: 1 + 0.3 * this.prog.t('driving') }; }
-    this.wardrobe.update(dt); this.garage.update(dt); this.pawn.update(dt);
+    this.wardrobe.update(dt); this.garage.update(dt); this.pawn.update(dt); this.home.update(dt); this.talk.update(dt, pr);
     if (pr.has('weapon') && !this.vehicle) this.pawn.cycle();
     if (pr.has('endjob') && this.jobs.active) this.jobs.end();
     this.updateGPS(dt);
@@ -726,6 +742,71 @@ class Game {
     this.hud.update(dt);
     this.saveT = (this.saveT || 0) + dt;
     if (this.saveT > 20) { this.saveT = 0; this.persist(); }
+  }
+
+  // ---------------------------------------------------------------- solid bodies
+  // every car near the action: parked, traffic, police, mission drivers
+  solidCars(range = 90) {
+    const f = this.focus, out = [];
+    const add = (v) => { if (v && v.mesh.parent && Math.abs(v.pos.x - f.x) < range && Math.abs(v.pos.z - f.z) < range && !out.includes(v)) out.push(v); };
+    for (const v of this.parked) add(v);
+    for (const c of this.traffic.cars) add(c.v);
+    for (const u of this.police.units) add(u.v);
+    for (const sc of this.scripts) for (const d of sc.drivers || []) add(d.v);
+    if (this.vehicle) add(this.vehicle);
+    return out;
+  }
+  // car vs car: oriented boxes with impulses, so nothing drives through anything
+  vehicleContacts() {
+    const cars = this.solidCars(), pv = this.vehicle;
+    const flying = (v) => (v.type === 'plane' || v.type === 'heli') && !v.onGround;
+    const rec = new Map(this.traffic.cars.map(c => [c.v, c]));
+    for (let i = 0; i < cars.length; i++) for (let j = i + 1; j < cars.length; j++) {
+      const a = cars[i], b = cars[j];
+      if (a.kinematic && b.kinematic) continue;          // traffic follows its lanes
+      if (flying(a) || flying(b) || Math.abs(a.pos.y - b.pos.y) > 2.2) continue;
+      if ((a.type === 'boat') !== (b.type === 'boat')) continue;
+      const hit = boxBox(a, b); if (!hit) continue;
+      for (const v of [a, b]) { const c = rec.get(v); if (c?.ai) this.traffic.wreck(c, null); }
+      const rel = resolveCars(a, b, hit);
+      if (rel > 3) {
+        a.damage(rel * 0.9 * Math.min(1, b.spec.mass / a.spec.mass)); b.damage(rel * 0.9 * Math.min(1, a.spec.mass / b.spec.mass));
+        if (a === pv || b === pv) {
+          this.onCrash(rel, hit);
+          const other = a === pv ? b : a;
+          if (other.spec.id === 'police' || this.police.units.some(u => u.v === other)) this.police.crime(1, 'Hit a police car');
+        }
+      }
+    }
+  }
+  // you on foot vs cars: you can't walk through them, you can climb onto them, and a moving car knocks you over
+  playerVsCars(pl) {
+    if (pl.vehicle) return;
+    for (const v of this.solidCars(14)) {
+      if (v.dead && v.exploded && v.type !== 'car') continue;
+      const roof = v.pos.y + v.height;
+      if (pl.pos.y > roof - 0.45 || pl.pos.y + 1.7 < v.pos.y) continue;   // standing on it, or under a plane wing
+      const c = circleBox(pl.pos.x, pl.pos.z, 0.36, v); if (!c) continue;
+      const into = -(v.vel.x * c.nx + v.vel.z * c.nz);   // car speed towards you
+      if (v.speed > 4 && into > 2.5 && pl.down <= 0) {
+        pl.knock(v.vel.clone().multiplyScalar(0.8)); this.audio.crash(v.speed * 0.4);
+        if (v === this.vehicle) continue;
+      }
+      pl.pos.x += c.nx * c.depth; pl.pos.z += c.nz * c.depth;
+      const vn = pl.vel.x * c.nx + pl.vel.z * c.nz; if (vn < 0) { pl.vel.x -= c.nx * vn; pl.vel.z -= c.nz * vn; }
+    }
+    // never get shoved into a wall
+    const r = this.world.collide(pl.pos.x, pl.pos.z, 0.35, pl.pos.y + 0.35, pl.pos.y + 1.8);
+    pl.pos.x = r.x; pl.pos.z = r.z; pl.mesh.position.copy(pl.pos);
+  }
+  // the roof of a car you're standing on counts as ground
+  carRoofAt(x, z, y) {
+    let best = null;
+    for (const v of this.solidCars(12)) {
+      const roof = v.pos.y + v.height;
+      if (y >= roof - 0.6 && overBox(x, z, v, 0.15) && (best === null || roof > best)) best = roof;
+    }
+    return best;
   }
 
   // fists and feet: hit whoever is in front of you

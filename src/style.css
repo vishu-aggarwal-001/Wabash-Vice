@@ -167,3 +167,13 @@ body.shopping #touch { display: none !important; }
   #wardrobe .whead span, .shopui .whead span { display: none; }
   #wardrobe .wgrid { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); }
 }
+
+/* ---- talking to people ---- */
+#talk { position: absolute; left: 50%; bottom: 7vh; transform: translateX(-50%); width: min(620px, 92vw); background: rgba(10, 12, 16, 0.86); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 14px; padding: 14px 16px 12px; color: #f2f2f2; font: 15px/1.4 system-ui, -apple-system, Segoe UI, sans-serif; pointer-events: auto; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); z-index: 30; }
+#talk[hidden] { display: none; }
+#talk .talk-who { font-weight: 700; color: #ffd23f; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 4px; }
+#talk .talk-line { font-size: 17px; margin-bottom: 10px; min-height: 1.4em; }
+#talk .talk-opts { display: grid; gap: 6px; }
+#talk .talk-opts button { text-align: left; background: rgba(255, 255, 255, 0.07); color: #fff; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 9px; padding: 8px 10px; font: inherit; cursor: pointer; }
+#talk .talk-opts button:hover { background: rgba(255, 210, 63, 0.18); border-color: rgba(255, 210, 63, 0.5); }
+#talk .talk-opts b { display: inline-block; width: 1.4em; color: #ffd23f; }

@@ -174,15 +174,16 @@ export class Player {
     const ml = Math.hypot(mx, mz);
     const running = input.run && ml > 0.1 && this.stamina > 0.05;
     this.stamina = Math.max(0, Math.min(1, this.stamina + (running ? -0.12 : 0.2 * this.staminaRegen) * dt));
-    const speed = this.swimming ? (running ? 2.8 : 1.6) : running ? 7.0 : 2.4;
+    // GTA-style: a brisk jog by default, Shift sprints, Alt walks
+    const speed = this.swimming ? (running ? 2.8 : 1.6) : running ? 7.6 : input.walk ? 1.5 : 4.2;
     if (ml > 0.01) {
       mx /= Math.max(1, ml); mz /= Math.max(1, ml);
       const targetYaw = Math.atan2(mx, mz);
       let d = targetYaw - this.yaw; d = Math.atan2(Math.sin(d), Math.cos(d));
-      this.yaw += d * Math.min(1, dt * 12);
+      this.yaw += d * Math.min(1, dt * 15);
     }
     const grounded = this.onGround || this.swimming;
-    const accel = grounded ? 14 : 2;
+    const accel = grounded ? 18 : 2;
     if (this.down <= 0) {
       this.vel.x += (mx * speed - this.vel.x) * Math.min(1, accel * dt);
       this.vel.z += (mz * speed - this.vel.z) * Math.min(1, accel * dt);
@@ -202,6 +203,8 @@ export class Player {
     const res = w.collide(this.pos.x, this.pos.z, 0.35, this.pos.y + 0.35, this.pos.y + 1.8);
     this.pos.x = res.x; this.pos.z = res.z;
     const g2 = w.groundAt(this.pos.x, this.pos.z, this.pos.y, 0.7);
+    const roof = this.roofAt?.(this.pos.x, this.pos.z, this.pos.y);   // standing on a car
+    if (roof != null && roof > g2.y) { g2.y = roof; g2.kind = 'roof'; }
     if (this.pos.y <= g2.y) {
       if (this.vel.y < -15) { this.hurt((-this.vel.y - 15) * 9); }
       this.pos.y = g2.y; this.vel.y = Math.max(0, this.vel.y); this.onGround = true;
@@ -211,7 +214,7 @@ export class Player {
     // animation
     const hs = Math.hypot(this.vel.x, this.vel.z);
     this.phase += dt * (hs * 2.4 + 1);
-    this.mode = this.down > 0 ? 'down' : this.swimming ? 'swim' : !this.onGround && this.airT > 0.12 ? 'jump' : hs > 4.2 ? 'run' : hs > 0.4 ? 'walk' : 'idle';
+    this.mode = this.down > 0 ? 'down' : this.swimming ? 'swim' : !this.onGround && this.airT > 0.12 ? 'jump' : hs > 3.0 ? 'run' : hs > 0.4 ? 'walk' : 'idle';
     this.airT = this.onGround ? 0 : (this.airT || 0) + dt;
     // fists: punch (click / Q), kick (E)
     if (this.down <= 0 && !this.swimming) {

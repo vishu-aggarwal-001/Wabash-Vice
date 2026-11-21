@@ -5,7 +5,10 @@ import * as THREE from 'three';
 import * as TX from './textures.js';
 import { storefrontAtlas, SHOP_VARIANTS, sidewalkTexture } from './facades.js';
 
-const CHUNK = 1000;      // render chunk size (m) for frustum culling
+const CHUNK = 1000;      // terrain chunk size (m)
+// Smaller render chunks for everything standing on the terrain, so the camera (and the sun's
+// shadow camera) only draw what's actually near and in view, and far chunks can be switched off.
+const BCHUNK = 300, RCHUNK = 400, TCHUNK = 180, ICHUNK = 300;
 const GRID = 40;         // spatial hash cell (m) for gameplay queries
 const nextFrame = () => new Promise(r => requestAnimationFrame(() => r()));
 
@@ -328,35 +331,62 @@ export class World {
           diffuseColor.rgb = base * mix(vec3(1.0), detail, k);`);
     };
     this.terrainMat = mat;
-    const cellsPer = CHUNK / this.cell;
+    // Terrain in 64-cell tiles, each built twice: full detail for nearby tiles, a 1-in-4 version for
+    // far ones (1/16 the triangles). A short skirt hangs off every tile edge to hide LOD seams.
+    const cellsPer = 64;
     const { nx, nz, cell, minX, minZ, W, Hh } = this;
-    for (let cz = 0; cz * cellsPer < nz - 1; cz++) for (let cx = 0; cx * cellsPer < nx - 1; cx++) {
-      const x0 = cx * cellsPer, z0 = cz * cellsPer;
-      const x1 = Math.min(x0 + cellsPer, nx - 1), z1 = Math.min(z0 + cellsPer, nz - 1);
-      const w = x1 - x0 + 1, d = z1 - z0 + 1;
-      const pos = new Float32Array(w * d * 3), nor = new Float32Array(w * d * 3), uv = new Float32Array(w * d * 2);
+    this.terrainTiles = [];
+    const tileGeo = (x0, z0, x1, z1, step) => {
+      const xs = [], zs = [];
+      for (let ix = x0; ix < x1; ix += step) xs.push(ix); xs.push(x1);
+      for (let iz = z0; iz < z1; iz += step) zs.push(iz); zs.push(z1);
+      const w = xs.length, d = zs.length, sk = 2 * (w + d);
+      const total = w * d + sk * 2;
+      const pos = new Float32Array(total * 3), nor = new Float32Array(total * 3), uv = new Float32Array(total * 2);
+      const idx = [];
       let k = 0;
-      for (let iz = z0; iz <= z1; iz++) for (let ix = x0; ix <= x1; ix++, k++) {
-        const x = minX + ix * cell, z = minZ + iz * cell;
-        pos[k * 3] = x; pos[k * 3 + 1] = this.hRaw(ix, iz); pos[k * 3 + 2] = z;
-        const n = new THREE.Vector3(this.hRaw(ix - 1, iz) - this.hRaw(ix + 1, iz), 2 * cell, this.hRaw(ix, iz - 1) - this.hRaw(ix, iz + 1)).normalize();
+      const put = (ix, iz, dy) => {
+        const x = minX + ix * cell, z = minZ + iz * cell, e = step;
+        pos[k * 3] = x; pos[k * 3 + 1] = this.hRaw(ix, iz) + dy; pos[k * 3 + 2] = z;
+        const n = new THREE.Vector3(this.hRaw(ix - e, iz) - this.hRaw(ix + e, iz), 2 * cell * e, this.hRaw(ix, iz - e) - this.hRaw(ix, iz + e)).normalize();
         nor[k * 3] = n.x; nor[k * 3 + 1] = n.y; nor[k * 3 + 2] = n.z;
         uv[k * 2] = (x - minX) / W; uv[k * 2 + 1] = (z - minZ) / Hh;
-      }
-      const idx = [];
+        return k++;
+      };
+      for (const iz of zs) for (const ix of xs) put(ix, iz, 0);
       for (let j = 0; j < d - 1; j++) for (let i = 0; i < w - 1; i++) {
         const a = j * w + i, b = a + 1, c = a + w, e = c + 1;
         idx.push(a, c, b, b, c, e);
       }
+      // skirt: walk the border, drop a strip 4 m down
+      const border = [];
+      for (const ix of xs) border.push([ix, zs[0]]);
+      for (const iz of zs.slice(1)) border.push([xs[w - 1], iz]);
+      for (const ix of xs.slice(0, -1).reverse()) border.push([ix, zs[d - 1]]);
+      for (const iz of zs.slice(1, -1).reverse()) border.push([xs[0], iz]);
+      border.push(border[0]);
+      for (let i = 0; i < border.length - 1; i++) {
+        const [ax, az] = border[i], [bx, bz] = border[i + 1];
+        const a = put(ax, az, 0), b = put(bx, bz, 0), c = put(bx, bz, -4), e = put(ax, az, -4);
+        idx.push(a, b, c, a, c, e, a, c, b, a, e, c);   // both faces
+        if (k + 4 > total) break;
+      }
       const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
-      g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+      g.setAttribute('position', new THREE.BufferAttribute(pos.subarray(0, k * 3), 3));
+      g.setAttribute('normal', new THREE.BufferAttribute(nor.subarray(0, k * 3), 3));
+      g.setAttribute('uv', new THREE.BufferAttribute(uv.subarray(0, k * 2), 2));
       g.setIndex(idx);
       g.computeBoundingSphere();
-      const m = new THREE.Mesh(g, mat);
-      m.receiveShadow = true;
-      this.group.add(m);
+      return g;
+    };
+    for (let cz = 0; cz * cellsPer < nz - 1; cz++) for (let cx = 0; cx * cellsPer < nx - 1; cx++) {
+      const x0 = cx * cellsPer, z0 = cz * cellsPer;
+      const x1 = Math.min(x0 + cellsPer, nx - 1), z1 = Math.min(z0 + cellsPer, nz - 1);
+      const near = new THREE.Mesh(tileGeo(x0, z0, x1, z1, 1), mat);
+      const far = new THREE.Mesh(tileGeo(x0, z0, x1, z1, 4), mat);
+      near.receiveShadow = true; far.receiveShadow = false; far.visible = false;
+      this.group.add(near, far);
+      this.terrainTiles.push({ near, far, x: minX + (x0 + x1) / 2 * cell, z: minZ + (z0 + z1) / 2 * cell, r: Math.hypot(x1 - x0, z1 - z0) * cell / 2 });
     }
     // skirt to the horizon so the world doesn't end in a cliff
     const ring = [];
@@ -461,7 +491,7 @@ export class World {
     const concrete = new THREE.MeshStandardMaterial({ map: cmap, color: 0xc8c4bc, roughness: 0.9 });
     const buckets = new Map();
     const bucket = (k, x, z) => {
-      const key = `${k}|${Math.floor(x / CHUNK)}|${Math.floor(z / CHUNK)}`;
+      const key = `${k}|${Math.floor(x / RCHUNK)}|${Math.floor(z / RCHUNK)}`;
       if (!buckets.has(key)) buckets.set(key, { k, gb: new GB() });
       return buckets.get(key).gb;
     };
@@ -525,7 +555,7 @@ export class World {
       m.receiveShadow = true;
       m.castShadow = k === 'concrete';
       if (k === 'walk') { m.material.vertexColors = true; }
-      this.group.add(m);
+      this.group.add(m); this.addCull(m, k === 'walk' ? 'walk' : 'road');
     }
   }
 
@@ -596,7 +626,7 @@ export class World {
     this.bGrid = new Map();
     const buckets = new Map();
     const chunk = (x, z) => {
-      const key = Math.floor(x / CHUNK) * 1000 + Math.floor(z / CHUNK);
+      const key = Math.floor(x / BCHUNK) * 1000 + Math.floor(z / BCHUNK);
       if (!buckets.has(key)) buckets.set(key, new GB(true));
       return buckets.get(key);
     };
@@ -605,7 +635,7 @@ export class World {
     for (const gb of buckets.values()) {
       const m = new THREE.Mesh(gb.geometry(), mat);
       m.castShadow = true; m.receiveShadow = true;
-      this.group.add(m);
+      this.group.add(m); this.addCull(m, 'building');
     }
     this.buildRoofItems();
   }
@@ -772,11 +802,15 @@ export class World {
     for (const it of items) { const t = it[4]; if (t === 0) { groups[0].list.push(it); groups[1].list.push(it); } else if (t === 1) groups[2].list.push(it); else groups[3].list.push(it); }
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1), up = new THREE.Vector3(0, 1, 0);
     for (const G of groups) {
-      if (!G.list.length) continue;
-      const im = new THREE.InstancedMesh(G.g, G.m, G.list.length);
-      G.list.forEach(([x, y, z, r], i) => { q.setFromAxisAngle(up, r); m4.compose(p.set(x, y, z), q, one); im.setMatrixAt(i, m4); });
-      im.computeBoundingSphere(); im.castShadow = true; im.receiveShadow = true;
-      this.group.add(im);
+      // one instanced mesh per area, so far-away rooftops can be skipped entirely
+      const byChunk = new Map();
+      for (const it of G.list) { const k = Math.floor(it[0] / ICHUNK) * 1000 + Math.floor(it[2] / ICHUNK); (byChunk.get(k) || byChunk.set(k, []).get(k)).push(it); }
+      for (const list of byChunk.values()) {
+        const im = new THREE.InstancedMesh(G.g, G.m, list.length);
+        list.forEach(([x, y, z, r], i) => { q.setFromAxisAngle(up, r); m4.compose(p.set(x, y, z), q, one); im.setMatrixAt(i, m4); });
+        im.computeBoundingSphere(); im.castShadow = true; im.receiveShadow = true;
+        this.group.add(im); this.addCull(im, 'detail');
+      }
     }
   }
 
@@ -931,9 +965,11 @@ export class World {
     const cards = this.quality.treeCards;
     // trunk + a few main branches, merged
     const parts = [];
-    const tg = new THREE.CylinderGeometry(0.16, 0.3, 4.4, 7, 1); tg.translate(0, 2.2, 0); parts.push(tg);
-    for (let i = 0; i < 3; i++) {
-      const bg = new THREE.CylinderGeometry(0.05, 0.11, 2.4, 5); bg.translate(0, 1.2, 0);
+    // open-ended cylinders (nobody sees the caps): about a third of the old triangle count
+    const lite = this.quality.textures === 'lo';
+    const tg = new THREE.CylinderGeometry(0.16, 0.3, 4.4, lite ? 6 : 7, 1, true); tg.translate(0, 2.2, 0); parts.push(tg);
+    for (let i = 0; i < (lite ? 2 : 3); i++) {
+      const bg = new THREE.CylinderGeometry(0.05, 0.11, 2.4, 4, 1, true); bg.translate(0, 1.2, 0);
       bg.rotateZ(0.7); bg.rotateY(i * 2.1); bg.translate(0, 3.4 + i * 0.4, 0); parts.push(bg);
     }
     const trunkG = mergeGeoms(parts);
@@ -956,7 +992,7 @@ export class World {
     const cellFor = (i) => { const h = hash(i * 9.3); return h < 0.34 ? CELLS[0] : h < 0.55 ? CELLS[1] : h < 0.8 ? CELLS[2] : CELLS[3]; };
     const chunks = new Map();
     trees.forEach((t, i) => {
-      const k = Math.floor(t[0] / CHUNK) * 1000 + Math.floor(t[1] / CHUNK);
+      const k = Math.floor(t[0] / TCHUNK) * 1000 + Math.floor(t[1] / TCHUNK);
       if (!chunks.has(k)) chunks.set(k, []);
       chunks.get(k).push(i);
     });
@@ -993,7 +1029,7 @@ export class World {
         im.castShadow = this.quality.treeShadows || im === trunk; im.receiveShadow = true;
         im.computeBoundingSphere();
         im.userData.noAO = im !== trunk;
-        this.group.add(im);
+        this.group.add(im); this.addCull(im, 'tree');
       }
     }
   }
@@ -1026,18 +1062,25 @@ export class World {
     const metal = new THREE.MeshStandardMaterial({ color: 0x3b4046, metalness: 0.6, roughness: 0.5 });
     const bulb = new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0xffd28a, emissiveIntensity: 0 });
     this.nightMats.push([bulb, 6]);
-    const ims = [pole, arm, head].map(g => new THREE.InstancedMesh(g, metal, max));
-    const bm = new THREE.InstancedMesh(bulbG, bulb, max);
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1), up = new THREE.Vector3(0, 1, 0);
     this.lampSpots = spots;
+    const byChunk = new Map();
     for (let i = 0; i < max; i++) {
-      const [x, y, z, ry] = spots[Math.floor(i * spots.length / max)];
-      p.set(x, y, z); q.setFromAxisAngle(up, ry); m4.compose(p, q, one);
-      for (const im of ims) im.setMatrixAt(i, m4);
-      bm.setMatrixAt(i, m4);
+      const s = spots[Math.floor(i * spots.length / max)];
+      const k = Math.floor(s[0] / ICHUNK) * 1000 + Math.floor(s[2] / ICHUNK);
+      (byChunk.get(k) || byChunk.set(k, []).get(k)).push(s);
     }
-    for (const im of [...ims, bm]) { im.computeBoundingSphere(); this.group.add(im); }
-    ims[0].castShadow = true;
+    for (const list of byChunk.values()) {
+      const ims = [pole, arm, head].map(g => new THREE.InstancedMesh(g, metal, list.length));
+      const bm = new THREE.InstancedMesh(bulbG, bulb, list.length);
+      list.forEach(([x, y, z, ry], i) => {
+        p.set(x, y, z); q.setFromAxisAngle(up, ry); m4.compose(p, q, one);
+        for (const im of ims) im.setMatrixAt(i, m4);
+        bm.setMatrixAt(i, m4);
+      });
+      for (const im of [...ims, bm]) { im.computeBoundingSphere(); this.group.add(im); this.addCull(im, 'detail'); }
+      ims[0].castShadow = true;
+    }
   }
 
   // ---------------------------------------------------------------- names / districts / graph
@@ -1379,8 +1422,34 @@ export class World {
     for (const L of this.lampLights) L.intensity = L.userData.on ? 260 * k : 0;
   }
 
+  // distance culling: anything past the fog (or too small to matter at that range) isn't drawn at all
+  addCull(o, cat) {
+    const g = o.geometry; if (!g) return;
+    if (o.isInstancedMesh) o.computeBoundingSphere(); else g.computeBoundingSphere();
+    const bs = o.isInstancedMesh ? o.boundingSphere : g.boundingSphere;
+    if (!bs || !isFinite(bs.radius)) return;
+    (this.cullList ||= []).push({ o, x: bs.center.x, z: bs.center.z, r: bs.radius, cat });
+  }
+  updateCulling(focus) {
+    if (!this.cullList || !focus) return;
+    const D = this.quality.drawDistance;
+    const lo = this.quality.textures === 'lo';
+    const lim = { building: D * 1.35, road: D * 0.8, walk: D * 0.35, tree: D * (lo ? 0.42 : 0.55), detail: Math.min(500, D * 0.3) };
+    const nearT = lo ? 420 : 700;
+    for (const t of this.terrainTiles || []) {
+      const near = Math.hypot(t.x - focus.x, t.z - focus.z) - t.r < nearT;
+      t.near.visible = near; t.far.visible = !near;
+    }
+    for (const c of this.cullList) {
+      const d = Math.hypot(c.x - focus.x, c.z - focus.z) - c.r;
+      c.o.visible = d < lim[c.cat];
+    }
+  }
+
   update(dt, night, focus) {
     this.time += dt;
+    this.cullT = (this.cullT || 0) - dt;
+    if (this.cullT <= 0 && focus) { this.cullT = 0.2; this.updateCulling(focus); }
     this.updateLampLights(dt, night, focus);
     this.lightT = (this.lightT || 0) - dt;
     if (this.lightT <= 0) { this.lightT = 0.25; this.updateLights(); }
