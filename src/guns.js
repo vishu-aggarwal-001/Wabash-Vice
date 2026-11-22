@@ -1,14 +1,15 @@
-// Firearms: bought at the pawn shop's gun counter. Aim with the camera (crosshair in the
-// middle of the screen), fire with click / Q (hold for the SMG). Every shot is a crime:
-// gunfire brings the police, hitting people brings more, and once you have fired a gun the
-// cops draw theirs and shoot back. Purdue's campus is a gun-free zone.
+// Firearms. You start with a 9mm; the rest are at the pawn shop's gun counter.
+// Number keys pick a weapon (1 fists / melee, 2 pistol, 3 SMG, 4 shotgun, 5 rifle).
+// Aim with the camera (crosshair in the middle of the screen), fire with click / Q (hold for
+// the SMG). Every shot is a crime: gunfire brings the police, hitting people brings more, and
+// once you have fired a gun the cops draw theirs and shoot back.
 import * as THREE from 'three';
 
 export const GUNS = {
   pistol: { name: '9mm pistol', price: 900, lvl: 1, dmg: 34, rate: 0.3, mag: 15, spread: 0.012, range: 90, pellets: 1, ammo: 45, ammoPrice: 60, auto: false, twoHand: false, loud: 1 },
-  smg: { name: 'Submachine gun', price: 2600, lvl: 3, dmg: 21, rate: 0.085, mag: 30, spread: 0.035, range: 70, pellets: 1, ammo: 90, ammoPrice: 120, auto: true, twoHand: true, loud: 1 },
-  shotgun: { name: 'Pump shotgun', price: 3400, lvl: 4, dmg: 17, rate: 0.95, mag: 6, spread: 0.075, range: 38, pellets: 8, ammo: 24, ammoPrice: 90, auto: false, twoHand: true, loud: 1.4 },
-  rifle: { name: 'Hunting rifle', price: 5800, lvl: 6, dmg: 95, rate: 1.2, mag: 5, spread: 0.002, range: 220, pellets: 1, ammo: 20, ammoPrice: 110, auto: false, twoHand: true, loud: 1.6 },
+  smg: { name: 'Submachine gun', price: 2600, lvl: 1, dmg: 21, rate: 0.085, mag: 30, spread: 0.035, range: 70, pellets: 1, ammo: 90, ammoPrice: 120, auto: true, twoHand: true, loud: 1 },
+  shotgun: { name: 'Pump shotgun', price: 3400, lvl: 1, dmg: 17, rate: 0.95, mag: 6, spread: 0.075, range: 38, pellets: 8, ammo: 24, ammoPrice: 90, auto: false, twoHand: true, loud: 1.4 },
+  rifle: { name: 'Hunting rifle', price: 5800, lvl: 1, dmg: 95, rate: 1.2, mag: 5, spread: 0.002, range: 220, pellets: 1, ammo: 20, ammoPrice: 110, auto: false, twoHand: true, loud: 1.6 },
 };
 export const isGun = (id) => !!GUNS[id];
 
@@ -31,7 +32,7 @@ export function gunMesh(id) {
 }
 
 const ray = new THREE.Ray(), tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3(), tmpS = new THREE.Sphere();
-const PURDUE = ['Purdue University', 'Ross-Ade Stadium'];
+export const SLOTS = ['melee', 'pistol', 'smg', 'shotgun', 'rifle'];   // keys 1-5
 
 export class Guns {
   constructor(g) {
@@ -57,15 +58,22 @@ export class Guns {
 #xhair.hit::before, #xhair.hit::after { background: #ff4040; }
 #xhair.off { opacity: .35; }
 #ammo { position: fixed; right: 22px; bottom: 150px; z-index: 5; font: 800 22px system-ui; color: #fff; text-shadow: 0 1px 3px #000; pointer-events: none; }
-#ammo small { font-size: 14px; color: #ccc; }`;
+#ammo small { font-size: 14px; color: #ccc; }
+#wbar { position: fixed; right: 18px; bottom: 112px; z-index: 5; display: flex; gap: 4px; pointer-events: none; }
+#wbar div { width: 40px; height: 40px; border-radius: 8px; background: rgba(0,0,0,.45); border: 2px solid rgba(255,255,255,.15); color: #fff; font: 20px/36px system-ui; text-align: center; position: relative; opacity: .35; }
+#wbar div.own { opacity: .85; } #wbar div.on { opacity: 1; border-color: #ffd23f; background: rgba(40,30,0,.6); }
+#wbar div b { position: absolute; left: 3px; top: -1px; font: 800 10px system-ui; color: #ffd23f; }
+@media (pointer: coarse) { #wbar { display: none; } }`;
     document.head.appendChild(css);
+    this.bar = document.createElement('div'); this.bar.id = 'wbar'; (document.getElementById('hud') || document.body).appendChild(this.bar);
+    this.barKey = '';
   }
 
   get id() { const w = this.g.save.weapon; return isGun(w) ? w : null; }
   get spec() { return GUNS[this.id]; }
   reserve(id) { return this.g.save.ammo[id] || 0; }
   magOf(id) { if (this.mag[id] === undefined) { const take = Math.min(GUNS[id].mag, this.reserve(id)); this.mag[id] = take; this.g.save.ammo[id] = this.reserve(id) - take; } return this.mag[id]; }
-  onCampus(p) { return PURDUE.includes(this.g.world.districtAt(p.x, p.z)); }
+  onCampus() { return false; }
   give(id, rounds) { this.g.save.ammo[id] = this.reserve(id) + rounds; }
 
   // per frame, on foot or not. Returns true when the punch input was used as a trigger.
@@ -77,20 +85,16 @@ export class Guns {
     const onFoot = !g.vehicle && pl.down <= 0 && !pl.swimming && !g.paused;
     const show = !!id && onFoot;
     this.xhair.hidden = !show; this.ammoEl.hidden = !id || !!g.vehicle;
+    this.drawBar(); this.bar.hidden = !!g.vehicle;
     pl.char.aiming = show && this.aimT > 0 ? 1 : 0;
     pl.char.twoHand = !!this.spec?.twoHand;
     if (!id) return false;
-    const S = this.spec, campus = onFoot && this.onCampus(pl.pos);
-    this.xhair.classList.toggle('off', campus);
+    const S = this.spec;
     if (this.reload > 0) { this.reload -= dt; if (this.reload <= 0) { const take = Math.min(S.mag - this.magOf(id), this.reserve(id)); this.mag[id] += take; g.save.ammo[id] -= take; } }
     this.ammoEl.innerHTML = `${this.reload > 0 ? 'RELOADING' : this.magOf(id)} <small>/ ${this.reserve(id)}</small>`;
     if (!show) return false;
     const trig = pressed.has('punch') || (S.auto && (inp.q || g.input.mouse.down || g.input.touch.buttons.has('!punch')));
     if (!trig) return false;
-    if (campus) {
-      if (this.campusNote <= 0) { g.hud.toast('Purdue campus is a gun-free zone. Your gun stays holstered here.', 'warn'); this.campusNote = 4; }
-      this.campusNote -= dt; return true;
-    }
     if (this.cool > 0 || this.reload > 0) return true;
     if (this.magOf(id) <= 0) {
       if (this.reserve(id) > 0) { this.reload = 1.4; g.audio.oneShot?.('highpass', 0.25, 0.08, 2500); }
@@ -112,7 +116,7 @@ export class Guns {
       if (this.held) g.scene.add(this.held);
     }
     const h = this.held; if (!h) return;
-    h.visible = char.mesh.visible && !(this.onCampus(g.player.pos));
+    h.visible = char.mesh.visible;
     const hand = char.bones?.RightHand; if (!hand) return;
     hand.getWorldPosition(h.position);
     if (aiming) { const d = this.aimDir(); h.lookAt(tmpV.copy(h.position).add(d)); }
@@ -156,6 +160,61 @@ export class Guns {
     if (g.jobs.active !== 'police') g.police.crime(1, 'Shots fired');
   }
 
+  // a shot at a fixed point (shooting a car's lock): ammo, flash, bang, panic, cops
+  fireAt(point) {
+    const g = this.g, id = this.id; if (!id || this.magOf(id) <= 0) return false;
+    const S = GUNS[id], pl = g.player;
+    this.mag[id]--; this.aimT = 1.2;
+    pl.char.aiming = 1; pl.char.update(0.001, pl.mode, 0); pl.char.model?.updateMatrixWorld(true);
+    this.placeHeld(id, pl.char, false);
+    if (this.held) this.held.lookAt(point);
+    const from = this.muzzle();
+    this.tracer(from, point);
+    this.flash.position.copy(from); this.flashT = 0.05;
+    g.fx.emit('spark', point, null, 4);
+    g.audio.gunshot?.(S.loud);
+    for (const p of g.traffic.peds) if (p.pos.distanceTo(pl.pos) < 60 && !p.fly) { if (Math.random() < 0.35) p.cower = 3 + Math.random() * 4; else p.flee = 10; }
+    g.police.armed = true;
+    if (g.jobs.active !== 'police') g.police.crime(1, 'Shots fired');
+    return true;
+  }
+
+  // number keys: 1 = fists / melee (press again to cycle melee weapons), 2-5 = guns
+  select(slot) {
+    const g = this.g, own = g.save.weapons, pawn = g.pawn;
+    const key = SLOTS[slot];
+    if (key === 'melee') {
+      const melee = ['fists', ...own.filter(w => !isGun(w) && w !== 'fists')];
+      const cur = melee.indexOf(g.save.weapon);
+      // from a gun: back to the last melee weapon; already on melee: the next one
+      const next = cur < 0 ? (melee.includes(g.save.lastMelee) ? g.save.lastMelee : 'fists') : melee[(cur + 1) % melee.length];
+      pawn.equip(next);
+      g.save.lastMelee = next;
+    } else {
+      if (!own.includes(key)) {
+        g.hud.toast(`🔒 ${GUNS[key].name} — buy it at Levee Pawn & Loan ($${GUNS[key].price.toLocaleString()}). GPS set.`, 'warn');
+        g.setGPS(pawn.marker.x, pawn.marker.z);
+        return;
+      }
+      pawn.equip(key);
+      if (this.magOf(key) + this.reserve(key) <= 0) g.hud.toast('No ammo — Levee Pawn & Loan sells more', 'warn');
+    }
+    const w = g.pawn.current; g.hud.toast(`${w.icon} ${w.name}`);
+  }
+
+  drawBar() {
+    const g = this.g, own = g.save.weapons, cur = g.save.weapon;
+    const melee = isGun(cur) ? (own.find(w => !isGun(w) && w !== 'fists') ? '🏏' : '✊') : (g.pawn.current.icon || '✊');
+    const key = own.join() + cur + melee;
+    if (key === this.barKey) return;
+    this.barKey = key;
+    this.bar.innerHTML = SLOTS.map((s, i) => {
+      const has = s === 'melee' || own.includes(s), on = s === 'melee' ? !isGun(cur) : cur === s;
+      const icon = s === 'melee' ? melee : { pistol: '🔫', smg: '🔫', shotgun: '💥', rifle: '🎯' }[s];
+      return `<div class="${has ? 'own' : ''} ${on ? 'on' : ''}" title="${s === 'melee' ? 'Fists / melee' : GUNS[s].name}"><b>${i + 1}</b>${icon}</div>`;
+    }).join('');
+  }
+
   // nearest person or vehicle along the camera ray
   cast(r, tMin, tMax) {
     const g = this.g;
@@ -170,7 +229,7 @@ export class Guns {
     const human = (o, kind) => { for (const y of [0.45, 1.0, 1.5]) test(tmpV2.set(o.pos.x, o.pos.y + y, o.pos.z), 0.3, o, kind); };
     for (const p of g.traffic.peds) if (!p.fly && !(p.down > 0)) human(p, 'ped');
     for (const a of g.actors) if (a.hittable && !a.isDown && !a.removed) human(a, a.cop ? 'cop' : 'npc');
-    const cars = [...g.traffic.cars.map(c => c.v), ...g.parked, ...g.police.units.map(u => u.v)];
+    const cars = g.allCars();
     for (const v of cars) {
       if (v === g.vehicle || v.dead) continue;
       const f = tmpV.set(Math.sin(v.yaw), 0, Math.cos(v.yaw));

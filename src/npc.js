@@ -44,7 +44,7 @@ export class Traffic {
     const car = { v, a, b, t: 0, speed: 8, cruise: (v.spec.id === 'bus' || v.spec.id === 'truck' ? 9 : 11) + Math.random() * 5, ai: true, honk: 0, wrecked: 0 };
     this.edge(car);
     this.place(car, 0.001);
-    const others = [...this.cars.map(c => c.v), ...this.g.parked, ...(this.g.police?.units || []).map(u => u.v)];
+    const others = this.g.allCars();
     if (others.some(o => Math.hypot(o.pos.x - v.pos.x, o.pos.z - v.pos.z) < (o.spec.L + v.spec.L) / 2 + 2)) { this.g.scene.remove(v.mesh); return; }
     this.cars.push(car);
   }
@@ -343,7 +343,7 @@ export class Police {
       const gy = Math.max(target.y, this.w.heightAt(gx, gz)) + 65;
       v.pos.x += (gx - v.pos.x) * dt * 0.6; v.pos.z += (gz - v.pos.z) * dt * 0.6; v.pos.y += (gy - v.pos.y) * dt * 0.6;
       v.yaw = Math.atan2(target.x - v.pos.x, target.z - v.pos.z); v.pitch = 0.12; v.roll = 0;
-      h.spot.intensity = this.g.env.night * 900000;
+      h.spot.intensity = this.g.env.night * 900;   // a searchlight, not a second sun (900000 blew the whole screen out white)
       h.spot.target.position.set(0, -60, 25);
       const local = v.mesh.worldToLocal(target.clone());
       h.spot.target.position.copy(local);

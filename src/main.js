@@ -50,6 +50,7 @@ import { circleBox, overBox, boxBox, resolveCars } from './collide.js';
 import { Home } from './home.js';
 import { Talk } from './talk.js';
 import { Contacts } from './contacts.js';
+import { CarTheft } from './theft.js';
 
 const QUALITY = {
   low: { pixelRatio: 1, shadows: 1024, shadowRange: 80, drawDistance: 1400, bloom: false, msaa: 0, ao: false, grade: false, textures: 'lo', treeCards: 14, traffic: 14, peds: 10, lamps: 1500, treeShadows: false },
@@ -68,7 +69,9 @@ class Game {
     try { save = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}'); } catch { /* storage unavailable */ }
     const touch = matchMedia('(pointer: coarse)').matches;
     this.save = save;
-    this.settings = Object.assign({ quality: 'auto', invertPitch: false, volume: 0.8, sensitivity: 1, units: 'mph', dayMinutes: 24, dynres: true, weather: 'auto' }, save.settings || {});
+    this.settings = Object.assign({ quality: 'auto', invertPitch: false, volume: 0.8, sensitivity: 1, units: 'mph', dayMinutes: 24, dynres: true, weather: 'clear', timeMode: 'day' }, save.settings || {});
+    if (!save.v7) { this.settings.timeMode = 'day'; this.settings.weather = 'clear'; }   // v0.7: sunny by default (Settings can still pick snow or night)
+    if (params.get('hour')) this.settings.timeMode = 'fixed';
     this.weather = pickWeather(params.get('weather') || this.settings.weather);
     installSnowShader(snowy(this.weather) ? 1 : 0);
     if (!save.v3) { this.settings.quality = 'auto'; }   // v0.3: re-detect everyone's quality once
@@ -136,6 +139,8 @@ class Game {
     this.env.daySeconds = this.settings.dayMinutes * 60;
     if (save_hours(this.save)) this.env.hours = this.save.hours;
     if (params.get('hour')) this.env.hours = +params.get('hour');
+    else if (this.settings.timeMode === 'day') this.env.hours = 13;
+    else if (this.settings.timeMode === 'night') this.env.hours = 23;
     this.fx = new FX(this.scene);
     this.audio = new Audio(); this.audio.setVolume(this.settings.volume);
     this.input = new Input(canvas);
@@ -150,6 +155,7 @@ class Game {
     this.garage = new Garage(this);
     this.guns = new Guns(this);
     this.pawn = new Pawn(this);
+    this.theft = new CarTheft(this);
     this.prog = new Progression(this);
     if (this.save.player) { this.player.medkits = this.save.player.medkits ?? 2; this.player.armor = this.save.player.armor ?? 0; }
     this.hud = new HUD(this);
@@ -167,6 +173,7 @@ class Game {
     this.player.place(sx, sz);
     this.player.yaw = this.camYaw = this.startYaw ?? Math.PI;
     this.focus.copy(this.player.pos);
+    this.theft.fill(this.focus);
     this.world.updateCulling(this.focus);
     // warm-up render so the GPU compiles shaders behind the loading screen
     bar.style.width = '100%'; msg.textContent = 'Compiling shaders…';
@@ -303,7 +310,7 @@ class Game {
 
   persist() {
     try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify({ v3: true, money: this.money, gears: this.save.gears || [], settings: this.settings, hours: this.env?.hours, seenHelp: this.save.seenHelp, xp: this.save.xp || 0, talents: this.save.talents, karma: this.save.karma || 0, jobs: this.save.jobs, story: this.save.story, look: this.save.look, owned: this.save.owned, owned2: this.save.owned2, myCar: this.save.myCar || null, weapons: this.save.weapons, weapon: this.save.weapon, ammo: this.save.ammo, player: { medkits: this.player?.medkits ?? 2, armor: Math.round(this.player?.armor || 0) } }));
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ v3: true, money: this.money, gears: this.save.gears || [], settings: this.settings, hours: this.env?.hours, seenHelp: this.save.seenHelp, xp: this.save.xp || 0, talents: this.save.talents, karma: this.save.karma || 0, jobs: this.save.jobs, story: this.save.story, look: this.save.look, owned: this.save.owned, owned2: this.save.owned2, myCar: this.save.myCar || null, weapons: this.save.weapons, weapon: this.save.weapon, ammo: this.save.ammo, starterGun: this.save.starterGun, lastMelee: this.save.lastMelee, v7: true, player: { medkits: this.player?.medkits ?? 2, armor: Math.round(this.player?.armor || 0) } }));
     } catch { /* ignore */ }
   }
   addMoney(n) { this.money = Math.max(0, this.money + n); this.persist(); }
@@ -359,7 +366,7 @@ class Game {
       this.hud.toast('Moved you to the river bank');
     }
     // a clear spot ahead or beside you: no walls, no other vehicles
-    const others = [...this.parked, ...this.traffic.cars.map(c => c.v), ...this.police.units.map(u => u.v)];
+    const others = this.allCars();
     const R = Math.max(s.L, s.W) / 2 + 0.6;
     const free = (x, z) => !others.some(o => !o.dead && Math.hypot(o.pos.x - x, o.pos.z - z) < R + Math.max(o.spec.L, o.spec.W) / 2);
     let fallback = null;
@@ -383,6 +390,7 @@ class Game {
       else { v.place(x, z, v.yaw); this.hud.toast(`Travelled to ${name}`); return; }
     }
     this.player.place(x, z);
+    this.theft?.fill(this.player.pos);
     this.hud.toast(`Travelled to ${name}`);
   }
 
@@ -426,20 +434,10 @@ class Game {
     this.camYaw = v.yaw;
   }
 
-  tryEnter() {
-    const p = this.player.pos;
-    let best = null, bd = 5, kind = null;
-    for (const v of this.parked) { if (v.dead) continue; const d = v.pos.distanceTo(p) - v.spec.L * 0.3; if (d < bd) { bd = d; best = v; kind = 'parked'; } }
-    const tc = this.traffic.nearestCar(p, bd);
-    if (tc) { best = tc.v; kind = tc.ai ? 'jack' : 'parked'; this.traffic.cars.splice(this.traffic.cars.indexOf(tc), 1); }
-    for (const u of this.police.units) { const d = u.v.pos.distanceTo(p) - u.v.spec.L * 0.3; if (d < bd && !u.v.dead) { bd = d; best = u.v; kind = 'cop'; } }
-    if (!best) return false;
-    if (kind === 'jack') { best.kinematic = false; this.police.crime(1, 'Carjacking'); this.hud.toast(`Jacked a ${best.spec.name}`); }
-    if (kind === 'cop') { this.police.units = this.police.units.filter(u => u.v !== best); best.sirenOn = false; this.police.crime(2, 'Stole a police car'); }
-    if (!this.parked.includes(best)) this.parked.push(best);
-    this.enterVehicle(best);
-    return true;
-  }
+  // F on foot: get in, break in, carjack or steal a cruiser (see theft.js)
+  tryEnter() { return this.theft.tryEnter(); }
+  // every vehicle in the world right now
+  allCars() { return [...this.parked, ...(this.theft?.cars || []), ...this.traffic.cars.map(c => c.v), ...this.police.units.map(u => u.v)]; }
 
   // ---------------------------------------------------------------- events
   onCrash(intensity, pos) { this.audio.crash(intensity); this.shake = Math.min(1, this.shake + intensity * 0.04); }
@@ -653,7 +651,7 @@ class Game {
     if (pr.has('siren') && this.vehicle?.parts.beacons.length) { this.vehicle.sirenOn = !this.vehicle.sirenOn; }
     if (pr.has('enter') && this.deathT <= 0) {
       if (this.vehicle) { if (!this.vehicle.airborne || this.vehicle.pos.y - w.heightAt(this.vehicle.pos.x, this.vehicle.pos.z) > 12 || this.vehicle.speed < 3) this.exitVehicle(); }
-      else if (!this.tryEnter()) this.hud.toast('No vehicle nearby — press V to spawn one');
+      else if (!this.tryEnter()) this.hud.toast('No car close enough — walk right up to one and press F');
     }
     const v = this.vehicle;
     // simulate
@@ -681,9 +679,12 @@ class Game {
     } else {
       const pl = this.player;
       if (pr.has('horn') && pl.useMedkit()) { this.hud.toast(`+50 health  (${pl.medkits} medkits left)`, 'good'); this.audio.chime(true); }
-      const gunUsed = this.guns.update(dt, inp, pr);
+      if (!this.talk?.open) for (let i = 1; i <= 5; i++) if (pr.has('opt' + i)) { this.guns.select(i - 1); break; }
+      this.theft.interrupt(inp);
+      const busy = this.theft.busy;
+      const gunUsed = busy ? true : this.guns.update(dt, inp, pr);
       const pin = { x: inp.moveX, y: inp.moveY, run: inp.shift, walk: inp.walk, jump: inp.jump, punch: pr.has('punch') && !this.guns.id && !gunUsed, kick: pr.has('kick') };
-      if (this.talk?.open) { pin.x = pin.y = 0; pin.jump = pin.punch = pin.kick = false; }
+      if (this.talk?.open || busy) { pin.x = pin.y = 0; pin.jump = pin.punch = pin.kick = false; }
       const psub = Math.max(1, Math.ceil(dt / 0.025));
       for (let i = 0; i < psub; i++) {
         pl.update(dt / psub, pin, this.camYaw);
@@ -719,6 +720,7 @@ class Game {
     if (this.player.hp <= 0 && this.deathT <= 0) this.wasted();
     this.traffic.update(dt, this.focus, v, v ? null : this.player);
     this.police.update(dt, this.focus, v, this.player);
+    this.theft.update(dt, this.focus);
     this.missions.update(dt, this.focus, v, inp);
     for (const a of this.actors.slice()) a.update(dt);
     for (const sc of this.scripts.slice()) sc.update(dt);
@@ -733,7 +735,9 @@ class Game {
     // environment
     const snap = this.quality.shadowRange * 2 / (this.quality.shadows || 512);
     const sf = new THREE.Vector3(Math.round(this.focus.x / snap) * snap, this.focus.y, Math.round(this.focus.z / snap) * snap);
-    this.env.update(dt, sf, inp.timeFast);
+    const fixedHour = { day: 13, night: 23 }[this.settings.timeMode];
+    if (fixedHour !== undefined) this.env.hours = fixedHour;
+    this.env.update(dt, sf, fixedHour === undefined && inp.timeFast);
     this.world.update(dt, this.env.night, this.focus);
     this.fx.update(dt);
     this.updateCamera(dt, inp);
@@ -752,6 +756,7 @@ class Game {
     const f = this.focus, out = [];
     const add = (v) => { if (v && v.mesh.parent && Math.abs(v.pos.x - f.x) < range && Math.abs(v.pos.z - f.z) < range && !out.includes(v)) out.push(v); };
     for (const v of this.parked) add(v);
+    for (const v of this.theft.cars) add(v);
     for (const c of this.traffic.cars) add(c.v);
     for (const u of this.police.units) add(u.v);
     for (const sc of this.scripts) for (const d of sc.drivers || []) add(d.v);

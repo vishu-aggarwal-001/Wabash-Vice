@@ -6,7 +6,7 @@
 
 Every street, all 13,500 buildings, the Wabash River, the bridges, Purdue's campus, downtown Lafayette and Purdue Airport come from real OpenStreetMap data, at real 1:1 scale (about 6.8 km × 5.5 km). It runs in any modern browser. There's no install and no build step.
 
-> **Status: v0.6: a home with your own car, solid collisions, talking to people, and a big speed-up.** It isn't GTA 6. That took a studio of thousands of people about a decade. What it is: a real, working open-world game of your actual hometown that you can keep improving. See the [Roadmap](#roadmap).
+> **Status: v0.7: steal any car on the street, start with a gun, sunny by default.** It isn't GTA 6. That took a studio of thousands of people about a decade. What it is: a real, working open-world game of your actual hometown that you can keep improving. See the [Roadmap](#roadmap).
 
 ---
 
@@ -38,7 +38,7 @@ To turn hosting on for a copy of this repo: **Settings → Pages → Build and d
 | Move / drive | **W A S D** (Shift sprint, Alt walk) | Left stick, RT/LT |
 | Talk to someone | **G**, then **1–4** or click an answer | 💬 button |
 | Look | **Mouse** (click the game to capture it) or right-drag | Right stick |
-| Enter / exit vehicle | **F** (works on traffic too, i.e. carjacking) | Y |
+| Steal / enter / exit a car | **F**: break into any parked car, carjack traffic, steal cop cars | Y |
 | Run / nitro / afterburner | **Shift** | LS click / X |
 | Jump / handbrake / climb | **Space** | A |
 | Spawn any vehicle | **V** | D-pad left |
@@ -49,7 +49,7 @@ To turn hosting on for a copy of this repo: **Settings → Pages → Build and d
 | Fast-forward time | hold **T** | |
 | Menu, settings, fast travel | **Esc** | Start |
 | Punch or swing / kick | **Click** or **Q** / **E** | X / B |
-| Switch weapon | **Z** | |
+| Pick a weapon | **1** fists / melee · **2** pistol · **3** SMG · **4** shotgun · **5** rifle · **Z** cycles | |
 | Shoot (with a gun out) | **Click** or **Q**, aim with the mouse (hold for the SMG) | X |
 | Answer a choice (pay the bribe?) | **Y** / **N** | |
 | Use a medkit (on foot) | **H** | |
@@ -66,7 +66,15 @@ To turn hosting on for a copy of this repo: **Settings → Pages → Build and d
 
 ---
 
-## 🆕 What's new in v0.6: home, solid cars, talking, and a lot faster
+## 🆕 What's new in v0.7: grand theft auto
+
+- **Every street has parked cars, and you can steal all of them.** Walk up to any car and press **F**. With fists you elbow the window, with a bat or pipe you smash it, a crowbar pries the door fastest, and with a gun out you shoot the lock. Some cars have alarms (most of the expensive ones): the lights flash, the horn blares and people call the cops.
+- **Carjacking actually works.** Press **F** next to a traffic car that's stopped or crawling: you drag the driver out onto the road and drive off. Cop cars can be stolen too (2 stars).
+- **You start with a 9mm pistol** and 60 rounds. Number keys pick weapons, Criminal Russia style: **1** fists / melee, **2** pistol, **3** SMG, **4** shotgun, **5** rifle, with a weapon bar on screen. Pressing a number for a gun you don't own sets your GPS to Levee Pawn & Loan. No more level locks on guns, and the Purdue gun-free zone is gone.
+- **Always sunny by default.** No more random snow or night. Pick *Always night* or *Day & night cycle* (and snow) in Settings.
+- **Fixed the white-out at night:** the police helicopter's searchlight was about 1,000× too bright and turned the whole screen white with rings on the ground.
+
+## What was new in v0.6: home, solid cars, talking, and a lot faster
 
 - **You have a home.** You start at your house in West Lafayette with your own car in the driveway (the one you tuned at Dee's, otherwise the Boilermaker GT). Walk up to the 🏠 front door to save and heal. You respawn there, your car comes back if it got wrecked, and **Esc → Fast travel → 🏠 Home** takes you there.
 - **Talk to anyone** (Criminal Russia style). Walk up to a person, press **G**, and pick a line: chat, ask their name, ask for work (sets your GPS), ask the way, compliment, insult, or rob them. Everyone has a name, a job and a mood, and they remember you. Insult or rob the wrong guy and he'll fight you. If you're wanted, you can try to bribe a cop.

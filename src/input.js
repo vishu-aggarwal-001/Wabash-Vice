@@ -2,7 +2,7 @@
 const ACTIONS = {
   KeyF: 'enter', Enter: 'enter', KeyM: 'map', KeyV: 'vehicles', Escape: 'pause', KeyP: 'pause',
   KeyC: 'camera', KeyR: 'radio', KeyH: 'horn', KeyK: 'siren', KeyL: 'lights', F1: 'help', KeyJ: 'mission',
-  KeyQ: 'punch', KeyE: 'kick', KeyG: 'talk', Digit1: 'opt1', Digit2: 'opt2', Digit3: 'opt3', Digit4: 'opt4', Tab: 'phone', KeyY: 'yes', KeyN: 'no', KeyX: 'endjob', KeyZ: 'weapon',
+  KeyQ: 'punch', KeyE: 'kick', KeyG: 'talk', Digit1: 'opt1', Digit2: 'opt2', Digit3: 'opt3', Digit4: 'opt4', Digit5: 'opt5', Tab: 'phone', KeyY: 'yes', KeyN: 'no', KeyX: 'endjob', KeyZ: 'weapon',
 };
 
 export class Input {

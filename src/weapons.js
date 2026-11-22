@@ -1,5 +1,5 @@
 // Melee weapons: bought at Levee Pawn & Loan, held in the right hand (fitted to the
-// hand bone from the bind pose), swung with the punch button. Z cycles what you own.
+// hand bone from the bind pose), swung with the punch button. 1-5 pick, Z cycles what you own.
 import * as THREE from 'three';
 import { textTexture } from './textures.js';
 import { GUNS } from './guns.js';
@@ -92,6 +92,13 @@ export class Pawn {
     this.g = g; this.open = false;
     g.save.weapons ||= ['fists'];
     g.save.weapon ||= 'fists';
+    // everybody starts with a 9mm and a few boxes of rounds (key 2)
+    if (!g.save.starterGun) {
+      g.save.starterGun = true;
+      if (!g.save.weapons.includes('pistol')) g.save.weapons.push('pistol');
+      g.save.ammo ||= {}; g.save.ammo.pistol = (g.save.ammo.pistol || 0) + 60;
+      g.save.weapon = 'pistol';
+    }
     this.buildUI();
     const [x0, z0] = g.world.toWorld(...PAWN.at);
     const n = g.world.nearestNode(x0, z0, 300), p = n >= 0 ? g.world.gNodes[n] : [x0, 0, z0];
@@ -135,7 +142,7 @@ export class Pawn {
   buildUI() {
     const el = this.el = document.createElement('div');
     el.className = 'shopui'; el.hidden = true;
-    el.innerHTML = `<div class="wpanel"><div class="whead"><b style="color:#ff6a6a">${PAWN.name}</b><span>Bats behind the door, guns behind the counter. Z switches weapons. Every shot brings the police — and campus is gun-free.</span></div>
+    el.innerHTML = `<div class="wpanel"><div class="whead"><b style="color:#ff6a6a">${PAWN.name}</b><span>Bats behind the door, guns behind the counter. Keys 1–5 pick a weapon (Z cycles). Every shot brings the police.</span></div>
       <div class="wlist"></div><div class="wfoot"><span class="money" style="flex:1;text-align:center;color:#7ee36a;font-weight:800"></span><button class="close">Done (Esc)</button></div></div>`;
     document.body.appendChild(el);
     el.querySelector('.close').onclick = () => this.hide();

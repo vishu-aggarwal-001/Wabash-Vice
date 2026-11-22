@@ -366,6 +366,8 @@ export class HUD {
     const vol = $('setvol'); vol.value = g.settings.volume; vol.oninput = () => { g.settings.volume = +vol.value; g.audio.setVolume(+vol.value); g.persist(); };
     const sens = $('setsens'); sens.value = g.settings.sensitivity; sens.oninput = () => { g.settings.sensitivity = +sens.value; g.persist(); };
     const un = $('setunits'); un.value = g.settings.units; un.onchange = () => { g.settings.units = this.units = un.value; g.persist(); };
+    $('settime').value = g.settings.timeMode === 'fixed' ? 'cycle' : g.settings.timeMode || 'day';
+    $('settime').onchange = () => { g.settings.timeMode = $('settime').value; g.persist(); };
     $('setday').value = g.settings.dayMinutes; $('setday').onchange = () => { g.settings.dayMinutes = +$('setday').value; g.env.daySeconds = g.settings.dayMinutes * 60; g.persist(); };
     $('cancelmission').onclick = () => { g.missions.cancel(); g.story.cancel(); g.jobs.end(); this.toggleMenu(false); };
     $('phback').onclick = () => this.phoneBack();
