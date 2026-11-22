@@ -535,7 +535,7 @@ class Game {
       let heading = v.yaw;
       if (v.type === 'plane') { const f = new THREE.Vector3(0, 0, 1).applyQuaternion(v.q); heading = Math.atan2(f.x, f.z); }
       const vf = v.vel.x * Math.sin(heading) + v.vel.z * Math.cos(heading);
-      if (this.lookIdle > 1.2 && !(v.type === 'car' && vf < -3)) {
+      if (this.lookIdle > 1.2 && !(this.guns?.aimT > 0 && this.guns.id) && !(v.type === 'car' && vf < -3)) {   // hold the aim during a drive-by
         this.camYaw += wrap(heading - this.camYaw) * Math.min(1, dt * (v.type === 'plane' ? 4 : 3));
         const wantPitch = v.type === 'plane' ? 0.12 - (new THREE.Vector3(0, 0, 1).applyQuaternion(v.q).y) * 0.7 : v.type === 'heli' ? 0.3 : 0.16;
         this.camPitch += (wantPitch - this.camPitch) * Math.min(1, dt * 2);
@@ -653,6 +653,7 @@ class Game {
       if (this.vehicle) { if (!this.vehicle.airborne || this.vehicle.pos.y - w.heightAt(this.vehicle.pos.x, this.vehicle.pos.z) > 12 || this.vehicle.speed < 3) this.exitVehicle(); }
       else if (!this.tryEnter()) this.hud.toast('No car close enough — walk right up to one and press F');
     }
+    if (!this.talk?.open && !(this.vehicle && !this.guns.canDriveBy(this.vehicle))) for (let i = 1; i <= 5; i++) if (pr.has('opt' + i)) { this.guns.select(i - 1); break; }
     const v = this.vehicle;
     // simulate
     if (v) {
@@ -679,7 +680,6 @@ class Game {
     } else {
       const pl = this.player;
       if (pr.has('horn') && pl.useMedkit()) { this.hud.toast(`+50 health  (${pl.medkits} medkits left)`, 'good'); this.audio.chime(true); }
-      if (!this.talk?.open) for (let i = 1; i <= 5; i++) if (pr.has('opt' + i)) { this.guns.select(i - 1); break; }
       this.theft.interrupt(inp);
       const busy = this.theft.busy;
       const gunUsed = busy ? true : this.guns.update(dt, inp, pr);

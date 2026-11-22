@@ -63,6 +63,7 @@ export class Guns {
 #wbar div { width: 40px; height: 40px; border-radius: 8px; background: rgba(0,0,0,.45); border: 2px solid rgba(255,255,255,.15); color: #fff; font: 20px/36px system-ui; text-align: center; position: relative; opacity: .35; }
 #wbar div.own { opacity: .85; } #wbar div.on { opacity: 1; border-color: #ffd23f; background: rgba(40,30,0,.6); }
 #wbar div b { position: absolute; left: 3px; top: -1px; font: 800 10px system-ui; color: #ffd23f; }
+#wbar.incar { right: 200px; bottom: 22px; } #ammo.incar { right: 204px; bottom: 68px; }
 @media (pointer: coarse) { #wbar { display: none; } }`;
     document.head.appendChild(css);
     this.bar = document.createElement('div'); this.bar.id = 'wbar'; (document.getElementById('hud') || document.body).appendChild(this.bar);
@@ -83,10 +84,12 @@ export class Guns {
     this.flash.intensity = this.flashT > 0 ? 40 : 0;
     for (const t of this.tracers) if (t.t > 0) { t.t -= dt; t.l.material.opacity = Math.max(0, t.t / 0.07); if (t.t <= 0) t.l.visible = false; }
     const onFoot = !g.vehicle && pl.down <= 0 && !pl.swimming && !g.paused;
-    const show = !!id && onFoot;
-    this.xhair.hidden = !show; this.ammoEl.hidden = !id || !!g.vehicle;
-    this.drawBar(); this.bar.hidden = !!g.vehicle;
-    pl.char.aiming = show && this.aimT > 0 ? 1 : 0;
+    const driveBy = this.canDriveBy(g.vehicle) && !g.paused && g.deathT <= 0;
+    const show = !!id && (onFoot || driveBy);
+    this.xhair.hidden = !show; this.ammoEl.hidden = !id || (!!g.vehicle && !driveBy);
+    this.drawBar(); this.bar.hidden = !!g.vehicle && !this.canDriveBy(g.vehicle);
+    this.bar.classList.toggle('incar', !!g.vehicle); this.ammoEl.classList.toggle('incar', !!g.vehicle);
+    pl.char.aiming = onFoot && show && this.aimT > 0 ? 1 : 0;
     pl.char.twoHand = !!this.spec?.twoHand;
     if (!id) return false;
     const S = this.spec;
@@ -106,7 +109,24 @@ export class Guns {
     return true;
   }
 
-  late() { const g = this.g, id = this.id; this.placeHeld(id && !g.vehicle ? id : null, g.player.char, this.aimT > 0); }
+  // drive-bys: cars, bikes and boats (planes and the chopper need both hands, and Q is the rudder there)
+  canDriveBy(v) { return !!v && (v.type === 'car' || v.type === 'bike' || v.type === 'boat'); }
+  // where the gun pokes out: the window on whichever side you're aiming at
+  windowPoint(v) {
+    const d = this.aimDir(), left = tmpV.set(Math.cos(v.yaw), 0, -Math.sin(v.yaw));
+    const side = d.x * left.x + d.z * left.z >= 0 ? 1 : -1;
+    return v.pos.clone().addScaledVector(left, side * (v.spec.W / 2 + 0.12)).add(new THREE.Vector3(Math.sin(v.yaw) * v.spec.L * 0.04, v.height * (v.type === 'bike' ? 1.05 : 0.72), Math.cos(v.yaw) * v.spec.L * 0.04));
+  }
+  late() {
+    const g = this.g, id = this.id, v = g.vehicle;
+    if (v) {
+      const out = id && this.aimT > 0 && this.canDriveBy(v);
+      this.placeHeld(out ? id : null, g.player.char, false);
+      if (out && this.held) { const p = this.windowPoint(v); this.held.position.copy(p); this.held.lookAt(p.clone().add(this.aimDir())); this.held.visible = v.mesh.visible; }
+      return;
+    }
+    this.placeHeld(id ? id : null, g.player.char, this.aimT > 0);
+  }
   // the gun mesh follows the hand: aimed along the camera when firing, pointing down otherwise
   placeHeld(id, char, aiming) {
     const g = this.g;
@@ -123,16 +143,24 @@ export class Guns {
     else { h.rotation.set(1.15, char.mesh.rotation.y, 0, 'YXZ'); }
   }
   aimDir() { return this.g.camera.getWorldDirection(tmpV2).clone(); }
-  muzzle() { const h = this.held; return h ? h.localToWorld(new THREE.Vector3(0, 0.05, h.userData.muzzle || 0.2)) : this.g.player.pos.clone().setY(this.g.player.pos.y + 1.4); }
+  muzzle() { const h = this.held; h?.updateMatrixWorld(true); return h ? h.localToWorld(new THREE.Vector3(0, 0.05, h.userData.muzzle || 0.2)) : this.g.player.pos.clone().setY(this.g.player.pos.y + 1.4); }
 
   fire(id) {
-    const g = this.g, S = GUNS[id], pl = g.player;
+    const g = this.g, S = GUNS[id], pl = g.player, v = g.vehicle;
     this.mag[id]--; this.cool = S.rate; this.aimT = 1.6;
-    pl.yaw = g.camYaw; pl.mesh.rotation.y = pl.yaw; pl.char.aiming = 1;
-    pl.char.update(0.001, pl.mode, 0); pl.char.model.updateMatrixWorld(true);
-    this.placeHeld(id, pl.char, true);
-    const cam = g.camera, from = this.muzzle();
-    const minT = cam.position.distanceTo(pl.pos) + 0.4;
+    let from, minT;
+    const cam = g.camera;
+    if (v) {   // drive-by: out of the window
+      this.late();
+      from = this.held ? this.muzzle() : this.windowPoint(v);
+      minT = cam.position.distanceTo(v.pos) + Math.max(v.spec.L, v.spec.W) * 0.5;
+    } else {
+      pl.yaw = g.camYaw; pl.mesh.rotation.y = pl.yaw; pl.char.aiming = 1;
+      pl.char.update(0.001, pl.mode, 0); pl.char.model.updateMatrixWorld(true);
+      this.placeHeld(id, pl.char, true);
+      from = this.muzzle();
+      minT = cam.position.distanceTo(pl.pos) + 0.4;
+    }
     let hitAny = false;
     for (let k = 0; k < S.pellets; k++) {
       const dir = this.aimDir();
@@ -154,8 +182,8 @@ export class Guns {
     g.fx.emit('spark', from, null, 3);
     g.audio.gunshot?.(S.loud);
     g.shake = Math.min(1, g.shake + 0.08 * S.loud);
-    for (const p of g.traffic.peds) if (p.pos.distanceTo(pl.pos) < 70 && !p.fly) { if (Math.random() < 0.35) p.cower = 3 + Math.random() * 4; else p.flee = 10; }
-    for (const a of g.actors) if (!a.hostile && !a.cop && a.mode === 'idle' && a.pos.distanceTo(pl.pos) < 40 && a.hittable && !a.label) a.mode = Math.random() < 0.5 ? 'cower' : 'flee';
+    for (const p of g.traffic.peds) if (p.pos.distanceTo(g.focus) < 70 && !p.fly) { if (Math.random() < 0.35) p.cower = 3 + Math.random() * 4; else p.flee = 10; }
+    for (const a of g.actors) if (!a.hostile && !a.cop && a.mode === 'idle' && a.pos.distanceTo(g.focus) < 40 && a.hittable && !a.label) a.mode = Math.random() < 0.5 ? 'cower' : 'flee';
     g.police.armed = true;
     if (g.jobs.active !== 'police') g.police.crime(1, 'Shots fired');
   }

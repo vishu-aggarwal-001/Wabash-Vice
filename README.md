@@ -50,7 +50,7 @@ To turn hosting on for a copy of this repo: **Settings → Pages → Build and d
 | Menu, settings, fast travel | **Esc** | Start |
 | Punch or swing / kick | **Click** or **Q** / **E** | X / B |
 | Pick a weapon | **1** fists / melee · **2** pistol · **3** SMG · **4** shotgun · **5** rifle · **Z** cycles | |
-| Shoot (with a gun out) | **Click** or **Q**, aim with the mouse (hold for the SMG) | X |
+| Shoot (with a gun out) | **Click** or **Q**, aim with the mouse (hold for the SMG); works from cars, bikes and boats too | X |
 | Answer a choice (pay the bribe?) | **Y** / **N** | |
 | Use a medkit (on foot) | **H** | |
 | Phone: jobs, story, shop, stats | **Tab** | Back/View |
@@ -71,6 +71,7 @@ To turn hosting on for a copy of this repo: **Settings → Pages → Build and d
 - **Every street has parked cars, and you can steal all of them.** Walk up to any car and press **F**. With fists you elbow the window, with a bat or pipe you smash it, a crowbar pries the door fastest, and with a gun out you shoot the lock. Some cars have alarms (most of the expensive ones): the lights flash, the horn blares and people call the cops.
 - **Carjacking actually works.** Press **F** next to a traffic car that's stopped or crawling: you drag the driver out onto the road and drive off. Cop cars can be stolen too (2 stars).
 - **You start with a 9mm pistol** and 60 rounds. Number keys pick weapons, Criminal Russia style: **1** fists / melee, **2** pistol, **3** SMG, **4** shotgun, **5** rifle, with a weapon bar on screen. Pressing a number for a gun you don't own sets your GPS to Levee Pawn & Loan. No more level locks on guns, and the Purdue gun-free zone is gone.
+- **Drive-bys.** With a gun picked, aim with the mouse while driving a car, bike or boat and click (or **Q**) to shoot out of the window. Hold for the SMG. The camera stays where you aim instead of swinging back behind the car. Number keys work in the car too.
 - **Always sunny by default.** No more random snow or night. Pick *Always night* or *Day & night cycle* (and snow) in Settings.
 - **Fixed the white-out at night:** the police helicopter's searchlight was about 1,000× too bright and turned the whole screen white with rings on the ground.
 
