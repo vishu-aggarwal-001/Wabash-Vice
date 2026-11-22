@@ -649,6 +649,21 @@ export class World {
       cx += x1; cz += z1; area += x1 * z2 - x2 * z1;
     }
     cx /= n; cz /= n; area /= 2;
+    // real-world scale: the map's estimated heights made houses barely taller than a car.
+    // US houses here are mostly two storeys (~6 m of wall plus the roof); shops and offices
+    // have tall ground floors.
+    {
+      const h0 = top - base, A = Math.abs(area), rr = hash(bi * 11 + 7);
+      const min = kind === 'house' ? (A < 70 ? 5.5 : 9.2 + rr * 1.8)
+        : kind === 'garage' ? 3.6
+        : kind === 'apartments' ? 12 + rr * 6
+        : kind === 'commercial' ? 7.5 + rr * 3
+        : kind === 'university' ? 13 + rr * 6
+        : kind === 'church' ? 14
+        : kind === 'industrial' ? 8
+        : A > 90 ? 7.5 + rr * 2 : 4;
+      if (h0 < min) top = base + min;
+    }
     const r = hash(bi + 1), r2 = hash(bi * 7 + 3);
     const downtown = Math.hypot(cx - dt[0], cz - dt[1]) < 420;
     let tile;
@@ -682,7 +697,7 @@ export class World {
     let wallTop = top, pitched = false;
     if ((kind === 'house' || (kind === 'other' && tile === 0)) && n === 4 && Math.abs(area) < 420) {
       const e1 = Math.hypot(ring[2] - ring[0], ring[3] - ring[1]), e2 = Math.hypot(ring[4] - ring[2], ring[5] - ring[3]);
-      const roofH = Math.min(3.2, Math.min(e1, e2) * 0.36);
+      const roofH = Math.min(3.6, Math.min(e1, e2) * 0.38);
       wallTop = top - roofH; pitched = { roofH, longFirst: e1 >= e2 };
     }
     // walls
@@ -987,9 +1002,9 @@ export class World {
       sh.fragmentShader = sh.fragmentShader.replace('#include <lights_fragment_end>', '#include <lights_fragment_end>\nreflectedLight.indirectDiffuse += diffuseColor.rgb * 0.08;');
     };
     leafM.customProgramCacheKey = () => 'wv-leaf';
-    // November in Lafayette: a mix of green and turning leaves
+    // summer in Lafayette: full green leaves (the atlas also has autumn gold and orange cells)
     const CELLS = [[0, 0.5], [0.5, 0.5], [0, 0], [0.5, 0]];
-    const cellFor = (i) => { const h = hash(i * 9.3); return h < 0.34 ? CELLS[0] : h < 0.55 ? CELLS[1] : h < 0.8 ? CELLS[2] : CELLS[3]; };
+    const cellFor = (i) => { const h = hash(i * 9.3); return h < 0.55 ? CELLS[0] : h < 0.97 ? CELLS[1] : CELLS[2]; };
     const chunks = new Map();
     trees.forEach((t, i) => {
       const k = Math.floor(t[0] / TCHUNK) * 1000 + Math.floor(t[1] / TCHUNK);

@@ -125,7 +125,7 @@ export class HUD {
       app('⭐', 'Story', '#c79a2b', () => this.phoneScreen('story'));
       app('🛒', 'Shop', '#2c9a4b', () => this.phoneScreen('shop'));
       app('🗺️', 'Map', '#6b4fd6', () => { this.togglePhone(false); this.toggleMap(true); });
-      app('🚗', 'Vehicles', '#c0392b', () => { this.togglePhone(false); this.toggleMenu(true, 'vehicles'); });
+      app('🚗', 'Vehicles', '#c0392b', () => { this.togglePhone(false); this.g.dealer.show(); });
       app('👕', 'Wardrobe', '#8b5cf6', () => { this.togglePhone(false); g.wardrobe.show(null); });
       app('💬', 'Contacts', '#0e8fc7', () => this.phoneScreen('contacts'));
       app('⬆️', 'Skills', '#d97706', () => this.phoneScreen('skills'));
@@ -336,20 +336,6 @@ export class HUD {
   // ---------------------------------------------------------------- menus
   buildMenus() {
     const g = this.g;
-    const vg = $('vehgrid'); vg.innerHTML = '';
-    const cats = [...new Set(CATALOG.map(c => c.cat))];
-    for (const cat of cats) {
-      const h = document.createElement('h4'); h.textContent = cat; vg.appendChild(h);
-      const row = document.createElement('div'); row.className = 'row';
-      for (const s of CATALOG.filter(c => c.cat === cat)) {
-        const b = document.createElement('button');
-        const top = s.max ? Math.round(s.max * 2.237) : '';
-        b.innerHTML = `<b>${s.name}</b><small>${top ? 'top ' + top + ' mph' : ''}</small>`;
-        b.onclick = () => { this.toggleMenu(false); g.spawnFromMenu(s.id); };
-        row.appendChild(b);
-      }
-      vg.appendChild(row);
-    }
     const ft = $('travel'); ft.innerHTML = '';
     for (const [name, lat, lon] of this.w.fastTravel) {
       const b = document.createElement('button'); b.textContent = name;
@@ -358,15 +344,14 @@ export class HUD {
     }
     for (const t of document.querySelectorAll('#menu [data-tab]')) t.onclick = () => this.tab(t.dataset.tab);
     $('resume').onclick = () => this.toggleMenu(false);
+    $('menuveh').onclick = () => { this.toggleMenu(false); g.dealer.show(); };
     const q = $('setq'); q.value = g.settings.quality;
     q.onchange = () => { g.settings.quality = q.value; g.persist(); this.toast('Quality saved — reloading…'); setTimeout(() => location.reload(), 600); };
-    const wx = $('setweather'); wx.value = g.settings.weather || 'auto';
-    wx.onchange = () => { g.settings.weather = wx.value; g.persist(); this.toast('Weather saved — reloading…'); setTimeout(() => location.reload(), 600); };
+    const nt = $('setnight'); nt.checked = !!g.save.night; nt.onchange = () => g.toggleNight(nt.checked);
     const inv = $('setinv'); inv.checked = g.settings.invertPitch; inv.onchange = () => { g.settings.invertPitch = inv.checked; g.persist(); };
     const vol = $('setvol'); vol.value = g.settings.volume; vol.oninput = () => { g.settings.volume = +vol.value; g.audio.setVolume(+vol.value); g.persist(); };
     const sens = $('setsens'); sens.value = g.settings.sensitivity; sens.oninput = () => { g.settings.sensitivity = +sens.value; g.persist(); };
     const un = $('setunits'); un.value = g.settings.units; un.onchange = () => { g.settings.units = this.units = un.value; g.persist(); };
-    $('setday').value = g.settings.dayMinutes; $('setday').onchange = () => { g.settings.dayMinutes = +$('setday').value; g.env.daySeconds = g.settings.dayMinutes * 60; g.persist(); };
     $('cancelmission').onclick = () => { g.missions.cancel(); g.story.cancel(); g.jobs.end(); this.toggleMenu(false); };
     $('phback').onclick = () => this.phoneBack();
     $('phclose').onclick = () => this.togglePhone(false);
@@ -376,27 +361,11 @@ export class HUD {
     for (const t of document.querySelectorAll('#menu [data-tab]')) t.classList.toggle('on', t.dataset.tab === name);
     for (const p of document.querySelectorAll('#menu .pane')) p.hidden = p.id !== 'pane-' + name;
   }
-  renderMyCar() {
-    const vg = $('vehgrid'); if (!vg) return;
-    let el = document.getElementById('mycar');
-    if (!el) { el = document.createElement('div'); el.id = 'mycar'; vg.prepend(el); }
-    const m = this.g.save.myCar, s = m && CATALOG.find(c => c.id === m.id);
-    el.innerHTML = '';
-    const h = document.createElement('h4'); h.textContent = 'Your car'; el.appendChild(h);
-    const row = document.createElement('div'); row.className = 'row'; el.appendChild(row);
-    const b = document.createElement('button');
-    if (s) {
-      const mods = [m.tune?.ecu ? 'Stage ' + m.tune.ecu : '', m.tune?.rim === 'gold' ? 'gold rims' : '', m.tune?.spoiler ? 'wing' : ''].filter(Boolean).join(' · ');
-      b.innerHTML = `<b>★ ${s.name}</b><small>${mods || 'tuned at Dee\'s'}</small>`;
-      b.style.borderColor = '#ff8a1a';
-      b.onclick = () => { this.toggleMenu(false); this.g.spawnMyCar(); };
-    } else { b.innerHTML = `<b>No car yet</b><small>take any car to Dee's Tune Shop (orange 🔧)</small>`; b.disabled = true; }
-    row.appendChild(b);
-  }
-  toggleMenu(open = !this.menuOpen, tab = 'vehicles') {
+  toggleMenu(open = !this.menuOpen, tab = 'settings') {
+    if (open && tab === 'vehicles') { this.g.dealer.show(); return; }
     this.menuOpen = open;
     $('menu').hidden = !open;
-    if (open) { this.tab(tab); this.renderMyCar(); document.exitPointerLock?.(); $('gearcount').textContent = `${(this.g.save.gears || []).length}/30`; }
+    if (open) { this.tab(tab); document.exitPointerLock?.(); $('gearcount').textContent = `${(this.g.save.gears || []).length}/30`; }
     this.g.paused = open || this.mapOpen || this.phoneOpen;
   }
 }

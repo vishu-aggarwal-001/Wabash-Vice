@@ -2,7 +2,7 @@
 // hand bone from the bind pose), swung with the punch button. Z cycles what you own.
 import * as THREE from 'three';
 import { textTexture } from './textures.js';
-import { GUNS } from './guns.js';
+import { GUNS, gunInSlot } from './guns.js';
 
 export const WEAPONS = [
   { id: 'fists', name: 'Fists', price: 0, dmg: 1, reach: 0, icon: '✊' },
@@ -13,7 +13,7 @@ export const WEAPONS = [
   { id: 'crowbar', name: 'Crowbar', price: 450, dmg: 2.4, reach: 0.5, icon: '🪛', swing: true },
   { id: 'golf', name: 'Golf club', price: 600, dmg: 2.2, reach: 0.9, icon: '⛳', swing: true },
   { id: 'sledge', name: 'Sledgehammer', price: 950, dmg: 3.1, reach: 0.65, icon: '🔨', swing: true, slow: true },
-  ...Object.entries(GUNS).map(([id, G]) => ({ id, name: G.name, price: G.price, lvl: G.lvl, dmg: 1, reach: 0, icon: '🔫', gun: true })),
+  ...Object.entries(GUNS).filter(([, G]) => !G.retired).map(([id, G]) => ({ id, name: G.name, price: G.price, lvl: G.lvl, dmg: 1, reach: 0, icon: '🔫', gun: true, slot: G.slot })),
 ];
 export const byWeapon = Object.fromEntries(WEAPONS.map(w => [w.id, w]));
 const PAWN = { name: 'Levee Pawn & Loan', at: [40.4176, -86.8903], color: 0xe23b3b };
@@ -92,7 +92,12 @@ export class Pawn {
     this.g = g; this.open = false;
     g.save.weapons ||= ['fists'];
     g.save.weapon ||= 'fists';
+    // everyone starts out with a pistol (slot 1) and a few clips
+    if (!g.save.weapons.includes('pistol')) { g.save.weapons.push('pistol'); g.save.ammo ||= {}; g.save.ammo.pistol = Math.max(g.save.ammo.pistol || 0, 45); }
+    // the hunting rifle was folded into the sniper rifle (slot 8)
+    if (g.save.weapons.includes('rifle')) { g.save.weapons = g.save.weapons.filter(w => w !== 'rifle'); if (!g.save.weapons.includes('sniper')) g.save.weapons.push('sniper'); g.save.ammo ||= {}; g.save.ammo.sniper = (g.save.ammo.sniper || 0) + (g.save.ammo.rifle || 0); if (g.save.weapon === 'rifle') g.save.weapon = 'sniper'; }
     this.buildUI();
+    this.buildBar();
     const [x0, z0] = g.world.toWorld(...PAWN.at);
     const n = g.world.nearestNode(x0, z0, 300), p = n >= 0 ? g.world.gNodes[n] : [x0, 0, z0];
     const nb = g.world.gAdj[n]?.[0], qn = nb !== undefined ? g.world.gNodes[nb] : [p[0] + 1, 0, p[2]];
@@ -112,8 +117,40 @@ export class Pawn {
   equip(id) {
     const g = this.g; g.save.weapon = id;
     attachWeapon(g.player.char, id);
-    document.querySelector('[data-btn="!punch"]')?.replaceChildren(document.createTextNode(byWeapon[id].icon));
     g.persist();
+    this.renderBar();
+  }
+  // number keys: 1 = fists / melee (press again to cycle melee weapons), 2-9 = guns, 0 = same as 1
+  slot(n) {
+    const g = this.g;
+    if (n === 0 || n === 1) {
+      const melee = WEAPONS.filter(w => !w.gun && g.save.weapons.includes(w.id));
+      const cur = byWeapon[g.save.weapon];
+      const nx = cur && !cur.gun ? melee[(melee.indexOf(cur) + 1) % melee.length] : (byWeapon[this.lastMelee] && g.save.weapons.includes(this.lastMelee) ? byWeapon[this.lastMelee] : melee[0]);
+      this.equip(nx.id); g.hud.toast(`${nx.icon} ${nx.name}`); return;
+    }
+    const id = gunInSlot(n), G = GUNS[id];
+    if (!id) return;
+    if (!g.save.weapons.includes(id)) { g.hud.toast(`${n} · ${G.name}: buy it at Levee Pawn & Loan ($${G.price.toLocaleString()})`, 'warn'); return; }
+    if (!byWeapon[g.save.weapon]?.gun) this.lastMelee = g.save.weapon;
+    this.equip(id); g.hud.toast(`${n} · ${G.name}`);
+  }
+  buildBar() {
+    const el = this.bar = document.createElement('div'); el.id = 'wbar';
+    document.body.appendChild(el);
+    el.addEventListener('click', (e) => { const b = e.target.closest('[data-slot]'); if (b) this.slot(+b.dataset.slot); });
+    el.addEventListener('touchstart', (e) => { const b = e.target.closest('[data-slot]'); if (b) { e.preventDefault(); this.slot(+b.dataset.slot); } }, { passive: false });
+    this.renderBar();
+  }
+  renderBar() {
+    const g = this.g; if (!this.bar) return;
+    const cur = g.save.weapon, melee = byWeapon[cur] && !byWeapon[cur].gun ? byWeapon[cur] : byWeapon.fists;
+    let h = `<button data-slot="1" class="${!byWeapon[cur]?.gun ? 'on' : ''}" title="${melee.name}"><i>1</i>${melee.id === 'fists' ? 'Punch' : melee.icon}</button>`;
+    for (let n = 2; n <= 9; n++) {
+      const id = gunInSlot(n), own = g.save.weapons.includes(id);
+      h += `<button data-slot="${n}" class="${cur === id ? 'on' : ''}${own ? '' : ' empty'}" title="${GUNS[id].name}"><i>${n}</i>${GUNS[id].short}</button>`;
+    }
+    this.bar.innerHTML = h;
   }
   cycle() {
     const own = WEAPONS.filter(w => this.g.save.weapons.includes(w.id));
@@ -158,7 +195,7 @@ export class Pawn {
       const has = g.save.weapons.includes(w.id), eq = g.save.weapon === w.id;
       const locked = w.lvl && g.prog.level < w.lvl && !has;
       const G = w.gun ? GUNS[w.id] : null;
-      const info = G ? `damage ${G.dmg}${G.pellets > 1 ? '×' + G.pellets : ''} · ${G.mag}-round mag${G.auto ? ' · full auto' : ''}` : `damage ×${w.dmg}${w.reach ? ' · reach +' + w.reach + 'm' : ''}`;
+      const info = G ? `key ${G.slot} · damage ${G.dmg}${G.pellets > 1 ? '×' + G.pellets : ''} · ${G.mag}-round mag${G.auto ? ' · full auto' : ''}` : `damage ×${w.dmg}${w.reach ? ' · reach +' + w.reach + 'm' : ''}`;
       const b = document.createElement('button'); b.className = 'witem' + (eq ? ' eq' : '');
       b.innerHTML = `<span>${w.icon} ${w.name} <em style="color:#999;font-style:normal;font-size:12px">· ${info}</em></span><small${locked ? ' class="lock"' : ''}>${eq ? 'HOLDING' : has ? 'OWNED' : locked ? 'level ' + w.lvl : '$' + w.price.toLocaleString()}</small>`;
       b.onclick = () => {

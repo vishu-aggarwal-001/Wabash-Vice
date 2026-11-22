@@ -55,6 +55,16 @@ export const CATALOG = [
   { id: 'jetski', name: 'Jet Ski', cat: 'Boats', type: 'boat', L: 3.2, W: 1.2, color: 0x16a085, max: 26, accel: 9, grip: 2.8, mass: 350, rider: true },
   { id: 'pontoon', name: 'Pontoon Party Boat', cat: 'Boats', type: 'boat', L: 7.5, W: 2.6, color: 0xdcdcdc, max: 12, accel: 2.5, grip: 1.6, mass: 1800, pontoon: true },
 ];
+// dealership prices. Emergency vehicles, buses and trucks aren't for sale: you get those with a job.
+export const PRICES = {
+  bicycle: 300, compact: 2500, hatch: 4200, wagon: 5200, sedan: 6500, taxi: 7000, classic: 8500, van: 9000, crossover: 10500,
+  pickup: 12500, suv: 14000, jeep: 16000, hauler: 21000, pony: 24000, muscle: 27000, rally: 31000, roadster: 34000, luxury: 46000,
+  dragster: 52000, gt: 58000, limo: 65000, gtr: 85000, supercar: 140000, hyper: 290000,
+  dirtbike: 3800, sportbike: 13500,
+  jetski: 7500, pontoon: 16000, speedboat: 32000,
+  cessna: 95000, heli: 190000, jet: 450000,
+};
+for (const c of CATALOG) c.price = PRICES[c.id] ?? null;
 export const byId = Object.fromEntries(CATALOG.map(s => [s.id, s]));
 const RANDOM_COLORS = [0xf4f4f4, 0x1b1b1b, 0x8e9aa6, 0xb22222, 0x1f4e9c, 0x2e6b3a, 0x6d6d6d, 0xd8cfc0, 0x5a2a82, 0xe0e0e0, 0x30343a, 0x9b6b2f];
 
@@ -681,13 +691,20 @@ export class Vehicle {
       // gravity along slope
       const n = w.normalAt(this.pos.x, this.pos.z);
       vf += (n.x * f.x + n.z * f.z) * G * dt * 0.9;
-      // steering
-      const target = c.steer * (s.type === 'bike' ? 0.5 : 0.62) / (1 + Math.abs(vf) / (s.type === 'bike' ? 26 : 20));
-      this.steerAng += (target - this.steerAng) * Math.min(1, dt * 8);
-      let yr = -vf * Math.tan(this.steerAng) / Math.max(1.5, this.wb);
+      // steering: full lock at parking speed, and at speed only as much lock as the tyres can
+      // hold (about 1.3 g of cornering), so a tap of A/D is a lane change, not a spin-out
+      const wb = Math.max(1.5, this.wb), spd = Math.abs(vf);
+      const maxLock = s.type === 'bike' ? 0.5 : 0.6;
+      const latMax = (4 + s.grip * 0.95) * (this.perf?.grip || 1) * (1 - off * 0.3) * (c.ai ? 1.5 : 1);   // AI drivers get a little help
+      const lock = Math.min(maxLock, spd > 1 ? Math.atan(latMax * wb / (spd * spd)) : maxLock) * (c.handbrake ? 2.2 : 1);
+      const target = Math.max(-1, Math.min(1, c.steer)) * lock;
+      // the wheel turns in over ~0.25 s and springs back faster, like letting go of a real wheel
+      const back = Math.abs(target) < Math.abs(this.steerAng) || Math.sign(target) !== Math.sign(this.steerAng);
+      this.steerAng += (target - this.steerAng) * Math.min(1, dt * (back ? 12 : 7));
+      let yr = -vf * Math.tan(this.steerAng) / wb;
       const grip = c.handbrake ? 1.4 : (s.grip * (this.perf?.grip || 1)) * (1 - off * 0.3);
-      if (c.handbrake && Math.abs(vf) > 6) yr *= 1.45;
-      this.yawRate += (yr - this.yawRate) * Math.min(1, dt * (c.handbrake ? 4 : 10));
+      if (c.handbrake && spd > 6) yr *= 1.3;
+      this.yawRate += (yr - this.yawRate) * Math.min(1, dt * (c.handbrake ? 4 : 8));
       this.yaw += this.yawRate * dt;
       // lateral grip with slip: centripetal force keeps velocity aligned
       const slip = Math.abs(vr);

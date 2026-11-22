@@ -275,6 +275,7 @@ async function tbone2(S, K, C) {
   if (place > 1) { S.fail('He beat you. Say goodbye to your pride'); return; }
   rival.stopped = true; S.release(rival);
   rival.v.mine = true; rival.v.showcase = true; rival.v.keep = true;
+  if (!g.owns('gtr')) { g.save.cars.push({ id: 'gtr', tune: null }); g.persist(); }
   await S.dialog([['Northside kid', 'No way… no WAY. Fine. Take the keys.'], ['T-Bone', 'HA! That GT-R is yours now. It\'s parked right there.']]);
 }
 

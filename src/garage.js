@@ -113,8 +113,11 @@ export class Garage {
   }
   saveMine(v) {
     v.mine = true;
-    this.g.save.myCar = { id: v.spec.id, tune: this.tuneOf(v) };
-    this.g.persist();
+    const tune = this.tuneOf(v), g = this.g;
+    g.save.myCar = { id: v.spec.id, tune };
+    const c = g.save.cars.find(c => c.id === v.spec.id);
+    if (c) c.tune = tune; else g.save.cars.push({ id: v.spec.id, tune });
+    g.persist();
   }
   render() {
     const g = this.g, v = this.v, t = this.tuneOf(v);
@@ -130,11 +133,16 @@ export class Garage {
         if (g.money < cost) { g.hud.toast('Not enough money', 'warn'); return; }
         g.addMoney(-cost); v.hp = 100; v.burn = 0; g.hud.toast(`Repaired  −$${cost}`, 'good'); this.render();
       });
-      const mine = this.isMine(v), had = this.myCar;
-      row(`<span>${mine ? 'This is your car ★' : had ? `Keep this instead of your ${byId[had.id]?.name || 'old car'}` : 'Keep this car as your own'}</span><small>${mine ? 'SAVED' : 'FREE'}</small>`, mine ? 'eq' : '', () => {
+      const mine = this.isMine(v), owned = g.owns(v.spec.id), price = v.spec.price;
+      if (mine || owned) row(`<span>${mine ? 'Your car ★ (mods are saved)' : 'You own this model: save these mods to it'}</span><small>${mine ? 'SAVED' : 'SAVE'}</small>`, mine ? 'eq' : '', () => {
         if (mine) return;
-        this.saveMine(v); g.audio.chime(true); g.hud.toast(`${v.spec.name} is now your car — call it from the phone (🚗 Vehicles)`, 'good'); this.render();
+        this.saveMine(v); g.audio.chime(true); g.hud.toast(`${v.spec.name} saved to your garage`, 'good'); this.render();
       });
+      else if (price) row(`<span>Buy the papers for this ${v.spec.name}</span><small>$${price.toLocaleString()}</small>`, '', () => {
+        if (!g.buyVehicle(v.spec.id)) return;
+        this.saveMine(v); this.render();
+      });
+      else row(`<span>Work vehicle: can't be bought</span><small>—</small>`, 'eq', () => {});
       row(`<span>Nitro refill</span><small>${v.nitro >= 0.99 ? 'FULL' : '$60'}</small>`, v.nitro >= 0.99 ? 'eq' : '', () => {
         if (v.nitro >= 0.99) return;
         if (g.money < 60) { g.hud.toast('Not enough money', 'warn'); return; }

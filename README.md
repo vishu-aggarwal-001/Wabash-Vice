@@ -6,7 +6,7 @@
 
 Every street, all 13,500 buildings, the Wabash River, the bridges, Purdue's campus, downtown Lafayette and Purdue Airport come from real OpenStreetMap data, at real 1:1 scale (about 6.8 km × 5.5 km). It runs in any modern browser. There's no install and no build step.
 
-> **Status: v0.6: a home with your own car, solid collisions, talking to people, and a big speed-up.** It isn't GTA 6. That took a studio of thousands of people about a decade. What it is: a real, working open-world game of your actual hometown that you can keep improving. See the [Roadmap](#roadmap).
+> **Status: v0.7: Criminal Russia 3D controls, real camera views, cars you have to buy, guns on 1–9, always-sunny weather and real-scale houses.** It isn't GTA 6. That took a studio of thousands of people about a decade. What it is: a real, working open-world game of your actual hometown that you can keep improving. See the [Roadmap](#roadmap).
 
 ---
 
@@ -33,40 +33,55 @@ To turn hosting on for a copy of this repo: **Settings → Pages → Build and d
 
 ## 🎮 Controls
 
-| | Keyboard / mouse | Gamepad |
-|---|---|---|
-| Move / drive | **W A S D** (Shift sprint, Alt walk) | Left stick, RT/LT |
-| Talk to someone | **G**, then **1–4** or click an answer | 💬 button |
-| Look | **Mouse** (click the game to capture it) or right-drag | Right stick |
-| Enter / exit vehicle | **F** (works on traffic too, i.e. carjacking) | Y |
-| Run / nitro / afterburner | **Shift** | LS click / X |
-| Jump / handbrake / climb | **Space** | A |
-| Spawn any vehicle | **V** | D-pad left |
-| Map + GPS waypoint | **M**, then click the map | Back |
-| Start mission (yellow marker) | **J** | |
-| Camera (chase / far / cockpit) | **C**, scroll to zoom | R-stick click |
-| Horn / siren / radio | **H** / **K** / **R** | D-pad up / – / right |
-| Fast-forward time | hold **T** | |
-| Menu, settings, fast travel | **Esc** | Start |
-| Punch or swing / kick | **Click** or **Q** / **E** | X / B |
-| Switch weapon | **Z** | |
-| Shoot (with a gun out) | **Click** or **Q**, aim with the mouse (hold for the SMG) | X |
-| Answer a choice (pay the bribe?) | **Y** / **N** | |
-| Use a medkit (on foot) | **H** | |
-| Phone: jobs, story, shop, stats | **Tab** | Back/View |
-| End your job shift | **X** | |
-| Help overlay | **F1** | |
+Same layout as **Criminal Russia 3D. Boris** on PC, and the same button layout on phones.
 
-**Planes:** W/S throttle · A/D roll · **↓ nose up / ↑ nose down** (flight-sim style; you can invert it in Settings) · Q/E rudder · Space wheel brakes.
+| | Keyboard / mouse | Phone / tablet |
+|---|---|---|
+| Move | **W A S D** (Shift run, Alt walk) | Left joystick, 🏃 run |
+| Look | **Mouse** (V shows / hides the cursor) | Drag anywhere on the screen |
+| Attack (punch / shoot) | **Left click**. Click on a person and you run up and punch them (or shoot them with a gun out) | ✊, or tap on a person |
+| Aim | **Right click** (the sniper rifle zooms) | 🎯 |
+| Kick | **Q** | 🦶 |
+| Jump / handbrake | **Space** | ⤒ / HB |
+| Get in / out of a vehicle | **E** or **F** (works on traffic too: carjacking) | 🚪 |
+| Weapons | **1** fists / melee · **2–9** guns you own · **Z** cycle | Weapon bar at the top |
+| Drive | **W/S** gas / brake, **A/D** steer, **Shift** nitro | ◀ ▶ arrows on the left, GAS / BRAKE pedals on the right, N₂O |
+| Change camera | **C**: near, far, first person (scroll to zoom) | 📷 |
+| Buy cars / your garage | **Tab** → 🚗 Vehicles, or **Esc** → Vehicles | 📱 → 🚗 |
+| Day / night | **B** (it's always a sunny day unless you switch to night) | 🌙 |
+| Talk to someone | **G**, then **1–4** | 💬 |
+| Phone: jobs, story, shop, stats | **Tab** | 📱 |
+| Map + GPS waypoint | **M**, then click the map | 🗺️ |
+| Start at a yellow marker | **J** | ⭐ |
+| Horn / siren / radio | **H** / **K** / **R** | 📯 |
+| Medkit (on foot) | **H** | |
+| End your job shift | **X** | |
+| Menu, settings, fast travel | **Esc** | |
+
+**Planes:** W/S throttle · A/D roll · **↓ nose up / ↑ nose down** (flight-sim style; you can invert it in Settings) · Q/E rudder · Space wheel brakes · F to get out.
 *To take off:* hold W until you're past about 60 mph, tap ↓ to lift the nose, then let go and climb. Exit above 12 m and you'll parachute.
 
-**Helicopter:** Space climb · Shift/Z descend · W/S tilt forward/back · A/D turn · Q/E strafe. You can land on any rooftop.
+**Helicopter:** Space climb · Shift/Z descend · W/S tilt forward/back · A/D turn · Q/E strafe · F to get out. You can land on any rooftop.
 
 **Phones and tablets:** on-screen joystick and buttons appear automatically (quality defaults to Low).
 
 ---
 
-## 🆕 What's new in v0.6: home, solid cars, talking, and a lot faster
+## 🆕 What's new in v0.7: the Criminal Russia 3D update
+
+- **Criminal Russia 3D controls** on PC and phone: left click attacks, right click aims, E gets in and out, V frees the mouse cursor. On phones: a joystick on foot, ◀ ▶ steering arrows and GAS / BRAKE pedals in a car, like the original.
+- **Click on a person to fight them.** Your character runs up and starts punching, or shoots them if you have a gun out. Phones get a little aim assist.
+- **Fixed a bug where punches didn't land below 40 fps** (most phones and laptops).
+- **Camera views that work.** C (📷 on phones) switches between near chase, far chase and first person, in a car and on foot. The car camera sits higher and further back, looks past the car at the road, and swings back behind you when you stop moving the mouse.
+- **Driving you can control.** The steering now depends on speed: full lock when parking, and only as much as the tyres can hold at speed, so tapping A/D changes lanes instead of spinning you out.
+- **You have to buy vehicles.** The free vehicle spawner is gone. The **Lafayette Auto Mall** (phone → 🚗 Vehicles) sells 30 cars, bikes, boats and aircraft, from a $300 bicycle to a $450,000 jet. Each one has a studio photo rendered from its real 3D model and a **⟳ 3D** turntable view you can spin and zoom. You start with an Ivy Compact. Cars in **My garage** can be called to you, and one can be your ★ home car. Stealing from traffic still works.
+- **Guns on 1–9.** 1 is your fists (press it again to cycle melee weapons). 2–9 are a pistol, which you start with, then revolver, sawn-off, SMG, pump shotgun, assault rifle, sniper rifle (it zooms when you aim) and light machine gun. Buy them at Levee Pawn & Loan. A weapon bar at the bottom shows what you own.
+- **Always sunny.** No more snow or grey skies: a sunny summer afternoon with a high sun and green trees. **B** (🌙 on phones) switches to night and back.
+- **Real-scale houses.** Houses are two storeys high now (9–11 m to the roof ridge), and shops, apartments and campus buildings were raised to real heights, so a car is no longer half the height of a house.
+- **New look for the menus and HUD**: condensed headline type, dark glass panels, and a layout that fits a phone held sideways.
+
+## What was new in v0.6: home, solid cars, talking, and a lot faster
+
 
 - **You have a home.** You start at your house in West Lafayette with your own car in the driveway (the one you tuned at Dee's, otherwise the Boilermaker GT). Walk up to the 🏠 front door to save and heal. You respawn there, your car comes back if it got wrecked, and **Esc → Fast travel → 🏠 Home** takes you there.
 - **Talk to anyone** (Criminal Russia style). Walk up to a person, press **G**, and pick a line: chat, ask their name, ask for work (sets your GPS), ask the way, compliment, insult, or rob them. Everyone has a name, a job and a mood, and they remember you. Insult or rob the wrong guy and he'll fight you. If you're wanted, you can try to bribe a cop.
@@ -203,6 +218,7 @@ src/actors.js       scripted NPCs (suspects, thugs, passengers, patients) and AI
 src/script.js       tiny async mission-scripting runtime (say, goto, timer, failIf…)
 src/jobs.js         Police / Taxi / Paramedic / Delivery jobs, calls, ranks
 src/story.js        Story mode, Chapter 1
+src/dealer.js       Lafayette Auto Mall: buy vehicles, your garage, studio photos and the 3D turntable
 src/weather.js      clear / overcast / snow, snow-cover shader patch, snowfall
 data/chars/rb/      the townspeople (Microsoft Rocketbox, see tools/rocketbox/), data/chars/anims.json mocap clips
 tools/charlab.html  dev page to preview characters/poses and re-extract the clips
@@ -233,16 +249,16 @@ To make the world bigger (for example out to I-65, or to include Wildcat Creek),
 This is the honest path from v0.1 toward the “better than GTA *at Lafayette*” goal. Each step is a self-contained chunk you (or an AI helper) can do one at a time.
 
 1. **Feel**: suspension bounce, gear sounds, damage deformation, better tyre smoke and skid marks
-1. **Hero assets**: ~~people~~ (done in v0.3); next, replace the procedural cars with real 3D models (e.g. made in Blender, or bought/CC-licensed glTF models). This is the single biggest step toward a GTA look
-2. **Real elevation**: swap the stylized terrain for USGS 3DEP elevation data (free, public domain)
-3. **Building detail**: real roof shapes from OSM `roof:shape`, more facade styles, storefront signs, Purdue limestone trims
-4. **Real landmarks**: detailed models of the Purdue Memorial Union, Ross-Ade Stadium, Mackey Arena, the Engineering Fountain and the bridges' real shapes
-5. **Smarter city**: ~~traffic lights~~ (done in v0.3), lane changes, buses on real CityBus routes, Purdue students between classes
-6. **Story mode**: ~~Chapter 1, 12 missions~~ (done in v0.4); more chapters, cutscenes
-7. ~~Melee weapons, tuning garage~~ (done in v0.4); next, buying property and Chapter 2
-8. **Graphics ceiling**: SSAO, screen-space reflections, volumetric fog over the Wabash, rain (~~snow~~ done in v0.3), WebGPU renderer
-9. **Bigger map**: all of Tippecanoe County, then I-65 to Indianapolis
-10. **Multiplayer**: drive around Lafayette with friends (WebSockets)
+2. **Hero assets**: ~~people~~ (done in v0.3); next, replace the procedural cars with real 3D models (e.g. made in Blender, or bought/CC-licensed glTF models). This is the single biggest step toward a GTA look
+3. **Real elevation**: swap the stylized terrain for USGS 3DEP elevation data (free, public domain)
+4. **Building detail**: real roof shapes from OSM `roof:shape`, more facade styles, storefront signs, Purdue limestone trims
+5. **Real landmarks**: detailed models of the Purdue Memorial Union, Ross-Ade Stadium, Mackey Arena, the Engineering Fountain and the bridges' real shapes
+6. **Smarter city**: ~~traffic lights~~ (done in v0.3), lane changes, buses on real CityBus routes, Purdue students between classes
+7. **Story mode**: ~~Chapter 1, 12 missions~~ (done in v0.4); more chapters, cutscenes
+8. ~~Melee weapons, tuning garage~~ (done in v0.4); next, buying property and Chapter 2
+9. **Graphics ceiling**: SSAO, screen-space reflections, volumetric fog over the Wabash, rain (~~snow~~ done in v0.3), WebGPU renderer
+10. **Bigger map**: all of Tippecanoe County, then I-65 to Indianapolis
+11. **Multiplayer**: drive around Lafayette with friends (WebSockets)
 
 ---
 

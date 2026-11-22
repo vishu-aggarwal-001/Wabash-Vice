@@ -6,10 +6,10 @@ import * as THREE from 'three';
 export const WEATHERS = ['clear', 'overcast', 'snow', 'snowsun'];
 export const snowy = (w) => w === 'snow' || w === 'snowsun';
 
+// Always sunny. (Snow and overcast are still here for anyone who asks for them with ?weather=snow.)
 export function pickWeather(setting) {
-  if (WEATHERS.includes(setting)) return setting;
-  const r = Math.random();
-  return r < 0.3 ? 'clear' : r < 0.42 ? 'overcast' : r < 0.65 ? 'snow' : 'snowsun';
+  if (WEATHERS.includes(setting) && setting !== 'clear' && new URLSearchParams(location.search).get('weather') === setting) return setting;
+  return 'clear';
 }
 
 // Must run before any material compiles. Materials can opt out with defines.NO_SNOW,

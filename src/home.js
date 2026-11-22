@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { textTexture } from './textures.js';
 
 const TARGET = [40.4318, -86.9086];   // residential streets just north of campus
-const DEFAULT_CAR = 'gt';
+const DEFAULT_CAR = 'compact';
 
 export class Home {
   constructor(g) {
