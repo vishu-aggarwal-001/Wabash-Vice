@@ -52,6 +52,7 @@ import { Talk } from './talk.js';
 import { Contacts } from './contacts.js';
 import { CarTheft } from './theft.js';
 import { Dealer } from './dealer.js';
+import { Cheats } from './cheats.js';
 
 const QUALITY = {
   low: { pixelRatio: 1, shadows: 1024, shadowRange: 80, drawDistance: 1400, bloom: false, msaa: 0, ao: false, grade: false, textures: 'lo', treeCards: 14, traffic: 14, peds: 10, lamps: 1500, treeShadows: false },
@@ -158,6 +159,7 @@ class Game {
     this.pawn = new Pawn(this);
     this.theft = new CarTheft(this);
     this.dealer = new Dealer(this);
+    this.cheats = new Cheats(this);
     this.prog = new Progression(this);
     if (this.save.player) { this.player.medkits = this.save.player.medkits ?? 2; this.player.armor = this.save.player.armor ?? 0; }
     this.hud = new HUD(this);
@@ -720,6 +722,7 @@ class Game {
     this.vehicleContacts();
     this.resolveMelee(dt);
     this.focus.copy(v ? v.pos : this.player.pos);
+    this.cheats.update();
     if (this.player.hp <= 0 && this.deathT <= 0) this.wasted();
     this.traffic.update(dt, this.focus, v, v ? null : this.player);
     this.police.update(dt, this.focus, v, this.player);
