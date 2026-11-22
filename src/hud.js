@@ -1,5 +1,5 @@
 // HUD, minimap, full-screen map and menus (plain DOM + 2D canvas).
-import { CATALOG } from './vehicles.js';
+import { topSpeed } from './vehicles.js';
 import { JOBS } from './jobs.js';
 import { CHAPTER } from './story.js';
 import { TALENTS } from './progression.js';
@@ -55,7 +55,7 @@ export class HUD {
       else if (v.type === 'car' && v.spec.type === 'car') aux.innerHTML = `NITRO <span class="bar"><i style="width:${v.nitro * 100}%"></i></span>`;
       else aux.textContent = '';
       const dial = $('dial');
-      dial.style.setProperty('--p', Math.min(1, s / (v.spec.max || 60)));
+      dial.style.setProperty('--p', Math.min(1, s / (topSpeed(v.spec) || 60)));
     } else {
       sp.hidden = true;
     }
@@ -336,20 +336,6 @@ export class HUD {
   // ---------------------------------------------------------------- menus
   buildMenus() {
     const g = this.g;
-    const vg = $('vehgrid'); vg.innerHTML = '';
-    const cats = [...new Set(CATALOG.map(c => c.cat))];
-    for (const cat of cats) {
-      const h = document.createElement('h4'); h.textContent = cat; vg.appendChild(h);
-      const row = document.createElement('div'); row.className = 'row';
-      for (const s of CATALOG.filter(c => c.cat === cat)) {
-        const b = document.createElement('button');
-        const top = s.max ? Math.round(s.max * 2.237) : '';
-        b.innerHTML = `<b>${s.name}</b><small>${top ? 'top ' + top + ' mph' : ''}</small>`;
-        b.onclick = () => { this.toggleMenu(false); g.spawnFromMenu(s.id); };
-        row.appendChild(b);
-      }
-      vg.appendChild(row);
-    }
     const ft = $('travel'); ft.innerHTML = '';
     for (const [name, lat, lon] of this.w.fastTravel) {
       const b = document.createElement('button'); b.textContent = name;
@@ -378,27 +364,10 @@ export class HUD {
     for (const t of document.querySelectorAll('#menu [data-tab]')) t.classList.toggle('on', t.dataset.tab === name);
     for (const p of document.querySelectorAll('#menu .pane')) p.hidden = p.id !== 'pane-' + name;
   }
-  renderMyCar() {
-    const vg = $('vehgrid'); if (!vg) return;
-    let el = document.getElementById('mycar');
-    if (!el) { el = document.createElement('div'); el.id = 'mycar'; vg.prepend(el); }
-    const m = this.g.save.myCar, s = m && CATALOG.find(c => c.id === m.id);
-    el.innerHTML = '';
-    const h = document.createElement('h4'); h.textContent = 'Your car'; el.appendChild(h);
-    const row = document.createElement('div'); row.className = 'row'; el.appendChild(row);
-    const b = document.createElement('button');
-    if (s) {
-      const mods = [m.tune?.ecu ? 'Stage ' + m.tune.ecu : '', m.tune?.rim === 'gold' ? 'gold rims' : '', m.tune?.spoiler ? 'wing' : ''].filter(Boolean).join(' · ');
-      b.innerHTML = `<b>★ ${s.name}</b><small>${mods || 'tuned at Dee\'s'}</small>`;
-      b.style.borderColor = '#ff8a1a';
-      b.onclick = () => { this.toggleMenu(false); this.g.spawnMyCar(); };
-    } else { b.innerHTML = `<b>No car yet</b><small>take any car to Dee's Tune Shop (orange 🔧)</small>`; b.disabled = true; }
-    row.appendChild(b);
-  }
   toggleMenu(open = !this.menuOpen, tab = 'vehicles') {
     this.menuOpen = open;
     $('menu').hidden = !open;
-    if (open) { this.tab(tab); this.renderMyCar(); document.exitPointerLock?.(); $('gearcount').textContent = `${(this.g.save.gears || []).length}/30`; }
+    if (open) { this.tab(tab); this.g.dealer?.render($('vehgrid')); document.exitPointerLock?.(); $('gearcount').textContent = `${(this.g.save.gears || []).length}/30`; }
     this.g.paused = open || this.mapOpen || this.phoneOpen;
   }
 }

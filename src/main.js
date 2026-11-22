@@ -51,6 +51,7 @@ import { Home } from './home.js';
 import { Talk } from './talk.js';
 import { Contacts } from './contacts.js';
 import { CarTheft } from './theft.js';
+import { Dealer } from './dealer.js';
 
 const QUALITY = {
   low: { pixelRatio: 1, shadows: 1024, shadowRange: 80, drawDistance: 1400, bloom: false, msaa: 0, ao: false, grade: false, textures: 'lo', treeCards: 14, traffic: 14, peds: 10, lamps: 1500, treeShadows: false },
@@ -156,6 +157,7 @@ class Game {
     this.guns = new Guns(this);
     this.pawn = new Pawn(this);
     this.theft = new CarTheft(this);
+    this.dealer = new Dealer(this);
     this.prog = new Progression(this);
     if (this.save.player) { this.player.medkits = this.save.player.medkits ?? 2; this.player.armor = this.save.player.armor ?? 0; }
     this.hud = new HUD(this);
@@ -254,7 +256,8 @@ class Game {
 
   spawnShowcase() {
     const w = this.world, [sx, sz] = this.startSpot;
-    const add = (id, x, z, yaw, opts) => { const v = new Vehicle(id, w, opts).place(x, z, yaw); this.scene.add(v.mesh); this.parked.push(v); v.showcase = true; return v; };
+    // nobody leaves these unlocked: they're there to steal (F), not free rides
+    const add = (id, x, z, yaw, opts) => { const v = new Vehicle(id, w, opts).place(x, z, yaw); this.scene.add(v.mesh); this.parked.push(v); v.showcase = true; v.locked = true; v.alarm = true; return v; };
     const n = w.nearestNode(sx, sz), nb = w.gAdj[n]?.[0];
     let yaw = 0;
     if (nb !== undefined) { const a = w.gNodes[n], b = w.gNodes[nb]; yaw = Math.atan2(b[0] - a[0], b[2] - a[2]); }
@@ -310,7 +313,7 @@ class Game {
 
   persist() {
     try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify({ v3: true, money: this.money, gears: this.save.gears || [], settings: this.settings, hours: this.env?.hours, seenHelp: this.save.seenHelp, xp: this.save.xp || 0, talents: this.save.talents, karma: this.save.karma || 0, jobs: this.save.jobs, story: this.save.story, look: this.save.look, owned: this.save.owned, owned2: this.save.owned2, myCar: this.save.myCar || null, weapons: this.save.weapons, weapon: this.save.weapon, ammo: this.save.ammo, starterGun: this.save.starterGun, lastMelee: this.save.lastMelee, v7: true, player: { medkits: this.player?.medkits ?? 2, armor: Math.round(this.player?.armor || 0) } }));
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ v3: true, money: this.money, gears: this.save.gears || [], settings: this.settings, hours: this.env?.hours, seenHelp: this.save.seenHelp, xp: this.save.xp || 0, talents: this.save.talents, karma: this.save.karma || 0, jobs: this.save.jobs, story: this.save.story, look: this.save.look, owned: this.save.owned, owned2: this.save.owned2, myCar: this.save.myCar || null, cars: this.save.cars, weapons: this.save.weapons, weapon: this.save.weapon, ammo: this.save.ammo, starterGun: this.save.starterGun, lastMelee: this.save.lastMelee, v7: true, player: { medkits: this.player?.medkits ?? 2, armor: Math.round(this.player?.armor || 0) } }));
     } catch { /* ignore */ }
   }
   addMoney(n) { this.money = Math.max(0, this.money + n); this.persist(); }
@@ -490,7 +493,7 @@ class Game {
     const inv = this.settings.invertPitch ? -1 : 1;
     switch (v.type) {
       case 'car': case 'bike': case 'boat':
-        c.throttle = inp.moveY; c.steer = inp.moveX; c.handbrake = inp.jump; break;
+        c.throttle = inp.moveY || inp.arrowY; c.steer = inp.moveX || inp.arrowX; c.handbrake = inp.jump; break;   // WASD or arrow keys
       case 'plane':
         c.throttle = inp.touch ? (inp.up ? 1 : 0) - (inp.down ? 1 : 0) : inp.moveY;
         c.roll = inp.moveX; c.steer = inp.moveX;

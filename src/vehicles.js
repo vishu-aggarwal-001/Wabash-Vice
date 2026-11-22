@@ -11,6 +11,12 @@ const UP = new THREE.Vector3(0, 1, 0);
 
 // ------------------------------------------------------------------ catalogue
 // speeds in m/s (x3.6 = km/h, x2.237 = mph)
+// Road cars and bikes: the catalog numbers were drag-strip figures (a family sedan doing 120 mph,
+// 0-60 in 3 s). On real Lafayette streets that's undriveable, so everything on wheels runs at
+// ROAD_TOP of its listed top speed and ROAD_ACCEL of its listed acceleration.
+export const ROAD_TOP = 0.72, ROAD_ACCEL = 0.9;
+export const topSpeed = (s) => (s.type === 'car' || s.type === 'bike') ? s.max * ROAD_TOP : s.max;
+
 export const CATALOG = [
   // cars
   { id: 'gt', name: 'Boilermaker GT', cat: 'Cars', type: 'car', style: 'coupe', L: 4.5, W: 1.96, color: 0xcfb991, stripe: 0x111111, max: 76, accel: 13, grip: 10, wheel: 0.36, mass: 1350 },
@@ -662,8 +668,8 @@ export class Vehicle {
       let thr = c.throttle;
       if (this.hp <= 0) thr = 0;
       const pm = this.perf || { accel: 1, max: 1, grip: 1, nitro: 1 };
-      let accel = s.accel * pm.accel * (1 - off * 0.15);
-      let maxV = s.max * pm.max * (1 - off * 0.3);
+      let accel = s.accel * ROAD_ACCEL * pm.accel * (1 - off * 0.15);
+      let maxV = s.max * ROAD_TOP * pm.max * (1 - off * 0.3);
       if (c.boost && this.nitro > 0 && thr > 0 && s.type === 'car') {
         this.nitro = Math.max(0, this.nitro - dt * 0.22); accel *= 1.8; maxV *= 1.25; this.boosting = true;
       } else this.nitro = Math.min(1, this.nitro + dt * 0.05 * pm.nitro);
@@ -682,12 +688,20 @@ export class Vehicle {
       const n = w.normalAt(this.pos.x, this.pos.z);
       vf += (n.x * f.x + n.z * f.z) * G * dt * 0.9;
       // steering
-      const target = c.steer * (s.type === 'bike' ? 0.5 : 0.62) / (1 + Math.abs(vf) / (s.type === 'bike' ? 26 : 20));
+      // keyboard steering is all-or-nothing: ease the wheel in (and snap it back faster when you let go)
+      const sIn = this.steerIn || 0, back = Math.abs(c.steer) < Math.abs(sIn) || c.steer * sIn < 0;
+      this.steerIn = sIn + (c.steer - sIn) * Math.min(1, dt * (back ? 10 : 6));
+      const target = this.steerIn * (s.type === 'bike' ? 0.5 : 0.62) / (1 + Math.abs(vf) / (s.type === 'bike' ? 26 : 20));
       this.steerAng += (target - this.steerAng) * Math.min(1, dt * 8);
       let yr = -vf * Math.tan(this.steerAng) / Math.max(1.5, this.wb);
       const grip = c.handbrake ? 1.4 : (s.grip * (this.perf?.grip || 1)) * (1 - off * 0.3);
+      // the tyres only have so much sideways grip: at speed the turn rate is capped (about 1.6 g),
+      // so a tap of A/D at 60 mph is a lane change, not a spin into a wall
+      const aLat = 16 * (s.grip * (this.perf?.grip || 1) / 9) * (1 - off * 0.3);
+      const yrMax = aLat / Math.max(3, Math.abs(vf)) * (c.handbrake ? 1.7 : 1);
       if (c.handbrake && Math.abs(vf) > 6) yr *= 1.45;
-      this.yawRate += (yr - this.yawRate) * Math.min(1, dt * (c.handbrake ? 4 : 10));
+      yr = Math.max(-yrMax, Math.min(yrMax, yr));
+      this.yawRate += (yr - this.yawRate) * Math.min(1, dt * (c.handbrake ? 4 : 7));
       this.yaw += this.yawRate * dt;
       // lateral grip with slip: centripetal force keeps velocity aligned
       const slip = Math.abs(vr);
@@ -746,7 +760,7 @@ export class Vehicle {
       const lean = this.onGround ? Math.max(-0.75, Math.min(0.75, -this.yawRate * Math.abs(vf) * 0.09)) : this.lean;
       this.lean += (lean - this.lean) * Math.min(1, dt * 6);
     }
-    this.rpm = Math.min(1, Math.abs(vf) / s.max * 1.2 + Math.max(0, c.throttle) * 0.25);
+    this.rpm = Math.min(1, Math.abs(vf) / topSpeed(s) * 1.2 + Math.max(0, c.throttle) * 0.25);
   }
 
   rearPos() {

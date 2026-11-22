@@ -41,7 +41,7 @@ To turn hosting on for a copy of this repo: **Settings → Pages → Build and d
 | Steal / enter / exit a car | **F**: break into any parked car, carjack traffic, steal cop cars | Y |
 | Run / nitro / afterburner | **Shift** | LS click / X |
 | Jump / handbrake / climb | **Space** | A |
-| Spawn any vehicle | **V** | D-pad left |
+| Buy cars / call up yours / sell a stolen one | **V** (Lafayette Motors) | D-pad left |
 | Map + GPS waypoint | **M**, then click the map | Back |
 | Start mission (yellow marker) | **J** | |
 | Camera (chase / far / cockpit) | **C**, scroll to zoom | R-stick click |
@@ -68,6 +68,8 @@ To turn hosting on for a copy of this repo: **Settings → Pages → Build and d
 
 ## 🆕 What's new in v0.7: grand theft auto
 
+- **Cars are bought, not spawned.** **V** opens Lafayette Motors: you start owning the Boilermaker GT in your driveway, everything else costs money (a $120 bicycle up to a $600,000 jet). Cars you've bought are delivered free whenever you want them. Emergency vehicles aren't for sale, steal one. Driving a stolen car? Sell it there for a quarter of its price. The planes, hypercar and boats parked around town are locked now: steal them or buy them.
+- **Driving is actually driveable.** Holding A/D at 70 mph used to spin the car 119° in one second, so any tap sent you into a wall. Now steering eases in, the turn rate is limited by tyre grip at speed, and top speeds are realistic for city streets (a sedan does about 87 mph, the GT about 122). Arrow keys drive too.
 - **Every street has parked cars, and you can steal all of them.** Walk up to any car and press **F**. With fists you elbow the window, with a bat or pipe you smash it, a crowbar pries the door fastest, and with a gun out you shoot the lock. Some cars have alarms (most of the expensive ones): the lights flash, the horn blares and people call the cops.
 - **Carjacking actually works.** Press **F** next to a traffic car that's stopped or crawling: you drag the driver out onto the road and drive off. Cop cars can be stolen too (2 stars).
 - **You start with a 9mm pistol** and 60 rounds. Number keys pick weapons, Criminal Russia style: **1** fists / melee, **2** pistol, **3** SMG, **4** shotgun, **5** rifle, with a weapon bar on screen. Pressing a number for a gun you don't own sets your GPS to Levee Pawn & Loan. No more level locks on guns, and the Purdue gun-free zone is gone.

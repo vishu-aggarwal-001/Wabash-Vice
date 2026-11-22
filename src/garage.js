@@ -114,6 +114,7 @@ export class Garage {
   saveMine(v) {
     v.mine = true;
     this.g.save.myCar = { id: v.spec.id, tune: this.tuneOf(v) };
+    if (!this.g.save.cars?.includes(v.spec.id)) (this.g.save.cars ||= []).push(v.spec.id);   // tuned it, it's yours
     this.g.persist();
   }
   render() {
