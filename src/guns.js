@@ -4,12 +4,19 @@
 // cops draw theirs and shoot back. Purdue's campus is a gun-free zone.
 import * as THREE from 'three';
 
+// slot = the number key that draws it: 1 is your fists (or melee weapon), guns sit on 2-9
 export const GUNS = {
-  pistol: { name: '9mm pistol', price: 900, lvl: 1, dmg: 34, rate: 0.3, mag: 15, spread: 0.012, range: 90, pellets: 1, ammo: 45, ammoPrice: 60, auto: false, twoHand: false, loud: 1 },
-  smg: { name: 'Submachine gun', price: 2600, lvl: 3, dmg: 21, rate: 0.085, mag: 30, spread: 0.035, range: 70, pellets: 1, ammo: 90, ammoPrice: 120, auto: true, twoHand: true, loud: 1 },
-  shotgun: { name: 'Pump shotgun', price: 3400, lvl: 4, dmg: 17, rate: 0.95, mag: 6, spread: 0.075, range: 38, pellets: 8, ammo: 24, ammoPrice: 90, auto: false, twoHand: true, loud: 1.4 },
-  rifle: { name: 'Hunting rifle', price: 5800, lvl: 6, dmg: 95, rate: 1.2, mag: 5, spread: 0.002, range: 220, pellets: 1, ammo: 20, ammoPrice: 110, auto: false, twoHand: true, loud: 1.6 },
+  pistol: { short: 'Pistol', slot: 2, name: '9mm pistol', price: 900, lvl: 1, dmg: 34, rate: 0.3, mag: 15, spread: 0.012, range: 90, pellets: 1, ammo: 45, ammoPrice: 60, auto: false, twoHand: false, loud: 1 },
+  revolver: { short: 'Revolver', slot: 3, name: '.357 revolver', price: 1600, lvl: 1, dmg: 62, rate: 0.6, mag: 6, spread: 0.008, range: 110, pellets: 1, ammo: 30, ammoPrice: 70, auto: false, twoHand: false, loud: 1.3 },
+  sawnoff: { short: 'Sawn-off', slot: 4, name: 'Sawn-off shotgun', price: 2200, lvl: 2, dmg: 15, rate: 0.35, mag: 2, spread: 0.1, range: 26, pellets: 9, ammo: 20, ammoPrice: 70, auto: false, twoHand: true, loud: 1.4 },
+  smg: { short: 'SMG', slot: 5, name: 'Submachine gun', price: 2600, lvl: 3, dmg: 21, rate: 0.085, mag: 30, spread: 0.035, range: 70, pellets: 1, ammo: 90, ammoPrice: 120, auto: true, twoHand: true, loud: 1 },
+  shotgun: { short: 'Shotgun', slot: 6, name: 'Pump shotgun', price: 3400, lvl: 4, dmg: 17, rate: 0.95, mag: 6, spread: 0.075, range: 38, pellets: 8, ammo: 24, ammoPrice: 90, auto: false, twoHand: true, loud: 1.4 },
+  assault: { short: 'Assault', slot: 7, name: 'Assault rifle', price: 4800, lvl: 5, dmg: 30, rate: 0.11, mag: 30, spread: 0.018, range: 130, pellets: 1, ammo: 90, ammoPrice: 140, auto: true, twoHand: true, loud: 1.3 },
+  rifle: { short: 'Hunting', slot: 0, retired: true, name: 'Hunting rifle', price: 5800, lvl: 6, dmg: 95, rate: 1.2, mag: 5, spread: 0.002, range: 220, pellets: 1, ammo: 20, ammoPrice: 110, auto: false, twoHand: true, loud: 1.6 },
+  sniper: { short: 'Sniper', slot: 8, name: 'Sniper rifle', price: 9500, lvl: 7, dmg: 170, rate: 1.6, mag: 5, spread: 0.0004, range: 420, pellets: 1, ammo: 15, ammoPrice: 160, auto: false, twoHand: true, loud: 1.8, scope: true },
+  lmg: { short: 'LMG', slot: 9, name: 'Light machine gun', price: 14000, lvl: 8, dmg: 27, rate: 0.075, mag: 100, spread: 0.04, range: 110, pellets: 1, ammo: 200, ammoPrice: 260, auto: true, twoHand: true, loud: 1.5 },
 };
+export const gunInSlot = (n) => n >= 2 ? Object.keys(GUNS).find(id => GUNS[id].slot === n) || null : null;
 export const isGun = (id) => !!GUNS[id];
 
 const M = {
@@ -26,6 +33,11 @@ export function gunMesh(id) {
   if (id === 'pistol') { bx(g, 0.032, 0.035, 0.19, M.black, 0, 0.045, 0.06); bx(g, 0.03, 0.1, 0.045, M.grip, 0, -0.01, -0.005).rotation.x = -0.25; g.userData.muzzle = 0.16; }
   else if (id === 'smg') { bx(g, 0.045, 0.07, 0.3, M.black, 0, 0.04, 0.08); cy(g, 0.012, 0.12, M.steel, 0, 0.055, 0.29); bx(g, 0.03, 0.12, 0.04, M.black, 0, -0.03, 0.12); bx(g, 0.03, 0.09, 0.04, M.grip, 0, -0.02, -0.02); bx(g, 0.03, 0.05, 0.18, M.black, 0, 0.05, -0.14); g.userData.muzzle = 0.35; }
   else if (id === 'shotgun') { cy(g, 0.016, 0.62, M.steel, 0, 0.06, 0.3); cy(g, 0.022, 0.18, M.wood, 0, 0.03, 0.34); bx(g, 0.045, 0.07, 0.2, M.black, 0, 0.05, 0.02); bx(g, 0.04, 0.09, 0.3, M.wood, 0, 0.01, -0.22).rotation.x = 0.12; g.userData.muzzle = 0.62; }
+  else if (id === 'revolver') { cy(g, 0.012, 0.15, M.steel, 0, 0.055, 0.1); const c = cy(g, 0.026, 0.045, M.steel, 0, 0.045, 0.02); c.rotation.x = Math.PI / 2; bx(g, 0.03, 0.1, 0.045, M.wood, 0, -0.015, -0.03).rotation.x = -0.3; g.userData.muzzle = 0.18; }
+  else if (id === 'sawnoff') { cy(g, 0.016, 0.34, M.steel, -0.016, 0.06, 0.18); cy(g, 0.016, 0.34, M.steel, 0.016, 0.06, 0.18); bx(g, 0.05, 0.06, 0.12, M.black, 0, 0.045, -0.02); bx(g, 0.04, 0.1, 0.12, M.wood, 0, -0.01, -0.1).rotation.x = 0.5; g.userData.muzzle = 0.36; }
+  else if (id === 'assault') { bx(g, 0.045, 0.07, 0.36, M.black, 0, 0.05, 0.08); cy(g, 0.013, 0.24, M.steel, 0, 0.06, 0.36); const mg = bx(g, 0.03, 0.15, 0.05, M.black, 0, -0.04, 0.1); mg.rotation.x = 0.35; bx(g, 0.035, 0.1, 0.04, M.grip, 0, -0.02, -0.03); bx(g, 0.04, 0.07, 0.24, M.wood, 0, 0.03, -0.2); bx(g, 0.05, 0.035, 0.2, M.wood, 0, 0.03, 0.22); g.userData.muzzle = 0.48; }
+  else if (id === 'sniper') { cy(g, 0.012, 0.72, M.black, 0, 0.065, 0.42); bx(g, 0.045, 0.06, 0.46, M.black, 0, 0.03, 0.06); cy(g, 0.024, 0.3, M.black, 0, 0.13, 0.08); bx(g, 0.04, 0.11, 0.3, M.black, 0, 0.0, -0.26).rotation.x = 0.15; g.userData.muzzle = 0.78; }
+  else if (id === 'lmg') { bx(g, 0.06, 0.09, 0.5, M.black, 0, 0.05, 0.1); cy(g, 0.016, 0.36, M.steel, 0, 0.06, 0.52); bx(g, 0.09, 0.1, 0.1, M.steel, 0.05, -0.02, 0.05); bx(g, 0.035, 0.1, 0.04, M.grip, 0, -0.03, -0.06); bx(g, 0.045, 0.08, 0.24, M.black, 0, 0.03, -0.26); g.userData.muzzle = 0.7; }
   else if (id === 'rifle') { cy(g, 0.011, 0.6, M.steel, 0, 0.065, 0.36); bx(g, 0.04, 0.06, 0.42, M.wood, 0, 0.03, 0.06); cy(g, 0.02, 0.2, M.black, 0, 0.12, 0.08); bx(g, 0.04, 0.1, 0.28, M.wood, 0, 0.0, -0.25).rotation.x = 0.15; g.userData.muzzle = 0.66; }
   return g;
 }
@@ -85,7 +97,8 @@ export class Guns {
     if (this.reload > 0) { this.reload -= dt; if (this.reload <= 0) { const take = Math.min(S.mag - this.magOf(id), this.reserve(id)); this.mag[id] += take; g.save.ammo[id] -= take; } }
     this.ammoEl.innerHTML = `${this.reload > 0 ? 'RELOADING' : this.magOf(id)} <small>/ ${this.reserve(id)}</small>`;
     if (!show) return false;
-    const trig = pressed.has('punch') || (S.auto && (inp.q || g.input.mouse.down || g.input.touch.buttons.has('!punch')));
+    const trig = pressed.has('punch') || (S.auto && inp.fire);
+    if (inp.aim) { this.aimT = Math.max(this.aimT, 0.25); pl.yaw = g.camYaw; }
     if (!trig) return false;
     if (campus) {
       if (this.campusNote <= 0) { g.hud.toast('Purdue campus is a gun-free zone. Your gun stays holstered here.', 'warn'); this.campusNote = 4; }
@@ -118,13 +131,17 @@ export class Guns {
     if (aiming) { const d = this.aimDir(); h.lookAt(tmpV.copy(h.position).add(d)); }
     else { h.rotation.set(1.15, char.mesh.rotation.y, 0, 'YXZ'); }
   }
-  aimDir() { return this.g.camera.getWorldDirection(tmpV2).clone(); }
+  aimDir() {
+    const T = this.g.clickTarget;
+    if (T && T.t > 0 && T.obj) { const o = T.obj, c = this.g.camera.position; return new THREE.Vector3(o.pos.x - c.x, o.pos.y + (o.spec ? 0.8 : 1.25) - c.y, o.pos.z - c.z).normalize(); }
+    return this.g.camera.getWorldDirection(tmpV2).clone();
+  }
   muzzle() { const h = this.held; return h ? h.localToWorld(new THREE.Vector3(0, 0.05, h.userData.muzzle || 0.2)) : this.g.player.pos.clone().setY(this.g.player.pos.y + 1.4); }
 
   fire(id) {
     const g = this.g, S = GUNS[id], pl = g.player;
     this.mag[id]--; this.cool = S.rate; this.aimT = 1.6;
-    pl.yaw = g.camYaw; pl.mesh.rotation.y = pl.yaw; pl.char.aiming = 1;
+    const T = g.clickTarget; pl.yaw = T && T.t > 0 && T.obj ? Math.atan2(T.obj.pos.x - pl.pos.x, T.obj.pos.z - pl.pos.z) : g.camYaw; pl.mesh.rotation.y = pl.yaw; pl.char.aiming = 1;
     pl.char.update(0.001, pl.mode, 0); pl.char.model.updateMatrixWorld(true);
     this.placeHeld(id, pl.char, true);
     const cam = g.camera, from = this.muzzle();

@@ -50,6 +50,7 @@ import { circleBox, overBox, boxBox, resolveCars } from './collide.js';
 import { Home } from './home.js';
 import { Talk } from './talk.js';
 import { Contacts } from './contacts.js';
+import { Dealer } from './dealer.js';
 
 const QUALITY = {
   low: { pixelRatio: 1, shadows: 1024, shadowRange: 80, drawDistance: 1400, bloom: false, msaa: 0, ao: false, grade: false, textures: 'lo', treeCards: 14, traffic: 14, peds: 10, lamps: 1500, treeShadows: false },
@@ -68,14 +69,19 @@ class Game {
     try { save = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}'); } catch { /* storage unavailable */ }
     const touch = matchMedia('(pointer: coarse)').matches;
     this.save = save;
-    this.settings = Object.assign({ quality: 'auto', invertPitch: false, volume: 0.8, sensitivity: 1, units: 'mph', dayMinutes: 24, dynres: true, weather: 'auto' }, save.settings || {});
-    this.weather = pickWeather(params.get('weather') || this.settings.weather);
+    this.settings = Object.assign({ quality: 'auto', invertPitch: false, volume: 0.8, sensitivity: 1, units: 'mph', dynres: true }, save.settings || {});
+    delete this.settings.weather; delete this.settings.dayMinutes;
+    this.weather = pickWeather(params.get('weather') || 'clear');
     installSnowShader(snowy(this.weather) ? 1 : 0);
     if (!save.v3) { this.settings.quality = 'auto'; }   // v0.3: re-detect everyone's quality once
     this.autoQuality = this.settings.quality === 'auto' ? detectQuality(touch) : null;
     if (params.get('quality')) this.settings.quality = params.get('quality');
     this.quality = { ...(QUALITY[this.autoQuality && !params.get('quality') ? this.autoQuality : this.settings.quality] || QUALITY.medium) };
     this.money = save.money ?? 500;
+    // vehicles are bought, not spawned. Your garage starts with a cheap compact
+    // (or the car you already had from an older save).
+    if (!Array.isArray(save.cars)) save.cars = save.myCar?.id ? [{ id: save.myCar.id, tune: save.myCar.tune || null }] : [{ id: 'compact', tune: null }];
+    if (!save.myCar) save.myCar = { id: save.cars[0].id, tune: save.cars[0].tune };
     this.vehicle = null; this.parked = []; this.paused = true; this.started = false;
     this.camYaw = 0; this.camPitch = 0.18; this.camMode = 0; this.lookIdle = 9; this.shake = 0;
     this.focus = new THREE.Vector3(); this.gps = null; this.gpsPath = null; this.gpsT = 0;
@@ -133,8 +139,7 @@ class Game {
     this.env = new Environment(this.scene, r, q, this.weather);
     this.world.setupLampLights(q.textures === 'lo' ? 3 : 6);
     if (snowy(this.weather)) this.snow = new Snowfall(this.scene, this.weather === 'snowsun' ? 1800 : q.textures === 'lo' ? 5000 : 9000);
-    this.env.daySeconds = this.settings.dayMinutes * 60;
-    if (save_hours(this.save)) this.env.hours = this.save.hours;
+    this.env.setNight(!!this.save.night);
     if (params.get('hour')) this.env.hours = +params.get('hour');
     this.fx = new FX(this.scene);
     this.audio = new Audio(); this.audio.setVolume(this.settings.volume);
@@ -155,12 +160,14 @@ class Game {
     this.hud = new HUD(this);
     this.headlight = new THREE.SpotLight(0xfff1d6, 0, 90, 0.55, 0.45, 1.2);
     this.headlight.position.set(0, 1, 1.5); this.headlight.target.position.set(0, 0, 30);
-    this.spawnShowcase();
+    this.startYaw = 0;
     // you live here: start at home, next to your own car
     this.home = new Home(this);
     this.startSpot = this.home.spawn; this.startYaw = this.home.yaw;
     this.talk = new Talk(this);
     this.contacts = new Contacts(this);
+    this.dealer = new Dealer(this);
+    document.body.classList.toggle('isnight', !!this.save.night);
     { const ft = $('travel'), b = document.createElement('button'); b.textContent = '🏠 Home'; b.onclick = () => { this.hud.toggleMenu(false); this.teleport(...this.home.spawn, 'home'); }; ft?.prepend(b); }
     this.player.roofAt = (x, z, y) => this.carRoofAt(x, z, y);
     const [sx, sz] = this.startSpot;
@@ -170,7 +177,7 @@ class Game {
     this.world.updateCulling(this.focus);
     // warm-up render so the GPU compiles shaders behind the loading screen
     bar.style.width = '100%'; msg.textContent = 'Compiling shaders…';
-    this.updateCamera(0.016, { lookX: 0, lookY: 0, wheel: 0 });
+    this.updateCamera(0.016, { lookX: 0, lookY: 0, wheel: 0, aim: false });
     this.env.update(0, this.focus);
     this.renderer.compile(this.scene, this.camera);
     this.render();
@@ -303,10 +310,28 @@ class Game {
 
   persist() {
     try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify({ v3: true, money: this.money, gears: this.save.gears || [], settings: this.settings, hours: this.env?.hours, seenHelp: this.save.seenHelp, xp: this.save.xp || 0, talents: this.save.talents, karma: this.save.karma || 0, jobs: this.save.jobs, story: this.save.story, look: this.save.look, owned: this.save.owned, owned2: this.save.owned2, myCar: this.save.myCar || null, weapons: this.save.weapons, weapon: this.save.weapon, ammo: this.save.ammo, player: { medkits: this.player?.medkits ?? 2, armor: Math.round(this.player?.armor || 0) } }));
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ v3: true, money: this.money, gears: this.save.gears || [], settings: this.settings, night: !!this.env?.isNight, cars: this.save.cars, seenHelp: this.save.seenHelp, xp: this.save.xp || 0, talents: this.save.talents, karma: this.save.karma || 0, jobs: this.save.jobs, story: this.save.story, look: this.save.look, owned: this.save.owned, owned2: this.save.owned2, myCar: this.save.myCar || null, weapons: this.save.weapons, weapon: this.save.weapon, ammo: this.save.ammo, player: { medkits: this.player?.medkits ?? 2, armor: Math.round(this.player?.armor || 0) } }));
     } catch { /* ignore */ }
   }
   addMoney(n) { this.money = Math.max(0, this.money + n); this.persist(); }
+  owns(id) { return this.save.cars.some(c => c.id === id); }
+  buyVehicle(id) {
+    const s = byId[id];
+    if (!s?.price) { this.hud.toast(`${s?.name || 'That'} isn't for sale — you get it with a job`, 'warn'); return false; }
+    if (this.owns(id)) return true;
+    if (this.money < s.price) { this.hud.toast(`You need $${s.price.toLocaleString()} for the ${s.name}`, 'warn'); return false; }
+    this.addMoney(-s.price); this.save.cars.push({ id, tune: null }); this.persist();
+    this.audio.chime(true); this.hud.toast(`Bought the ${s.name}! −$${s.price.toLocaleString()}`, 'good');
+    return true;
+  }
+  // bring one of your own vehicles to you (planes go to the airport, boats to the river)
+  callVehicle(id) {
+    const c = this.save.cars.find(c => c.id === id); if (!c) return;
+    if (this.vehicle?.mine && this.vehicle.spec.id === id) { this.hud.toast(`You're already in your ${byId[id].name}`); return; }
+    for (const v of this.parked.slice()) if (v.mine && v.spec.id === id && v !== this.vehicle && !v.homeCar) { this.scene.remove(v.mesh); this.parked.splice(this.parked.indexOf(v), 1); }
+    this.spawnFromMenu(id, { color: c.tune?.color, tune: c.tune, mine: true });
+    this.hud.toast(`Your ${byId[id].name} is here`, 'good');
+  }
 
   // ---------------------------------------------------------------- vehicles
   spawnVehicle(id, x, z, yaw, enter = true, opts = {}) {
@@ -326,10 +351,7 @@ class Game {
       this.scene.remove(this.parked[far].mesh); this.parked.splice(far, 1);
     }
   }
-  spawnMyCar() {
-    const m = this.save.myCar; if (!m || !byId[m.id]) return;
-    this.spawnFromMenu(m.id, { color: m.tune?.color, tune: m.tune, mine: true });
-  }
+  spawnMyCar() { const m = this.save.myCar; if (m && byId[m.id]) this.callVehicle(m.id); }
   spawnFromMenu(id, opts = {}) {
     const s = byId[id], w = this.world, p = this.focus;
     if (this.vehicle) this.exitVehicle(true);
@@ -388,7 +410,7 @@ class Game {
 
   enterVehicle(v) {
     if (v.dead) return;
-    this.vehicle = v; v.driver = 'player'; this.player.vehicle = v;
+    this.vehicle = v; v.driver = 'player'; this.player.vehicle = v; this.clickTarget = null;
     v.kinematic = false;
     const seat = v.mesh.userData.seat;
     if (seat && (v.type === 'bike' || v.spec.rider)) {
@@ -405,7 +427,7 @@ class Game {
   exitVehicle(force = false) {
     const v = this.vehicle; if (!v) return;
     const pl = this.player, w = this.world;
-    v.driver = null; this.vehicle = null; pl.vehicle = null;
+    v.driver = null; this.vehicle = null; pl.vehicle = null; v.mesh.visible = true;
     if (this.player.mesh.parent !== this.scene) { this.scene.add(pl.mesh); }
     pl.mesh.visible = true;
     this.headlight.intensity = 0;
@@ -439,6 +461,63 @@ class Game {
     if (!this.parked.includes(best)) this.parked.push(best);
     this.enterVehicle(best);
     return true;
+  }
+
+  // ---------------------------------------------------------------- targets
+  // people (and, with a gun, cars) you could attack, with where they are on screen
+  targets(withCars) {
+    const out = [], pl = this.player;
+    const add = (o, kind) => { if (o && o.pos && Math.hypot(o.pos.x - pl.pos.x, o.pos.z - pl.pos.z) < (this.guns.id ? (this.guns.spec.range || 80) : 30)) out.push({ obj: o, kind }); };
+    for (const p of this.traffic.peds) if (!p.fly && !(p.down > 0) && !p.gone) add(p, 'ped');
+    for (const a of this.actors) if (a.hittable && !a.isDown && !a.removed) add(a, 'npc');
+    if (withCars) for (const v of [...this.traffic.cars.map(c => c.v), ...this.police.units.map(u => u.v), ...this.parked]) if (!v.dead && v !== this.vehicle) add(v, 'car');
+    return out;
+  }
+  screenOf(o) {
+    const p = new THREE.Vector3(o.pos.x, o.pos.y + (o.spec ? 0.8 : 1.1), o.pos.z).project(this.camera);
+    if (p.z > 1) return null;
+    return { x: (p.x + 1) / 2 * innerWidth, y: (1 - p.y) / 2 * innerHeight, p };
+  }
+  // clicked / tapped on screen: lock onto whoever is there and attack them
+  attackAt(x, y) {
+    let best = null, bd = Math.max(46, innerWidth * 0.045);
+    for (const T of this.targets(!!this.guns.id)) {
+      const s = this.screenOf(T.obj); if (!s) continue;
+      const d = Math.hypot(s.x - x, s.y - y) * (T.kind === 'car' ? 0.6 : 1);
+      if (d >= bd) continue;
+      const c = this.camera.position, h = T.obj.pos;
+      if (this.world.lineBlocked(c.x, c.y, c.z, h.x, h.y + 1, h.z) < 0.97) continue;
+      bd = d; best = T;
+    }
+    if (!best) return false;
+    if (!this.guns.id && best.kind === 'car') return false;
+    const far = Math.hypot(best.obj.pos.x - this.player.pos.x, best.obj.pos.z - this.player.pos.z);
+    this.clickTarget = { obj: best.obj, kind: best.kind, t: this.guns.id ? 1.2 : 1.4 + far / 3 };   // fists: long enough to run over there
+    return true;
+  }
+  // attack button with no click target: fists lock onto someone in reach in front of you,
+  // and on phones guns get a little aim assist toward whoever is near the crosshair
+  assistTarget() {
+    const pl = this.player, touch = matchMedia('(pointer: coarse)').matches;
+    let best = null, bd = Infinity;
+    for (const T of this.targets(false)) {
+      const o = T.obj, dx = o.pos.x - pl.pos.x, dz = o.pos.z - pl.pos.z, d = Math.hypot(dx, dz);
+      if (!this.guns.id) {
+        const fx = Math.sin(this.camYaw), fz = Math.cos(this.camYaw);
+        if (d < 3.2 && (dx * fx + dz * fz) / (d || 1) > 0.3 && d < bd) { bd = d; best = T; }
+      } else if (touch) {
+        const s = this.screenOf(o); if (!s) continue;
+        const sd = Math.hypot(s.x - innerWidth / 2, s.y - innerHeight / 2);
+        if (sd < innerWidth * 0.12 && sd < bd) { bd = sd; best = T; }
+      }
+    }
+    if (best) this.clickTarget = { obj: best.obj, kind: best.kind, t: 0.9 };
+  }
+
+  toggleNight(on = !this.env.isNight) {
+    this.env.setNight(on); this.save.night = on; this.persist();
+    this.hud.toast(on ? '🌙 Night' : '☀️ Sunny day');
+    document.body.classList.toggle('isnight', on);
   }
 
   // ---------------------------------------------------------------- events
@@ -526,61 +605,83 @@ class Game {
       this.player.mesh.visible = true;
       return;
     }
-    if (inp.lookX || inp.lookY) this.lookIdle = 0; else this.lookIdle += dt;
+    // tiny mouse jitter doesn't count as looking around (otherwise the car camera never re-centres)
+    if (Math.abs(inp.lookX) + Math.abs(inp.lookY) > 1.5) this.lookIdle = 0; else this.lookIdle += dt;
     this.camYaw -= inp.lookX * 0.0028 * sens;
     this.camPitch = Math.max(-0.45, Math.min(1.25, this.camPitch + inp.lookY * 0.0022 * sens));
-    if (inp.wheel) this.zoom = Math.max(0.6, Math.min(2.5, (this.zoom || 1) * (inp.wheel > 0 ? 1.12 : 0.9)));
-    const zoom = this.zoom || 1;
-    let target, dist, height, fov = 65;
+    if (inp.wheel) this.zoom = Math.max(0.6, Math.min(2.2, (this.zoom || 1) * (inp.wheel > 0 ? 1.12 : 0.9)));
+    const zoom = this.zoom || 1, mode = this.camMode;
+    let target, dist, height, fov = 65, ahead = 0;
     if (v) {
-      const L = v.spec.L, big = v.spec.mass > 3000;
+      const L = v.spec.L, air = v.type === 'plane' || v.type === 'heli';
       let heading = v.yaw;
       if (v.type === 'plane') { const f = new THREE.Vector3(0, 0, 1).applyQuaternion(v.q); heading = Math.atan2(f.x, f.z); }
       const vf = v.vel.x * Math.sin(heading) + v.vel.z * Math.cos(heading);
-      if (this.lookIdle > 1.2 && !(v.type === 'car' && vf < -3)) {
-        this.camYaw += wrap(heading - this.camYaw) * Math.min(1, dt * (v.type === 'plane' ? 4 : 3));
-        const wantPitch = v.type === 'plane' ? 0.12 - (new THREE.Vector3(0, 0, 1).applyQuaternion(v.q).y) * 0.7 : v.type === 'heli' ? 0.3 : 0.16;
+      // swing back behind the car when you stop looking around (follow the direction of travel in a slide)
+      if (this.lookIdle > 1.0 && !(v.type === 'car' && vf < -3)) {
+        let follow = heading;
+        if (!air && v.speed > 6 && vf > 0) { const vh = Math.atan2(v.vel.x, v.vel.z); follow = heading + wrap(vh - heading) * 0.5; }
+        this.camYaw += wrap(follow - this.camYaw) * Math.min(1, dt * (v.type === 'plane' ? 4 : 2.6));
+        const wantPitch = v.type === 'plane' ? 0.12 - (new THREE.Vector3(0, 0, 1).applyQuaternion(v.q).y) * 0.7 : v.type === 'heli' ? 0.3 : mode === 1 ? 0.26 : 0.2;
         this.camPitch += (wantPitch - this.camPitch) * Math.min(1, dt * 2);
       }
-      const modeDist = [1, 1.7, 0][this.camMode];
-      dist = (v.type === 'plane' ? (v.spec.jet ? 26 : 17) : v.type === 'heli' ? 17 : Math.max(5.6, L * 1.25 + (big ? 4 : 0))) * modeDist * zoom;
-      height = v.type === 'plane' ? 2.2 : v.type === 'heli' ? 2.8 : (big ? 3.2 : 1.4);
-      target = new THREE.Vector3(v.pos.x, v.pos.y + height, v.pos.z);
-      fov = 66 + Math.min(22, v.speed * 0.28) + (v.boosting ? 6 : 0);
-      if (this.camMode === 2) {
-        // cockpit / hood view
+      if (mode === 2) {
+        // first person: from the driver's seat, with the car hidden so nothing blocks the road
         const f = new THREE.Vector3(0, 0, 1).applyQuaternion(v.mesh.quaternion);
         const u = new THREE.Vector3(0, 1, 0).applyQuaternion(v.mesh.quaternion);
-        const eye = v.pos.clone().addScaledVector(u, v.type === 'plane' ? 2.1 : v.type === 'heli' ? 1.9 : v.type === 'boat' ? 1.9 : (v.spec.boxH || 1.25) * 0.85 + (v.type === 'bike' ? 0.5 : 0)).addScaledVector(f, v.type === 'plane' ? 0.6 : v.type === 'heli' ? 1.6 : v.spec.L * 0.05);
+        const lft = new THREE.Vector3(1, 0, 0).applyQuaternion(v.mesh.quaternion);
+        const eyeH = v.type === 'plane' ? 2.1 : v.type === 'heli' ? 1.9 : v.type === 'boat' ? 1.9 : v.type === 'bike' ? 1.55 : Math.max(1.15, v.height * 0.82);
+        const eye = v.pos.clone().addScaledVector(u, eyeH).addScaledVector(f, v.type === 'car' ? L * 0.02 : 0.3).addScaledVector(lft, v.type === 'car' ? 0.38 : 0);
         cam.position.copy(eye);
-        const look = eye.clone().addScaledVector(f, 20);
-        const yawOff = wrap(this.camYaw - heading);
-        look.applyAxisAngle && cam.up.copy(v.type === 'plane' ? u : new THREE.Vector3(0, 1, 0));
-        cam.lookAt(look);
-        cam.rotateY(yawOff * (this.lookIdle < 1.2 ? 1 : 0));
-        cam.fov = 75; cam.updateProjectionMatrix();
+        cam.up.copy(v.type === 'plane' ? u : new THREE.Vector3(0, 1, 0));
+        cam.lookAt(eye.clone().addScaledVector(f, 20));
+        if (this.lookIdle < 1.0) cam.rotateY(wrap(this.camYaw - heading));
+        v.mesh.visible = air;   // aircraft keep their nose in view; cars and bikes vanish
+        if (this.player.mesh.parent !== this.scene) this.player.mesh.visible = false;
+        cam.fov += (78 - cam.fov) * Math.min(1, dt * 4); cam.updateProjectionMatrix();
         return;
       }
+      v.mesh.visible = true;
+      // chase cameras: back far enough to see the road, high enough to see over traffic
+      const near = air ? (v.type === 'plane' ? (v.spec.jet ? 26 : 17) : 17) : L * 0.9 + 3.6;
+      dist = near * (mode === 1 ? 1.7 : 1) * zoom;
+      height = air ? (v.type === 'plane' ? 2.2 : 2.8) : v.height * 0.75 + (mode === 1 ? 1.4 : 0.9);
+      target = new THREE.Vector3(v.pos.x, v.pos.y + height, v.pos.z);
+      ahead = air ? 0 : Math.min(7, 2.5 + v.speed * 0.1);   // look a little past the car, so it sits low in the frame and the road ahead shows
+      fov = 68 + Math.min(10, v.speed * 0.14) + (v.boosting ? 5 : 0);
     } else {
       const p = this.player;
-      height = p.swimming ? 0.6 : 1.55;
+      height = p.swimming ? 0.6 : 1.6;
       target = new THREE.Vector3(p.pos.x, p.pos.y + height, p.pos.z);
-      dist = 4.4 * zoom * [1, 1.6, 0.35][this.camMode];
-      if (this.guns?.id && this.camMode !== 2) { dist = 3.1 * zoom; target.y += 0.1; }   // over the right shoulder with a gun out
+      const aiming = this.guns?.id && (this.guns.aimT > 0 || inp.aim);
+      if (mode === 2 && !p.parachute) {
+        // first person on foot
+        const eye = new THREE.Vector3(p.pos.x + Math.sin(this.camYaw) * 0.18, p.pos.y + (p.swimming ? 0.5 : 1.68), p.pos.z + Math.cos(this.camYaw) * 0.18);
+        cam.position.copy(eye); cam.up.set(0, 1, 0);
+        const cp = Math.cos(this.camPitch), sp = Math.sin(this.camPitch);
+        cam.lookAt(eye.x + Math.sin(this.camYaw) * cp, eye.y - sp, eye.z + Math.cos(this.camYaw) * cp);
+        this.player.mesh.visible = false;
+        const zf = aiming && inp.aim ? (this.guns.spec?.scope ? 18 : 50) : 72;
+        cam.fov += (zf - cam.fov) * Math.min(1, dt * 8); cam.updateProjectionMatrix();
+        return;
+      }
+      dist = (mode === 1 ? 6.2 : 3.7) * zoom;
+      if (aiming) { dist = (inp.aim ? 2.4 : 3.0) * zoom; target.y += 0.05; }   // over the right shoulder with a gun up
       if (p.parachute) dist = 9;
       fov = 62 + Math.min(8, Math.hypot(p.vel.x, p.vel.z) * 0.8);
+      if (aiming && inp.aim) fov = this.guns.spec?.scope ? 20 : 52;
     }
     cam.up.set(0, 1, 0);
     // where the camera wants to be for a given pitch (with an over-the-shoulder offset on foot)
-    const gunCam = !v && this.guns?.id && this.camMode !== 2;
-    const shoulder = v ? 0 : gunCam ? -0.72 : 0.45 * Math.min(1, dist / 3);
+    const gunCam = !v && this.guns?.id && (this.guns.aimT > 0 || inp.aim);
+    const shoulder = v ? 0 : gunCam ? -0.62 : 0.4 * Math.min(1, dist / 3);
     const camAt = (pitch) => {
       const cp = Math.cos(pitch), sp = Math.sin(pitch);
       return new THREE.Vector3(target.x - Math.sin(this.camYaw) * cp * dist + Math.cos(this.camYaw) * shoulder, target.y + sp * dist, target.z - Math.cos(this.camYaw) * cp * dist - Math.sin(this.camYaw) * shoulder);
     };
     let desired = camAt(this.camPitch);
     const lookAt = gunCam ? new THREE.Vector3(target.x + Math.cos(this.camYaw) * shoulder, target.y + 0.15, target.z - Math.sin(this.camYaw) * shoulder)
-      : new THREE.Vector3(target.x, target.y + (v ? 0.4 : 0.15), target.z);
+      : new THREE.Vector3(target.x + Math.sin(this.camYaw) * ahead, v && !(v.type === 'plane' || v.type === 'heli') ? v.pos.y + v.height * 0.95 : target.y + 0.1, target.z + Math.cos(this.camYaw) * ahead);
     let lookDir = lookAt.clone().sub(desired).normalize();
     const keep = 0.35;   // metres kept between the lens and any wall
     let t = w.cameraClear(target, desired);
@@ -596,23 +697,24 @@ class Game {
     }
     const gy = w.heightAt(desired.x, desired.z) + 0.6;
     if (desired.y < gy) desired.y = gy;
-    const lag = v ? Math.min(1, dt * 12) : Math.min(1, dt * 20);
-    if (cam.position.distanceToSquared(desired) > 400) cam.position.copy(desired);   // teleports / respawns
+    const lag = v ? Math.min(1, dt * 10) : Math.min(1, dt * 20);
+    if (cam.position.distanceToSquared(desired) > 400 || this.lastCamMode !== mode) cam.position.copy(desired);   // teleports, respawns, view changes
     else cam.position.lerp(desired, lag);
+    this.lastCamMode = mode;
     // the lagging camera can swing through a corner: re-check where it actually ended up
     const t2 = w.cameraClear(target, cam.position);
     if (t2 < 1) { const d2 = cam.position.distanceTo(target) || 1; cam.position.copy(target.clone().lerp(cam.position, Math.max(0, t2 - keep / d2))); }
     // never look at the inside of your own head
     const camD = cam.position.distanceTo(target);
-    if (!v || v.spec.rider || v.type === 'bike') this.player.mesh.visible = !this.player.gone && camD > 0.95 && !(v && this.camMode === 2);
-    if (v) v.mesh.visible = camD > 0.8 || this.camMode === 2;
+    if (!v || v.spec.rider || v.type === 'bike') this.player.mesh.visible = !this.player.gone && camD > 0.95;
+    if (v) v.mesh.visible = camD > 0.8;
     if (this.shake > 0) {
       cam.position.x += (Math.random() - 0.5) * this.shake * 0.6; cam.position.y += (Math.random() - 0.5) * this.shake * 0.6;
       this.shake = Math.max(0, this.shake - dt * 1.6);
     }
     // aim along the intended line (looking "at" the target from 30 cm away would spin the view)
     if (camD > 1.2) cam.lookAt(lookAt); else cam.lookAt(cam.position.clone().add(lookDir));
-    cam.fov += (fov - cam.fov) * Math.min(1, dt * 3);
+    cam.fov += (fov - cam.fov) * Math.min(1, dt * (inp.aim ? 9 : 3));
     cam.updateProjectionMatrix();
   }
 
@@ -630,14 +732,23 @@ class Game {
       if (pr.has('pause') && this.wardrobe?.open) { this.wardrobe.hide(); pr.delete('pause'); }
       if (pr.has('pause') && this.garage?.open) { this.garage.hide(); pr.delete('pause'); }
       if (pr.has('pause') && this.pawn?.open) { this.pawn.hide(); pr.delete('pause'); }
+      if (pr.has('pause') && this.dealer?.open) { if (this.dealer.viewer) this.dealer.closeViewer(); else this.dealer.hide(); pr.delete('pause'); }
       if (pr.has('pause')) { if (this.hud.phoneOpen) this.hud.togglePhone(false); else if (this.hud.mapOpen) this.hud.toggleMap(false); else this.hud.toggleMenu(!this.hud.menuOpen, 'settings'); }
-      if (pr.has('vehicles')) this.hud.toggleMenu(!this.hud.menuOpen, 'vehicles');
+      if (pr.has('vehicles')) { if (this.dealer.open) this.dealer.hide(); else this.dealer.show(); }
       if (pr.has('help')) $('help').hidden = !$('help').hidden;
+      if (this.input.clickAt) {
+        const c = this.input.clickAt; this.input.clickAt = null;
+        if (!this.paused && !this.vehicle && this.attackAt(c.x, c.y)) pr.add('punch');
+        else if (c.mouse && !this.paused) { $('game').requestPointerLock?.(); }
+      }
+      if (pr.has('cursor')) { if (document.pointerLockElement) document.exitPointerLock(); else if (!this.paused) $('game').requestPointerLock?.(); }
+      const t = this.vehicle ? (this.vehicle.type === 'plane' || this.vehicle.type === 'heli' ? 'mode-air' : 'mode-car') : 'mode-foot';
+      if (this.modeClass !== t) { document.body.classList.remove('mode-air', 'mode-car', 'mode-foot'); document.body.classList.add(t); this.modeClass = t; }
     }
     if (!this.paused && this.started && dt > 1e-4) this.step(dt, inp);
     else if (this.started) {
       if (this.wardrobe?.open) { this.player.char.update(dt, 'idle', 0); this.player.mesh.rotation.y = this.player.yaw; }
-      this.updateCamera(0, { lookX: 0, lookY: 0, wheel: 0 });
+      this.updateCamera(0, { lookX: 0, lookY: 0, wheel: 0, aim: false });
     }
     this.input.endFrame();
     this.render();
@@ -647,13 +758,16 @@ class Game {
     const pr = inp.pressed, w = this.world;
     this.lastDt = dt; this.lastPressed = pr;
     if (this.deathT > 0) { this.deathT -= dt; if (this.deathT <= 0) this.respawn(); }
-    if (pr.has('camera')) this.camMode = (this.camMode + 1) % 3;
+    if (pr.has('enterE') && !(this.vehicle && (this.vehicle.type === 'plane' || this.vehicle.type === 'heli'))) pr.add('enter');   // E = rudder in aircraft
+    if (pr.has('camera')) { this.camMode = (this.camMode + 1) % 3; this.zoom = 1; this.hud.toast('📷 ' + ['Near camera', 'Far camera', 'First person'][this.camMode]); }
+    if (pr.has('night')) this.toggleNight();
+    for (let n = 0; n <= 9; n++) if (pr.has('slot' + n) && !this.talk?.open && !this.vehicle) this.pawn.slot(n);
     if (pr.has('radio')) this.hud.toast(this.audio.toggleRadio() ? '📻 Boiler FM 88.8 — Wabash synthwave' : 'Radio off');
     if (pr.has('horn') && this.vehicle) { this.audio.horn(); for (const p of this.traffic.peds) if (p.pos.distanceTo(this.focus) < 25) p.flee = 5; }
     if (pr.has('siren') && this.vehicle?.parts.beacons.length) { this.vehicle.sirenOn = !this.vehicle.sirenOn; }
     if (pr.has('enter') && this.deathT <= 0) {
       if (this.vehicle) { if (!this.vehicle.airborne || this.vehicle.pos.y - w.heightAt(this.vehicle.pos.x, this.vehicle.pos.z) > 12 || this.vehicle.speed < 3) this.exitVehicle(); }
-      else if (!this.tryEnter()) this.hud.toast('No vehicle nearby — press V to spawn one');
+      else if (!this.tryEnter()) this.hud.toast('No vehicle here. Steal one from traffic, or buy one: phone → 🚗 Vehicles');
     }
     const v = this.vehicle;
     // simulate
@@ -681,15 +795,32 @@ class Game {
     } else {
       const pl = this.player;
       if (pr.has('horn') && pl.useMedkit()) { this.hud.toast(`+50 health  (${pl.medkits} medkits left)`, 'good'); this.audio.chime(true); }
+      if (pr.has('punch') && !this.clickTarget) this.assistTarget();
+      const T = this.clickTarget;
+      if (T) {
+        T.t -= dt;
+        if (inp.fire) T.t = Math.max(T.t, 0.3);   // keep attacking while the button is held
+        const o = T.obj;
+        if (T.t <= 0 || !o || o.removed || o.isDown || o.down > 0 || o.fly || o.dead || Math.hypot(o.pos.x - pl.pos.x, o.pos.z - pl.pos.z) > 120) this.clickTarget = null;
+      }
       const gunUsed = this.guns.update(dt, inp, pr);
       const pin = { x: inp.moveX, y: inp.moveY, run: inp.shift, walk: inp.walk, jump: inp.jump, punch: pr.has('punch') && !this.guns.id && !gunUsed, kick: pr.has('kick') };
+      // fists with a target: walk up to them and keep swinging
+      if (this.clickTarget && !this.guns.id && this.clickTarget.kind !== 'car') {
+        const o = this.clickTarget.obj, dx = o.pos.x - pl.pos.x, dz = o.pos.z - pl.pos.z, d = Math.hypot(dx, dz), a = Math.atan2(dx, dz);
+        if (d > 1.1 && Math.abs(inp.moveX) + Math.abs(inp.moveY) < 0.1) { pin.y = Math.cos(a - this.camYaw); pin.x = -Math.sin(a - this.camYaw); pin.run = d > 2.5; }
+        if (d <= 1.5) { pl.yaw = a; if (!pl.char.attacking) pin.punch = true; }
+      }
       if (this.talk?.open) { pin.x = pin.y = 0; pin.jump = pin.punch = pin.kick = false; }
       const psub = Math.max(1, Math.ceil(dt / 0.025));
+      const evs = [];   // keep events from every sub-step (below 40 fps a punch landed in the first one and was lost)
       for (let i = 0; i < psub; i++) {
         pl.update(dt / psub, pin, this.camYaw);
-        if (i < psub - 1) { pin.jump = pin.punch = pin.kick = false; pl.events.length = 0; }
+        evs.push(...pl.events);
+        pin.jump = pin.punch = pin.kick = false;
         this.playerVsCars(pl);
       }
+      pl.events.length = 0; pl.events.push(...evs);
       if (this.guns.aimT > 0 && this.guns.id) { pl.yaw = this.camYaw; pl.mesh.rotation.y = pl.yaw; }
       this.guns.late();
       for (const e of pl.events) if (e === 'punch' || e === 'kick') { const wp = e === 'punch' ? byWeapon[this.save.weapon] || byWeapon.fists : byWeapon.fists; this.melee(e === 'kick' ? 34 : 22 * wp.dmg, (e === 'kick' ? 1.8 : 1.5) + wp.reach, wp.swing ? 0.24 : 0.16); }
@@ -733,7 +864,7 @@ class Game {
     // environment
     const snap = this.quality.shadowRange * 2 / (this.quality.shadows || 512);
     const sf = new THREE.Vector3(Math.round(this.focus.x / snap) * snap, this.focus.y, Math.round(this.focus.z / snap) * snap);
-    this.env.update(dt, sf, inp.timeFast);
+    this.env.update(dt, sf, false);
     this.world.update(dt, this.env.night, this.focus);
     this.fx.update(dt);
     this.updateCamera(dt, inp);
@@ -858,6 +989,12 @@ class Game {
   }
 
   render() {
+    const now = performance.now(), rdt = Math.min(0.1, (now - (this.lastRender || now)) / 1000); this.lastRender = now;
+    if (this.dealer?.viewer) { this.dealer.renderViewer(rdt); return; }
+    this.renderScene();
+    this.dealer?.afterRender();
+  }
+  renderScene() {
     if (this.grade) { this.grade.uniforms.time.value = (performance.now() / 1000) % 100; this.grade.uniforms.night.value = this.env?.night || 0; }
     if (this.composer) this.composer.render(); else this.renderer.render(this.scene, this.camera);
   }
@@ -879,7 +1016,6 @@ function detectQuality(touch) {
   } catch { return 'medium'; }
 }
 
-function save_hours(s) { return typeof s.hours === 'number' && !isNaN(s.hours); }
 
 const game = new Game();
 game.init().catch((e) => {

@@ -7,6 +7,8 @@
   <meta name="description" content="A free open-world driving, flying and boating game set in the real West Lafayette and Lafayette, Indiana, built from OpenStreetMap data." />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%F0%9F%9A%97%3C/text%3E%3C/svg%3E" />
   <link rel="stylesheet" href="src/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
   <script type="importmap">
     { "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/" } }
   </script>
@@ -28,12 +30,12 @@
     <div class="tag">The real West Lafayette &amp; Lafayette — 13,500 real buildings, every street, the Wabash River</div>
     <button id="play">PLAY</button>
     <div class="keys">
-      <div><b>WASD</b> move / drive</div><div><b>Mouse</b> look (click to capture)</div>
-      <div><b>F</b> enter / exit vehicle</div><div><b>V</b> spawn any vehicle</div>
-      <div><b>M</b> map + GPS</div><div><b>J</b> start mission at a yellow marker</div>
-      <div><b>Shift</b> run / nitro</div><div><b>Space</b> jump / handbrake</div>
-      <div><b>Click / Q</b> punch / swing · <b>E</b> kick · <b>Z</b> weapon</div><div><b>Tab</b> phone: jobs &amp; story</div>
-      <div><b>F1</b> all controls</div><div><b>Esc</b> menu &amp; settings</div>
+      <div><b>WASD</b> move / drive</div><div><b>Mouse</b> look</div>
+      <div><b>L-click</b> attack / shoot</div><div><b>R-click</b> aim</div>
+      <div><b>E</b> get in / out of a car</div><div><b>Shift</b> run / nitro</div>
+      <div><b>1–9</b> guns · <b>0</b> fists</div><div><b>Space</b> jump / handbrake</div>
+      <div><b>C</b> change camera</div><div><b>V</b> show / hide cursor</div>
+      <div><b>Tab</b> phone · cars · jobs</div><div><b>B</b> day / night</div>
     </div>
     <div class="credit"><a href="index.html" style="color:#cfb991">← Back to the Wabash Vice website</a> · Map data © OpenStreetMap contributors · Not affiliated with Purdue University or Rockstar Games</div>
   </div>
@@ -62,7 +64,7 @@
     <div id="actions">
       <div class="act"><span>✚</span><small id="medcount">2</small><kbd>H</kbd></div>
       <div class="act"><span>☎</span><kbd>Tab</kbd></div>
-      <div class="act"><span>✊</span><kbd>Q</kbd></div>
+      <div class="act"><span>✊</span><kbd>Click</kbd></div>
     </div>
     <div id="subs"><b id="subname"></b><span id="subtext"></span></div>
     <div id="bottomleft">
@@ -104,13 +106,12 @@
   <div id="menu" hidden>
     <div class="panel">
       <div class="tabs">
-        <button data-tab="vehicles">Vehicles</button>
+        <button id="menuveh">🚗 Vehicles</button>
         <button data-tab="travel">Fast travel</button>
         <button data-tab="settings">Settings</button>
         <button data-tab="controls">Controls</button>
         <button id="resume">Resume ▶</button>
       </div>
-      <div class="pane" id="pane-vehicles"><div id="vehgrid"></div></div>
       <div class="pane" id="pane-travel" hidden>
         <div id="travel" class="row"></div>
         <p class="note">Golden Gears found: <b id="gearcount">0/30</b> — they're hidden on streets and rooftops all over town ($500 each).</p>
@@ -120,50 +121,59 @@
         <label>Graphics quality
           <select id="setq"><option value="auto">Auto (recommended)</option><option value="low">Low (phones, old laptops)</option><option value="medium">Medium</option><option value="high">High</option><option value="ultra">Ultra (gaming PC)</option></select>
         </label>
-        <label>Weather <select id="setweather"><option value="auto">Changes every visit</option><option value="clear">Clear</option><option value="overcast">Overcast</option><option value="snowsun">Snow &amp; sunshine</option><option value="snow">Snowfall (Indiana November!)</option></select></label>
+        <label class="check"><input id="setnight" type="checkbox" /> Night (otherwise it's always a sunny day) · key <b>B</b></label>
         <label>Volume <input id="setvol" type="range" min="0" max="1" step="0.05" /></label>
         <label>Mouse sensitivity <input id="setsens" type="range" min="0.3" max="3" step="0.1" /></label>
         <label>Units <select id="setunits"><option value="mph">mph / feet</option><option value="kmh">km/h / metres</option></select></label>
-        <label>Length of a day (real minutes) <input id="setday" type="number" min="2" max="240" /></label>
         <label class="check"><input id="setinv" type="checkbox" /> Invert aircraft pitch (↑ = nose up)</label>
-        <p class="note">Hold <b>T</b> to fast-forward time. Your money, gears and settings save automatically in this browser.</p>
+        <p class="note">Your money, cars, guns and settings save automatically in this browser.</p>
       </div>
       <div class="pane" id="pane-controls" hidden>
         <div class="ctrl">
-          <h4>On foot</h4><p><b>WASD</b> move · <b>Shift</b> run · <b>Space</b> jump · <b>F</b> enter vehicle (works on traffic too!) · <b>Mouse</b> look · <b>Scroll</b> zoom · <b>C</b> camera · <b>Click</b> or <b>Q</b> punch, swing or shoot (aim with the mouse) · <b>E</b> kick · <b>Z</b> switch weapon · <b>H</b> use a medkit</p>
-          <h4>Jobs, phone &amp; story</h4><p><b>Tab</b> phone: start a job (Police, Taxi, Paramedic, Delivery), call contacts for story missions, buy armor &amp; medkits · <b>X</b> end your shift · <b>Y</b>/<b>N</b> accept / decline a call · stand in a <span style="color:#ffd23f">yellow</span> marker and press <b>J</b> for activities</p>
-          <h4>Cars &amp; bikes</h4><p><b>W/S</b> gas / brake &amp; reverse · <b>A/D</b> steer · <b>Space</b> handbrake (drift) · <b>Shift</b> nitro · <b>H</b> horn · <b>K</b> siren (emergency vehicles) · <b>R</b> radio</p>
-          <h4>Planes</h4><p><b>W/S</b> throttle · <b>A/D</b> roll (steer on the ground) · <b>↓</b> nose up · <b>↑</b> nose down · <b>Q/E</b> rudder · <b>Shift</b> afterburner · <b>Space</b> wheel brakes. Take off: full throttle down the runway, then hold <b>↓</b>. Exit above 12 m to parachute.</p>
-          <h4>Helicopter</h4><p><b>Space</b> climb · <b>Shift</b> or <b>Z</b> descend · <b>W/S</b> tilt forward / back · <b>A/D</b> turn · <b>Q/E</b> strafe. You can land on rooftops.</p>
-          <h4>Boats</h4><p><b>W/S</b> throttle · <b>A/D</b> steer · launch from the Wabash at Tapawingo Park.</p>
-          <h4>People</h4><p>Walk up to anyone and press <b>G</b> to talk: chat, ask for work, ask the way, compliment, insult, or shake them down. Answer with <b>1–4</b> or click. Wanted? Try talking to a cop with cash in your pocket. People marked 💬 on the map are <b>contacts</b> with jobs for you (phone → Contacts), and ordinary people sometimes ask for a favour when you ask about work.</p>
-          <h4>Everything else</h4><p>You live in West Lafayette: your car is in the driveway, and walking up to the 🏠 front door saves the game. <b>M</b> map &amp; GPS · <b>V</b> vehicle spawner · <b>J</b> start mission · <b>T</b> fast-forward time · <b>Esc</b> menu · <b>F1</b> help overlay. Gamepads work too (triggers to drive, Y to enter/exit).</p>
+          <h4>On foot (same layout as Criminal Russia 3D)</h4><p><b>WASD</b> move · <b>Shift</b> run · <b>Space</b> jump · <b>Mouse</b> look · <b>Left click</b> attack / shoot · <b>Right click</b> aim (sniper zooms) · <b>Q</b> kick · <b>E</b> or <b>F</b> get in / out of a vehicle · <b>G</b> talk · <b>H</b> medkit · <b>V</b> show / hide the mouse cursor · <b>C</b> camera: near, far, first person</p>
+          <h4>Guns</h4><p><b>1</b> pistol (you start with it) · <b>2</b> revolver · <b>3</b> sawn-off · <b>4</b> SMG · <b>5</b> shotgun · <b>6</b> assault rifle · <b>7</b> hunting rifle · <b>8</b> sniper · <b>9</b> machine gun · <b>0</b> fists / melee · <b>Z</b> cycle. Buy them at Levee Pawn &amp; Loan (red marker downtown).</p>
+          <h4>Cars &amp; bikes</h4><p><b>W/S</b> gas / brake &amp; reverse · <b>A/D</b> steer · <b>Space</b> handbrake · <b>Shift</b> nitro · <b>C</b> camera · <b>H</b> horn · <b>K</b> siren · <b>R</b> radio. Cars are bought: <b>Tab</b> → 🚗 Vehicles (or Esc → Vehicles). Stealing from traffic still works, but the cops won't like it.</p>
+          <h4>Planes</h4><p><b>W/S</b> throttle · <b>A/D</b> roll · <b>↓</b> nose up · <b>↑</b> nose down · <b>Q/E</b> rudder · <b>F</b> get out (parachute above 12 m).</p>
+          <h4>Helicopter</h4><p><b>Space</b> climb · <b>Shift</b> or <b>Z</b> descend · <b>W/S</b> tilt · <b>A/D</b> turn · <b>Q/E</b> strafe · <b>F</b> get out.</p>
+          <h4>Everything else</h4><p><b>Tab</b> phone (jobs, story, contacts, vehicles) · <b>M</b> map &amp; GPS · <b>J</b> start at a yellow marker · <b>B</b> day / night · <b>X</b> end your job · <b>Y/N</b> answer a choice · <b>Esc</b> menu · <b>F1</b> help. Gamepads work too.</p>
         </div>
       </div>
     </div>
   </div>
 
   <div id="help" hidden>
-    <b>Controls</b> — WASD move/drive (Shift sprint, Alt walk) · G talk to people (1–4 to answer) · Click/Q punch · E kick · Z weapon · H medkit · Tab phone (jobs, story) · X end job · F enter/exit · V vehicles · M map · J mission · Shift run/nitro · Space jump/handbrake/climb · Plane: W/S throttle, A/D roll, ↓ nose up, ↑ nose down, Q/E rudder · Heli: Space up, Shift down, W/S tilt, A/D turn, Q/E strafe · C camera · R radio · H horn · T time-lapse · Esc menu
+    <b>Controls</b> — WASD move/drive · Shift run/nitro · Space jump/handbrake · Left click attack · Right click aim · E get in/out · Q kick · 1–9 guns, 0 fists · C camera · V cursor · G talk · H medkit/horn · Tab phone &amp; cars · M map · J mission · B day/night · Esc menu
   </div>
 
-  <!-- touch controls -->
+  <!-- touch controls: Criminal Russia 3D layout -->
   <div id="touch" hidden>
     <div id="stick"><div id="knob"></div></div>
-    <div class="btns">
-      <button data-btn="!enter">F</button>
-      <button data-btn="jump">⤒</button>
-      <button data-btn="down">⤓</button>
-      <button data-btn="boost">⚡</button>
-      <button data-btn="!vehicles">V</button>
-      <button data-btn="!map">M</button>
-      <button data-btn="!mission">J</button>
-      <button data-btn="!camera">C</button>
-      <button data-btn="!punch">✊</button>
-      <button data-btn="!kick">🦶</button>
-      <button data-btn="!horn">✚</button>
-      <button data-btn="!phone">☎</button>
-      <button data-btn="!weapon">🔄</button>
+    <div class="t-steer"><button data-btn="left" aria-label="Steer left">◀</button><button data-btn="right" aria-label="Steer right">▶</button></div>
+    <div class="t-top">
+      <button data-btn="!camera" aria-label="Camera">📷</button>
+      <button data-btn="!map" aria-label="Map">🗺️</button>
+      <button data-btn="!phone" aria-label="Phone">📱</button>
+      <button data-btn="!night" aria-label="Day or night" class="t-night">🌙</button>
+      <button data-btn="!mission" aria-label="Action at a yellow marker" class="foot">⭐</button>
+    </div>
+    <div class="t-right">
+      <button data-btn="!enter" class="t-enter" aria-label="Get in or out">🚪</button>
+      <!-- on foot -->
+      <button data-btn="!punch" class="t-attack foot" aria-label="Attack">✊</button>
+      <button data-btn="jump" class="foot t-jump" aria-label="Jump">⤒</button>
+      <button data-btn="boost" class="foot t-run" aria-label="Run">🏃</button>
+      <button data-btn="aim" class="foot t-aim" aria-label="Aim">🎯</button>
+      <button data-btn="!kick" class="foot t-kick" aria-label="Kick">🦶</button>
+      <button data-btn="!talk" class="foot t-talk" aria-label="Talk">💬</button>
+      <!-- driving -->
+      <button data-btn="gas" class="car t-gas" aria-label="Gas">GAS</button>
+      <button data-btn="brake" class="car t-brake" aria-label="Brake">BRAKE</button>
+      <button data-btn="handbrake" class="car t-hb" aria-label="Handbrake">HB</button>
+      <button data-btn="boost" class="car t-nitro" aria-label="Nitro">N₂O</button>
+      <button data-btn="!horn" class="car t-horn" aria-label="Horn">📯</button>
+      <!-- flying -->
+      <button data-btn="up" class="air t-up" aria-label="Up">▲</button>
+      <button data-btn="down" class="air t-down" aria-label="Down">▼</button>
     </div>
   </div>
 

@@ -198,7 +198,7 @@ export class Driver {
     if (this.stuck > 1.6) { this.reverse = 1.3; this.stuck = 0; }
     if (this.reverse > 0) { this.reverse -= dt; thr = -1; steer = -steer; }
     v.headlights = this.g.env.night > 0.4;
-    v.update(dt, { throttle: thr, steer, handbrake: Math.abs(diff) > 1.2 && v.speed > 14, boost: false }, this.g.fx);
+    v.update(dt, { throttle: thr, steer, handbrake: Math.abs(diff) > 1.2 && v.speed > 14, boost: false, ai: true }, this.g.fx);
     for (const c of this.g.traffic.cars) this.g.traffic.contact(v, c);
   }
 }

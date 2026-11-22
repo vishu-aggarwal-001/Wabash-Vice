@@ -388,11 +388,12 @@ export class Police {
       const diff = wrap(want - v.yaw);
       let steer = THREE.MathUtils.clamp(-diff * 2.2, -1, 1);
       let thr = dist < 12 ? (playerVeh ? Math.min(1, playerVeh.speed / 10) : 0) : Math.abs(diff) > 1.6 ? 0.4 : 1;
+      if (Math.abs(diff) > 0.55 && v.speed > 20) thr = -0.35;   // brake for corners
       if (v.speed < 1 && thr > 0.3) u.stuck += dt; else u.stuck = Math.max(0, u.stuck - dt);
       if (u.stuck > 1.8) { u.reverse = 1.4; u.stuck = 0; }
       if (u.reverse > 0) { u.reverse -= dt; thr = -1; steer = -steer; }
       v.headlights = this.g.env.night > 0.4;
-      v.update(dt, { throttle: thr, steer, handbrake: Math.abs(diff) > 1.2 && v.speed > 14, boost: false }, this.g.fx);
+      v.update(dt, { throttle: thr, steer, handbrake: Math.abs(diff) > 1.2 && v.speed > 14, boost: false, ai: true }, this.g.fx);
       // cop cars bump each other / traffic
       for (const c of this.g.traffic.cars) this.g.traffic.contact(v, c);
     }

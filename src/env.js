@@ -7,14 +7,15 @@ export class Environment {
   constructor(scene, renderer, quality, weather = 'clear') {
     this.scene = scene; this.renderer = renderer; this.quality = quality;
     this.weather = weather; this.grey = weather === 'overcast' || weather === 'snow' ? 1 : 0; this.snowy = weather === 'snow' || weather === 'snowsun';
-    this.hours = 16.5;            // start in the late afternoon (golden hour soon)
-    this.daySeconds = 24 * 60;    // one in-game day = 24 real minutes
+    this.hours = 13;              // sunny early afternoon
+    this.daySeconds = 24 * 60;
+    this.frozen = true;           // the clock stands still: sunny day, or night when you switch it on
     this.night = 0;
 
     this.sky = new Sky();
     this.sky.scale.setScalar(8000);
     const u = this.sky.material.uniforms;
-    u.turbidity.value = 2.0; u.rayleigh.value = 2.4; u.mieCoefficient.value = 0.002; u.mieDirectionalG.value = 0.86;
+    u.turbidity.value = 1.6; u.rayleigh.value = 1.6; u.mieCoefficient.value = 0.002; u.mieDirectionalG.value = 0.86;
     this.sky.userData.noAO = true;
     // the physical sky is very bright, so tone mapping flattens it to white: deepen and saturate it
     this.sky.material.onBeforeCompile = (sh) => {
@@ -57,7 +58,7 @@ export class Environment {
 
     // clouds
     const ct = TX.cloudTexture(); ct.repeat.set(5, 5);
-    this.cloudMat = new THREE.MeshBasicMaterial({ map: ct, transparent: true, opacity: 0.7, depthWrite: false, fog: false, side: THREE.DoubleSide });
+    this.cloudMat = new THREE.MeshBasicMaterial({ map: ct, transparent: true, opacity: 0.45, depthWrite: false, fog: false, side: THREE.DoubleSide });
     this.clouds = new THREE.Mesh(new THREE.PlaneGeometry(16000, 16000), this.cloudMat);
     this.clouds.rotation.x = Math.PI / 2; this.clouds.position.y = 1400;
     this.clouds.renderOrder = -1;
@@ -89,11 +90,11 @@ export class Environment {
   }
 
   update(dt, focus, fast = false) {
-    this.hours = (this.hours + dt * 24 / this.daySeconds * (fast ? 60 : 1)) % 24;
-    // sun path for Lafayette in November: low southern arc
-    const t = (this.hours - 7.65) / (17.35 - 7.65);          // 0 at sunrise, 1 at sunset
-    const elev = Math.sin(Math.PI * t) * 31 * Math.PI / 180;
-    const az = (-80 + 160 * t) * Math.PI / 180;            // east -> south -> west
+    if (!this.frozen || fast) this.hours = (this.hours + dt * 24 / this.daySeconds * (fast ? 60 : 1)) % 24;
+    // summer sun over Lafayette: up at 6:20, high in the south at midday, down at 21:10
+    const t = (this.hours - 6.33) / (21.17 - 6.33);          // 0 at sunrise, 1 at sunset
+    const elev = Math.sin(Math.PI * t) * 66 * Math.PI / 180;
+    const az = (-115 + 230 * t) * Math.PI / 180;           // north-east -> south -> north-west
     const dir = this.sunDir.set(-Math.sin(az) * Math.cos(elev), Math.sin(elev), Math.cos(az) * Math.cos(elev));
     if (t < 0 || t > 1) {                                  // night: sun below horizon
       const nt = t < 0 ? (t + 1.28) / 1.28 : (t - 1) / 1.28;
@@ -105,8 +106,8 @@ export class Environment {
 
     const u = this.sky.material.uniforms;
     u.sunPosition.value.copy(dir);
-    u.rayleigh.value = 2.4 + golden * 1.2;
-    u.turbidity.value = 1.6 + golden * 4;
+    u.rayleigh.value = 1.6 + golden * 1.4;
+    u.turbidity.value = 1.4 + golden * 4;
 
     // the sun light: follows the focus point so shadows stay crisp near the player
     const lightDir = sunUp > 0 ? dir : this.moonDir(dir);
@@ -115,13 +116,13 @@ export class Environment {
     const sunCol = new THREE.Color().setHSL(0.09 + 0.03 * (1 - golden), 0.25 + golden * 0.65, 0.62 + 0.38 * (1 - golden));
     if (sunUp > 0) {
       this.sun.color.copy(sunCol);
-      this.sun.intensity = 4.2 * THREE.MathUtils.smoothstep(sunUp, -0.02, 0.15);
+      this.sun.intensity = 4.6 * THREE.MathUtils.smoothstep(sunUp, -0.02, 0.15);
     } else {
       this.sun.color.set(0x8fa6d8);
       this.sun.intensity = 0.35 * this.night;
     }
     // at night the city glows: sky lit orange from below by street lights, enough ambient to see the streets
-    this.hemi.intensity = 0.55 + 0.0 * (1 - this.night);
+    this.hemi.intensity = 0.55 + 0.25 * (1 - this.night);
     this.hemi.color.setHSL(0.58 - 0.0 * this.night, 0.5 - 0.25 * this.night, 0.35 + 0.4 * (1 - this.night));
     this.hemi.groundColor.setHSL(0.22 - 0.14 * this.night, 0.3 + 0.2 * this.night, 0.12 + 0.18 * (1 - this.night) + 0.06 * this.night);
     // overcast / snow: a soft grey sky — weak sun, strong skylight, thick haze
@@ -136,12 +137,12 @@ export class Environment {
     if (this.snowy && !G) { this.hemi.groundColor.setHSL(0.6, 0.1, 0.25 + 0.3 * (1 - this.night)); this.hemi.intensity += 0.25 * (1 - this.night); }   // sunlight bouncing off snow
     this.sky.visible = G < 0.5; this.clouds.visible = G < 0.5;
 
-    const day = G ? new THREE.Color(snow ? 0xc9d0d8 : 0xaab3bd) : new THREE.Color(0xa9c0d8), dusk = new THREE.Color(G ? 0x9a9aa2 : 0xd9a27a), nightC = new THREE.Color(G ? 0x15181e : 0x0b1220);
+    const day = G ? new THREE.Color(snow ? 0xc9d0d8 : 0xaab3bd) : new THREE.Color(0xb4cde6), dusk = new THREE.Color(G ? 0x9a9aa2 : 0xd9a27a), nightC = new THREE.Color(G ? 0x15181e : 0x0b1220);
     const fog = day.clone().lerp(dusk, golden * (G ? 0.3 : 1)).lerp(nightC, this.night);
     this.scene.fog.color.copy(fog);
-    this.scene.fog.density = this.fogBase * (1 + golden * 0.25 + this.night * 0.4) * (snow ? 2.6 : G ? 1.5 : 1);
+    this.scene.fog.density = this.fogBase * (0.7 + golden * 0.25 + this.night * 0.7) * (snow ? 2.6 : G ? 1.5 : 1);
     this.renderer.setClearColor(fog);
-    this.renderer.toneMappingExposure = (0.5 + 0.22 * (1 - this.night) + this.night * 0.35) * (this.snowy && !this.grey ? 0.85 : 1);
+    this.renderer.toneMappingExposure = (0.5 + 0.3 * (1 - this.night) + this.night * 0.35) * (this.snowy && !this.grey ? 0.85 : 1);
 
     this.starMat.opacity = this.night;
     this.stars.position.copy(focus);
@@ -169,6 +170,10 @@ export class Environment {
       this.scene.environmentIntensity = 0.12 + 0.6 * (1 - this.night);
     }
   }
+
+  // day/night switch: a sunny 1 PM or 11 PM
+  get isNight() { return this.hours < 6 || this.hours > 21.5; }
+  setNight(on) { this.hours = on ? 23 : 13; this.lastEnvHour = -99; }
 
   moonDir(sunDir) { return new THREE.Vector3(-sunDir.x, Math.max(0.35, -sunDir.y), -sunDir.z).normalize(); }
 }
