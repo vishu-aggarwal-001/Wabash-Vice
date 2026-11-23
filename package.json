@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "check": "node --check server.js && for f in src/*.js; do node --check $f || exit 1; done",
-    "map": "python3 tools/build_map.py osm data"
+    "map": "python3 tools/build_map.py osm data",
+    "stamp": "node tools/stamp.js"
   },
   "keywords": ["game", "threejs", "open-world", "lafayette", "purdue", "openstreetmap"],
   "license": "MIT",

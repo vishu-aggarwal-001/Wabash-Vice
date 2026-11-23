@@ -41,7 +41,8 @@ To turn hosting on for a copy of this repo: **Settings → Pages → Build and d
 | Steal / enter / exit a car | **F**: break into any parked car, carjack traffic, steal cop cars | Y |
 | Run / nitro / afterburner | **Shift** | LS click / X |
 | Jump / handbrake / climb | **Space** | A |
-| Buy cars / call up yours / sell a stolen one | **V** (Lafayette Motors) | D-pad left |
+| My garage: call up a car you own / sell a stolen one | **V** | D-pad left |
+| Buy cars at Lafayette Motors (🚘 on the map) | **J** in the blue ring | |
 | Map + GPS waypoint | **M**, then click the map | Back |
 | Start mission (yellow marker) | **J** | |
 | Camera (chase / far / cockpit) | **C**, scroll to zoom | R-stick click |
@@ -68,7 +69,7 @@ To turn hosting on for a copy of this repo: **Settings → Pages → Build and d
 
 ## 🆕 What's new in v0.7: grand theft auto
 
-- **Cars are bought, not spawned.** **V** opens Lafayette Motors: you start owning the Boilermaker GT in your driveway, everything else costs money (a $120 bicycle up to a $600,000 jet). Cars you've bought are delivered free whenever you want them. Emergency vehicles aren't for sale, steal one. Driving a stolen car? Sell it there for a quarter of its price. The planes, hypercar and boats parked around town are locked now: steal them or buy them.
+- **Cars are bought, not spawned.** Buy them at **Lafayette Motors** in downtown Lafayette (🚘 on the map, also in Fast travel): a full-screen showroom with every vehicle on a live, draggable 3D turntable, stats, free paint choice and prices (a $120 bicycle up to a $600,000 jet). Buy one and you drive it off the lot. **V** is **My garage**: only the vehicles you own, each shown with a rendered picture of the actual car in your colour; click one and it's brought to you. You start owning the Boilermaker GT in your driveway. Emergency vehicles aren't for sale, steal one. Driving a stolen car? Sell it from the garage for a quarter of its price. The planes, hypercar and boats parked around town are locked now: steal them or buy them.
 - **Driving is actually driveable.** Holding A/D at 70 mph used to spin the car 119° in one second, so any tap sent you into a wall. Now steering eases in, the turn rate is limited by tyre grip at speed, and top speeds are realistic for city streets (a sedan does about 87 mph, the GT about 122). Arrow keys drive too.
 - **Every street has parked cars, and you can steal all of them.** Walk up to any car and press **F**. With fists you elbow the window, with a bat or pipe you smash it, a crowbar pries the door fastest, and with a gun out you shoot the lock. Some cars have alarms (most of the expensive ones): the lights flash, the horn blares and people call the cops.
 - **Carjacking actually works.** Press **F** next to a traffic car that's stopped or crawling: you drag the driver out onto the road and drive off. Cop cars can be stolen too (2 stars).
@@ -265,3 +266,8 @@ This is the honest path from v0.1 toward the “better than GTA *at Lafayette*�
 - Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), ODbL. Building heights that aren't in OSM are estimated, terrain is stylized, and the river valley shape is approximate.
 - This is a fan project. It is **not** affiliated with or endorsed by Purdue University, the City of Lafayette or West Lafayette, Rockstar Games, or any vehicle maker. All vehicle names are made up.
 - Code is MIT licensed (see `LICENSE`). Three.js is MIT licensed.
+
+
+### Deploying
+
+Run `npm run stamp` before committing: it stamps every module in `play.html` with a content hash (`?v=…`) so players' browsers always load the newest version instead of a cached old one.

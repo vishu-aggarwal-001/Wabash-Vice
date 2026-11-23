@@ -125,7 +125,7 @@ export class HUD {
       app('⭐', 'Story', '#c79a2b', () => this.phoneScreen('story'));
       app('🛒', 'Shop', '#2c9a4b', () => this.phoneScreen('shop'));
       app('🗺️', 'Map', '#6b4fd6', () => { this.togglePhone(false); this.toggleMap(true); });
-      app('🚗', 'Vehicles', '#c0392b', () => { this.togglePhone(false); this.toggleMenu(true, 'vehicles'); });
+      app('🚗', 'Garage', '#c0392b', () => { this.togglePhone(false); this.toggleMenu(true, 'vehicles'); });
       app('👕', 'Wardrobe', '#8b5cf6', () => { this.togglePhone(false); g.wardrobe.show(null); });
       app('💬', 'Contacts', '#0e8fc7', () => this.phoneScreen('contacts'));
       app('⬆️', 'Skills', '#d97706', () => this.phoneScreen('skills'));

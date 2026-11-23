@@ -43,7 +43,7 @@ export class Cheats {
     const g = this.g;
     this.open = open; this.el.hidden = !open;
     if (open) { document.exitPointerLock?.(); g.paused = true; this.ok ? this.menu() : this.lock(); }
-    else g.paused = g.hud.menuOpen || g.hud.mapOpen || g.hud.phoneOpen || !!g.pawn?.open || !!g.wardrobe?.open || !!g.garage?.open;
+    else g.paused = g.hud.menuOpen || g.hud.mapOpen || g.hud.phoneOpen || !!g.pawn?.open || !!g.wardrobe?.open || !!g.garage?.open || !!g.dealer?.open;
   }
 
   lock() {

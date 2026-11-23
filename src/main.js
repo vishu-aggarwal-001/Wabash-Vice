@@ -315,7 +315,7 @@ class Game {
 
   persist() {
     try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify({ v3: true, money: this.money, gears: this.save.gears || [], settings: this.settings, hours: this.env?.hours, seenHelp: this.save.seenHelp, xp: this.save.xp || 0, talents: this.save.talents, karma: this.save.karma || 0, jobs: this.save.jobs, story: this.save.story, look: this.save.look, owned: this.save.owned, owned2: this.save.owned2, myCar: this.save.myCar || null, cars: this.save.cars, weapons: this.save.weapons, weapon: this.save.weapon, ammo: this.save.ammo, starterGun: this.save.starterGun, lastMelee: this.save.lastMelee, v7: true, player: { medkits: this.player?.medkits ?? 2, armor: Math.round(this.player?.armor || 0) } }));
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ v3: true, money: this.money, gears: this.save.gears || [], settings: this.settings, hours: this.env?.hours, seenHelp: this.save.seenHelp, xp: this.save.xp || 0, talents: this.save.talents, karma: this.save.karma || 0, jobs: this.save.jobs, story: this.save.story, look: this.save.look, owned: this.save.owned, owned2: this.save.owned2, myCar: this.save.myCar || null, cars: this.save.cars, carColors: this.save.carColors, weapons: this.save.weapons, weapon: this.save.weapon, ammo: this.save.ammo, starterGun: this.save.starterGun, lastMelee: this.save.lastMelee, v7: true, player: { medkits: this.player?.medkits ?? 2, armor: Math.round(this.player?.armor || 0) } }));
     } catch { /* ignore */ }
   }
   addMoney(n) { this.money = Math.max(0, this.money + n); this.persist(); }
@@ -633,8 +633,9 @@ class Game {
       if (pr.has('pause') && this.wardrobe?.open) { this.wardrobe.hide(); pr.delete('pause'); }
       if (pr.has('pause') && this.garage?.open) { this.garage.hide(); pr.delete('pause'); }
       if (pr.has('pause') && this.pawn?.open) { this.pawn.hide(); pr.delete('pause'); }
+      if (pr.has('pause') && this.dealer?.open) { this.dealer.hide(); pr.delete('pause'); }
       if (pr.has('pause')) { if (this.hud.phoneOpen) this.hud.togglePhone(false); else if (this.hud.mapOpen) this.hud.toggleMap(false); else this.hud.toggleMenu(!this.hud.menuOpen, 'settings'); }
-      if (pr.has('vehicles')) this.hud.toggleMenu(!this.hud.menuOpen, 'vehicles');
+      if (pr.has('vehicles') && !this.dealer?.open) this.hud.toggleMenu(!this.hud.menuOpen, 'vehicles');
       if (pr.has('help')) $('help').hidden = !$('help').hidden;
     }
     if (!this.paused && this.started && dt > 1e-4) this.step(dt, inp);
@@ -734,7 +735,7 @@ class Game {
     // talents feed into the player and whatever they drive
     this.player.maxHP = this.prog.maxHP; this.player.staminaRegen = 1 + 0.25 * this.prog.t('endurance');
     if (v) { const dm = this.prog.driveMult, tu = v.tunePerf || { accel: 1, max: 1, grip: 1 }; v.perf = { accel: dm * tu.accel, max: tu.max, grip: (1 + 0.06 * this.prog.t('driving')) * tu.grip, nitro: 1 + 0.3 * this.prog.t('driving') }; }
-    this.wardrobe.update(dt); this.garage.update(dt); this.pawn.update(dt); this.home.update(dt); this.contacts.update(); this.talk.update(dt, pr);
+    this.wardrobe.update(dt); this.garage.update(dt); this.pawn.update(dt); this.dealer.update(dt); this.home.update(dt); this.contacts.update(); this.talk.update(dt, pr);
     if (pr.has('weapon') && !this.vehicle) this.pawn.cycle();
     if (pr.has('endjob') && this.jobs.active) this.jobs.end();
     this.updateGPS(dt);
@@ -869,6 +870,7 @@ class Game {
   }
 
   render() {
+    if (this.dealer?.open) return;   // the showroom covers the screen and draws itself
     if (this.grade) { this.grade.uniforms.time.value = (performance.now() / 1000) % 100; this.grade.uniforms.night.value = this.env?.night || 0; }
     if (this.composer) this.composer.render(); else this.renderer.render(this.scene, this.camera);
   }

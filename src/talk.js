@@ -94,7 +94,7 @@ export class Talk {
       const pl = g.player; pl.yaw = Math.atan2(w.o.pos.x - pl.pos.x, w.o.pos.z - pl.pos.z); pl.mesh.rotation.y = pl.yaw;
       return;
     }
-    if (g.hud.menuOpen || g.hud.phoneOpen || g.hud.mapOpen || g.wardrobe?.open || g.garage?.open) return;
+    if (g.hud.menuOpen || g.hud.phoneOpen || g.hud.mapOpen || g.wardrobe?.open || g.garage?.open || g.dealer?.open) return;
     const n = this.nearest();
     if (this.touchBtn) this.touchBtn.style.opacity = n ? 1 : 0.35;
     if (!n) return;

@@ -6,9 +6,47 @@
   <title>Wabash Vice — West Lafayette & Lafayette open world</title>
   <meta name="description" content="A free open-world driving, flying and boating game set in the real West Lafayette and Lafayette, Indiana, built from OpenStreetMap data." />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%F0%9F%9A%97%3C/text%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="src/style.css" />
+  <link rel="stylesheet" href="src/style.css?v=4a31f118" />
   <script type="importmap">
-    { "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/" } }
+    {
+      "imports": {
+        "three": "./vendor/three/three.module.js",
+        "three/addons/": "./vendor/three/addons/",
+        "./src/actors.js": "./src/actors.js?v=708ddaee",
+        "./src/audio.js": "./src/audio.js?v=f498276c",
+        "./src/cheats.js": "./src/cheats.js?v=5b8e2062",
+        "./src/collide.js": "./src/collide.js?v=57208e66",
+        "./src/contacts.js": "./src/contacts.js?v=9a3b40ba",
+        "./src/dealer.js": "./src/dealer.js?v=9787bd7e",
+        "./src/env.js": "./src/env.js?v=a770b2e8",
+        "./src/facades.js": "./src/facades.js?v=c0e6dc29",
+        "./src/fx.js": "./src/fx.js?v=5d59e6a0",
+        "./src/garage.js": "./src/garage.js?v=753ff613",
+        "./src/guns.js": "./src/guns.js?v=2682e460",
+        "./src/home.js": "./src/home.js?v=7171f2ad",
+        "./src/hud.js": "./src/hud.js?v=edb1baa1",
+        "./src/input.js": "./src/input.js?v=7e2f71af",
+        "./src/jobs.js": "./src/jobs.js?v=c7b8ecc7",
+        "./src/main.js": "./src/main.js?v=4711a950",
+        "./src/missions.js": "./src/missions.js?v=50dbde52",
+        "./src/npc.js": "./src/npc.js?v=8d643057",
+        "./src/outfit.js": "./src/outfit.js?v=9d38c926",
+        "./src/people.js": "./src/people.js?v=4332f8e6",
+        "./src/player.js": "./src/player.js?v=3cef8d21",
+        "./src/progression.js": "./src/progression.js?v=fd10330e",
+        "./src/script.js": "./src/script.js?v=db136a1e",
+        "./src/story.js": "./src/story.js?v=9b63a3dd",
+        "./src/studio.js": "./src/studio.js?v=03e37851",
+        "./src/talk.js": "./src/talk.js?v=581b77d0",
+        "./src/textures.js": "./src/textures.js?v=36e94f72",
+        "./src/theft.js": "./src/theft.js?v=8b0c4420",
+        "./src/vehicles.js": "./src/vehicles.js?v=51196fd7",
+        "./src/wardrobe.js": "./src/wardrobe.js?v=078c04f5",
+        "./src/weapons.js": "./src/weapons.js?v=87d47f86",
+        "./src/weather.js": "./src/weather.js?v=c1a053ee",
+        "./src/world.js": "./src/world.js?v=8f3cbbca"
+      }
+    }
   </script>
 </head>
 <body>
@@ -29,7 +67,7 @@
     <button id="play">PLAY</button>
     <div class="keys">
       <div><b>WASD</b> move / drive</div><div><b>Mouse</b> look (click to capture)</div>
-      <div><b>F</b> steal / enter / exit a car</div><div><b>V</b> buy cars, call up yours</div>
+      <div><b>F</b> steal / enter / exit a car</div><div><b>V</b> your garage (cars you own)</div>
       <div><b>M</b> map + GPS</div><div><b>J</b> start mission at a yellow marker</div>
       <div><b>Shift</b> run / nitro</div><div><b>Space</b> jump / handbrake</div>
       <div><b>Click / Q</b> punch / swing · <b>E</b> kick · <b>Z</b> weapon</div><div><b>Tab</b> phone: jobs &amp; story</div>
@@ -104,7 +142,7 @@
   <div id="menu" hidden>
     <div class="panel">
       <div class="tabs">
-        <button data-tab="vehicles">Vehicles</button>
+        <button data-tab="vehicles">My garage</button>
         <button data-tab="travel">Fast travel</button>
         <button data-tab="settings">Settings</button>
         <button data-tab="controls">Controls</button>
@@ -138,14 +176,14 @@
           <h4>Helicopter</h4><p><b>Space</b> climb · <b>Shift</b> or <b>Z</b> descend · <b>W/S</b> tilt forward / back · <b>A/D</b> turn · <b>Q/E</b> strafe. You can land on rooftops.</p>
           <h4>Boats</h4><p><b>W/S</b> throttle · <b>A/D</b> steer · launch from the Wabash at Tapawingo Park.</p>
           <h4>People</h4><p>Walk up to anyone and press <b>G</b> to talk: chat, ask for work, ask the way, compliment, insult, or shake them down. Answer with <b>1–4</b> or click. Wanted? Try talking to a cop with cash in your pocket. People marked 💬 on the map are <b>contacts</b> with jobs for you (phone → Contacts), and ordinary people sometimes ask for a favour when you ask about work.</p>
-          <h4>Everything else</h4><p>You live in West Lafayette: your car is in the driveway, and walking up to the 🏠 front door saves the game. <b>M</b> map &amp; GPS · <b>V</b> Lafayette Motors: buy cars, call up the ones you own, sell stolen ones · <b>J</b> start mission · <b>T</b> fast-forward time · <b>Esc</b> menu · <b>F1</b> help overlay. Gamepads work too (triggers to drive, Y to enter/exit).</p>
+          <h4>Everything else</h4><p>You live in West Lafayette: your car is in the driveway, and walking up to the 🏠 front door saves the game. <b>M</b> map &amp; GPS · <b>V</b> your garage: every car you own, click one to have it brought to you (or sell a stolen one) · buy cars at <b style="color:#3fa9ff">Lafayette Motors</b> (🚘 on the map, press <b>J</b> in the blue ring) · <b>J</b> start mission · <b>T</b> fast-forward time · <b>Esc</b> menu · <b>F1</b> help overlay. Gamepads work too (triggers to drive, Y to enter/exit).</p>
         </div>
       </div>
     </div>
   </div>
 
   <div id="help" hidden>
-    <b>Controls</b> — WASD move/drive (Shift sprint, Alt walk) · G talk to people (1–4 to answer) · Click/Q punch or shoot · E kick · 1 fists · 2–5 guns · F steal any car · H medkit · Tab phone (jobs, story) · X end job · F enter/exit · V vehicles · M map · J mission · Shift run/nitro · Space jump/handbrake/climb · Plane: W/S throttle, A/D roll, ↓ nose up, ↑ nose down, Q/E rudder · Heli: Space up, Shift down, W/S tilt, A/D turn, Q/E strafe · C camera · R radio · H horn · T time-lapse · Esc menu
+    <b>Controls</b> — WASD move/drive (Shift sprint, Alt walk) · G talk to people (1–4 to answer) · Click/Q punch or shoot · E kick · 1 fists · 2–5 guns · F steal any car · H medkit · Tab phone (jobs, story) · X end job · F enter/exit · V your garage · M map · J mission · Shift run/nitro · Space jump/handbrake/climb · Plane: W/S throttle, A/D roll, ↓ nose up, ↑ nose down, Q/E rudder · Heli: Space up, Shift down, W/S tilt, A/D turn, Q/E strafe · C camera · R radio · H horn · T time-lapse · Esc menu
   </div>
 
   <!-- touch controls -->
@@ -168,6 +206,6 @@
     </div>
   </div>
 
-  <script type="module" src="src/main.js"></script>
+  <script type="module" src="src/main.js?v=4711a950"></script>
 </body>
 </html>
