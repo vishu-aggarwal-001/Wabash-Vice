@@ -85,6 +85,28 @@ const RIM = new THREE.MeshStandardMaterial({ color: 0xc4c8ce, metalness: 1.0, ro
 const HEAD = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff4dc, emissiveIntensity: 0.4 });
 const TAIL = new THREE.MeshStandardMaterial({ color: 0x550000, emissive: 0xff1a1a, emissiveIntensity: 0.5 });
 
+// computeVertexNormals leaves (0,0,0) on a vertex whose triangles all have zero area (for example
+// the centre of an end cap whose ring has pinched to a line). The GPU then normalizes a zero
+// vector, gets NaN, and bloom spreads that one pixel over the whole screen (a black frame).
+// Point any such normal straight out from the middle of the part instead.
+export function repairNormals(g) {
+  const n = g.attributes.normal, p = g.attributes.position;
+  if (!n) return 0;
+  g.computeBoundingBox();
+  const c = g.boundingBox.getCenter(new THREE.Vector3());
+  let fixed = 0;
+  for (let i = 0; i < n.count; i++) {
+    const x = n.getX(i), y = n.getY(i), z = n.getZ(i), l = Math.hypot(x, y, z);
+    if (l > 1e-6) continue;   // also false for NaN, so NaN gets repaired too
+    let dx = p.getX(i) - c.x, dy = p.getY(i) - c.y, dz = p.getZ(i) - c.z;
+    let d = Math.hypot(dx, dy, dz);
+    if (!(d > 1e-6)) { dx = 0; dy = 1; dz = 0; d = 1; }
+    n.setXYZ(i, dx / d, dy / d, dz / d); fixed++;
+  }
+  if (fixed) n.needsUpdate = true;
+  return fixed;
+}
+
 function box(w, h, d, mat, x = 0, y = 0, z = 0) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   m.position.set(x, y, z); m.castShadow = true; return m;
@@ -107,7 +129,7 @@ function extrudeProfile(pts, width, mat, bevel = 0.08, taper = null) {
       pa.setX(i, pa.getX(i) * (1 - (1 - k) * t));
     }
   }
-  g.computeVertexNormals();
+  g.computeVertexNormals(); repairNormals(g);
   const m = new THREE.Mesh(g, mat); m.castShadow = true; m.receiveShadow = true;
   return m;
 }
@@ -183,7 +205,7 @@ function loft(N, M, zFrom, zTo, section, groupOf) {
   const idx = []; let start = 0;
   groups.forEach((gr, k) => { if (gr.length) { g.addGroup(start, gr.length, k); idx.push(...gr); start += gr.length; } });
   g.setIndex(idx);
-  g.computeVertexNormals();
+  g.computeVertexNormals(); repairNormals(g);
   return g;
 }
 

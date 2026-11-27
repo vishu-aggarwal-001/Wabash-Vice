@@ -96,7 +96,8 @@ class Game {
     r.setSize(innerWidth, innerHeight);
     r.shadowMap.enabled = q.shadows > 0;
     r.shadowMap.type = q.textures === 'lo' ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;   // soft shadows cost a lot on laptop GPUs
-    r.toneMapping = THREE.ACESFilmicToneMapping;
+    // Khronos PBR Neutral keeps real hues: ACES bleached the sky to white and greyed the grass and car paint
+    r.toneMapping = THREE.NeutralToneMapping;
     r.outputColorSpace = THREE.SRGBColorSpace;
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.3, 12000);
@@ -105,6 +106,18 @@ class Game {
       this.composer = new EffectComposer(r, rt);
       this.composer.addPass(new RenderPass(this.scene, this.camera));
       this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.22, 0.45, 0.92);
+      // safety net: bloom blurs down to a 1/32-size image and back up, so ONE NaN/Infinity pixel
+      // anywhere (a bad normal, a broken texture) used to become a completely black screen.
+      // Drop bad pixels before they enter the blur; the worst case is now one dark pixel.
+      {
+        const hp = this.bloom.materialHighPassFilter, from = 'vec4 texel = texture2D( tDiffuse, vUv );';
+        if (hp.fragmentShader.includes(from)) {
+          hp.fragmentShader = hp.fragmentShader.replace(from, from +
+            '\n\t\t\tif ( any( isnan( texel ) ) || any( isinf( texel ) ) || texel.r != texel.r || texel.g != texel.g || texel.b != texel.b ) texel = vec4( 0.0 );' +
+            '\n\t\t\ttexel = clamp( texel, vec4( 0.0 ), vec4( 64.0 ) );');
+          hp.needsUpdate = true;
+        } else console.warn('Bloom NaN guard not installed: three.js shader text changed');
+      }
       if (q.ao) {
         const ao = this.ao = new GTAOPass(this.scene, this.camera, innerWidth, innerHeight);
         ao.output = GTAOPass.OUTPUT.Default;

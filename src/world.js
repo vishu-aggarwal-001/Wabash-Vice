@@ -44,7 +44,11 @@ class GB {
     const ux = B[0] - A[0], uy = B[1] - A[1], uz = B[2] - A[2];
     const vx = C[0] - A[0], vy = C[1] - A[1], vz = C[2] - A[2];
     let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-    const l = Math.hypot(nx, ny, nz) || 1; nx /= l; ny /= l; nz /= l;
+    const l = Math.hypot(nx, ny, nz);
+    // a squashed (zero-area) triangle is invisible anyway, and its normal would be (0,0,0):
+    // lighting then divides by zero, the pixel becomes NaN and bloom smears it into a black screen
+    if (!(l > 1e-9)) return;
+    nx /= l; ny /= l; nz /= l;
     if (nx * want[0] + ny * want[1] + nz * want[2] < 0) { [B, C] = [C, B]; nx = -nx; ny = -ny; nz = -nz; }
     const [r, g, b] = col || [1, 1, 1]; const [ax, ay] = atl || [0, 0];
     for (const P of [A, B, C]) this.v(P[0], P[1], P[2], nx, ny, nz, P[3], P[4], r, g, b, ax, ay);

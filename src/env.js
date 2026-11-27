@@ -141,7 +141,9 @@ export class Environment {
     this.scene.fog.color.copy(fog);
     this.scene.fog.density = this.fogBase * (1 + golden * 0.25 + this.night * 0.4) * (snow ? 2.6 : G ? 1.5 : 1);
     this.renderer.setClearColor(fog);
-    this.renderer.toneMappingExposure = (0.5 + 0.22 * (1 - this.night) + this.night * 0.35) * (this.snowy && !this.grey ? 0.85 : 1);
+    // golden hour: the sun is weak and low, so open the 'camera' up like a real one would (no murky dusk)
+    // 0.68: Neutral tone mapping is brighter than the ACES curve these numbers were tuned for
+    this.renderer.toneMappingExposure = 0.68 * (1 + 0.45 * golden) * (0.5 + 0.22 * (1 - this.night) + this.night * 0.35) * (this.snowy && !this.grey ? 0.85 : 1);
 
     this.starMat.opacity = this.night;
     this.stars.position.copy(focus);
