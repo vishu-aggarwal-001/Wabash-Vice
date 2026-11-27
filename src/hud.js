@@ -1,373 +1,255 @@
-// HUD, minimap, full-screen map and menus (plain DOM + 2D canvas).
-import { topSpeed } from './vehicles.js';
-import { JOBS } from './jobs.js';
-import { CHAPTER } from './story.js';
-import { TALENTS } from './progression.js';
+// Glass-cockpit instruments drawn on a 2D canvas: primary flight display (attitude, speed, altitude,
+// heading, vertical speed), navigation display (moving map with airports) and status readouts.
+import { DEG, KT, FT, clamp, wrap360, wrap180, bearingDeg, distM, destPoint } from './math.js';
+import { nearestAirports } from './airports.js';
 
-const $ = (id) => document.getElementById(id);
+const FONT = '"Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+const MONO = '"JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+const C = { sky: '#2f7fd6', sky2: '#1b4f96', gnd: '#8a5a2b', gnd2: '#5c3a1a', w: '#ffffff', grn: '#3cf07a', mag: '#ff4fd8', cy: '#3fe6ff', amb: '#ffb02e', red: '#ff3b3b', panel: 'rgba(6,10,18,0.72)' };
 
 export class HUD {
-  constructor(game) {
-    this.g = game; this.w = game.world;
-    this.mini = $('minimap'); this.mctx = this.mini.getContext('2d');
-    this.img = this.w.groundTex.image;
-    this.ppm = this.img.width / this.w.W;
-    this.toastT = 0; this.promptT = 0; this.objT = 0; this.bigT = 0; this.subT = 0; this.jobT = 0;
-    this.phoneOpen = false; this.phoneStack = [];
-    this.mapOpen = false; this.menuOpen = false;
-    this.mapZoom = 1; this.mapPan = { x: 0, z: 0 };
-    this.units = game.settings.units;
-    this.buildMenus();
-    this.setupMap();
+  constructor(canvas) { this.cv = canvas; this.g = canvas.getContext('2d'); this.ndRange = 20; this.nearCache = { t: -99, list: [] }; }
+
+  resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.W = window.innerWidth; this.H = window.innerHeight;
+    this.cv.width = this.W * dpr; this.cv.height = this.H * dpr;
+    this.cv.style.width = this.W + 'px'; this.cv.style.height = this.H + 'px';
+    this.g.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
-  // ---------------------------------------------------------------- per frame
-  update(dt) {
-    const g = this.g, v = g.vehicle;
-    $('money').textContent = '$' + g.money.toLocaleString();
-    $('clock').textContent = g.env.clock;
-    const st = $('wanted');
-    const wl = g.police.wanted;
-    st.innerHTML = '★★★★★'.split('').map((s, i) => `<span class="${i < wl ? 'on' : ''}${i < wl && g.police.evading ? ' blink' : ''}">★</span>`).join('');
-    st.style.opacity = wl ? 1 : 0.25;
-    // location
-    const p = g.focus;
-    this.locT = (this.locT || 0) - dt;
-    if (this.locT <= 0) {
-      this.locT = 0.4;
-      const street = this.w.roadNameAt(p.x, p.z), bld = this.w.buildingNear(p.x, p.z, 18), dist = this.w.districtAt(p.x, p.z);
-      $('street').textContent = bld || street || (v?.airborne ? 'Airspace' : '');
-      $('district').textContent = dist + (bld && street ? ` · ${street}` : '');
+  draw(s) {
+    const g = this.g, W = this.W, H = this.H;
+    g.clearRect(0, 0, W, H);
+    if (!s || !s.show) return;
+    const mobile = Math.min(W, H) < 560;
+    const big = s.cockpit;
+    if (s.touch) {
+      // phone / tablet layout: PFD bottom-centre between the stick and the buttons, map top-right
+      const size = Math.min(H * (big ? 0.5 : 0.42), W * 0.32, 420);
+      this.pfd(W / 2 - size / 2, H - size - 10, size, s);
+      if (s.showND) { const nd = Math.min(H * 0.3, W * 0.2, 280); this.nd(W - nd - 14, 66, nd, s); }
+      return;
     }
-    // speedo
-    const sp = $('speedo');
-    if (v) {
-      sp.hidden = false;
-      const s = v.type === 'plane' ? v.vel.length() : v.speed;
-      const mph = this.units === 'mph';
-      $('spd').textContent = Math.round(s * (mph ? 2.237 : 3.6));
-      $('spdunit').textContent = v.type === 'plane' || v.type === 'heli' ? (mph ? 'mph' : 'km/h') + ' · alt ' + Math.round((v.pos.y - this.w.heightAt(v.pos.x, v.pos.z)) * (mph ? 3.281 : 1)) + (mph ? ' ft' : ' m') : (mph ? 'mph' : 'km/h');
-      $('vname').textContent = v.spec.name;
-      $('hpbar').style.width = v.hp + '%';
-      $('hpbar').style.background = v.hp > 50 ? '#7ddc6a' : v.hp > 25 ? '#f0c23b' : '#e2453c';
-      const aux = $('aux');
-      if (v.type === 'plane') aux.textContent = `THROTTLE ${Math.round(v.throttle * 100)}%${v.stalling ? '  ⚠ STALL' : ''}${v.onGround ? '  · on ground' : ''}`;
-      else if (v.type === 'car' && v.spec.type === 'car') aux.innerHTML = `NITRO <span class="bar"><i style="width:${v.nitro * 100}%"></i></span>`;
-      else aux.textContent = '';
-      const dial = $('dial');
-      dial.style.setProperty('--p', Math.min(1, s / (topSpeed(v.spec) || 60)));
-    } else {
-      sp.hidden = true;
+    let size = big ? Math.min(W * 0.5, H * 0.52, 520) : Math.min(W * 0.36, H * 0.4, 360);
+    if (mobile) size = Math.min(H * (big ? 0.58 : 0.46), W * 0.38);
+    const pfdX = big ? W / 2 - size / 2 - (s.showND ? size * 0.45 : 0) : 14 + (mobile ? 6 : 0);
+    const pfdY = H - size - (mobile ? 8 : 34);
+    this.pfd(pfdX, pfdY, size, s);
+    if (s.showND) {
+      const nd = size * 0.85;
+      const ndX = big ? pfdX + size + 18 : W - nd - 14;
+      this.nd(ndX, H - nd - (mobile ? 8 : 34), nd, s);
     }
-    $('phealth').style.width = Math.max(0, g.player.hp / g.player.maxHP * 100) + '%';
-    const P = g.prog; $('lvl').textContent = `LV ${P.level}`; $('xpbar').style.width = (P.nextXP ? (P.xp - P.prevXP) / (P.nextXP - P.prevXP) * 100 : 100) + '%'; $('lvl').classList.toggle('pts', P.points > 0);
-    $('pstam').style.width = g.player.stamina * 100 + '%';
-    $('parmor').style.width = Math.max(0, g.player.armor) + '%';
-    $('karma').style.left = (50 + (g.save.karma || 0) / 2) + '%';
-    $('medcount').textContent = g.player.medkits;
-    this.jobT -= dt;
-    $('jobpanel').hidden = !(g.jobs?.active) && this.jobT <= 0;
-    // timers
-    for (const [id, key] of [['toast', 'toastT'], ['prompt', 'promptT'], ['objective', 'objT'], ['big', 'bigT'], ['subs', 'subT']]) {
-      this[key] -= dt;
-      $(id).classList.toggle('show', this[key] > 0);
-    }
-    this.drawMinimap();
-    if (this.mapOpen) this.drawMap();
+    if (big) this.hudSymbology(s);
   }
 
-  toast(msg, kind = '') { const t = $('toast'); t.textContent = msg; t.className = 'show ' + kind; this.toastT = 3; }
-  prompt(msg) { $('prompt').textContent = msg; this.promptT = 0.15; }
-  objective(msg, timeLeft = null) {
-    $('objtext').textContent = msg;
-    if (timeLeft === null || timeLeft === undefined) { $('objtime').textContent = ''; }
-    else {
-      const m = Math.max(0, Math.floor(timeLeft / 60)), s = Math.max(0, Math.floor(timeLeft % 60));
-      $('objtime').textContent = `${m}:${String(s).padStart(2, '0')}`;
-      $('objtime').classList.toggle('low', timeLeft < 15);
-    }
-    this.objT = 0.2;
-  }
-  // subtitles for dialogue and dispatcher radio
-  say(name, text, secs = 3) {
-    if (!name && !text) { this.subT = 0; return; }
-    $('subname').textContent = name ? name + ':' : ''; $('subtext').textContent = text;
-    this.subT = secs;
-  }
-  job(id, rank, earned, call, state) {
-    const J = JOBS[id];
-    $('jobtitle').textContent = J.name; $('jobrank').textContent = rank.name;
-    $('jobearned').textContent = '$' + earned.toLocaleString(); $('jobsub').textContent = J.sub;
-    $('jobcall').textContent = call; $('jobstate').textContent = state || '';
-    $('jobpanel').style.borderColor = J.color;
-    this.jobT = 0.3;
-  }
-
-  // ---------------------------------------------------------------- phone
-  togglePhone(open = !this.phoneOpen) {
-    this.phoneOpen = open;
-    $('phone').hidden = !open;
-    if (open) { this.phoneStack = []; this.phoneScreen('home'); document.exitPointerLock?.(); }
-    this.g.paused = open || this.menuOpen || this.mapOpen;
-  }
-  phoneScreen(name, push = true) {
-    const g = this.g, body = $('phbody');
-    if (push && this.phoneCur) this.phoneStack.push(this.phoneCur);
-    this.phoneCur = name;
-    $('phclock').textContent = g.env.clock;
-    const item = (title, sub, fn, cls = '') => { const b = document.createElement('button'); b.className = 'item ' + cls; b.innerHTML = `<b>${title}</b><small>${sub}</small>`; if (fn) b.onclick = fn; body.appendChild(b); return b; };
-    body.innerHTML = '';
-    if (name === 'home') {
-      body.innerHTML = `<h3>${g.env.clock} · $${g.money.toLocaleString()}</h3><div class="apps"></div>`;
-      const apps = body.querySelector('.apps');
-      const app = (icon, label, color, fn) => { const b = document.createElement('button'); b.className = 'app'; b.innerHTML = `<i style="background:${color}">${icon}</i>${label}`; b.onclick = fn; apps.appendChild(b); };
-      app('💼', 'Jobs', '#2f6fd6', () => this.phoneScreen('jobs'));
-      app('⭐', 'Story', '#c79a2b', () => this.phoneScreen('story'));
-      app('🛒', 'Shop', '#2c9a4b', () => this.phoneScreen('shop'));
-      app('🗺️', 'Map', '#6b4fd6', () => { this.togglePhone(false); this.toggleMap(true); });
-      app('🚗', 'Garage', '#c0392b', () => { this.togglePhone(false); this.toggleMenu(true, 'vehicles'); });
-      app('👕', 'Wardrobe', '#8b5cf6', () => { this.togglePhone(false); g.wardrobe.show(null); });
-      app('💬', 'Contacts', '#0e8fc7', () => this.phoneScreen('contacts'));
-      app('⬆️', 'Skills', '#d97706', () => this.phoneScreen('skills'));
-      app('📊', 'Stats', '#555', () => this.phoneScreen('stats'));
-      if (g.jobs.active) item(`End ${JOBS[g.jobs.active].name} shift`, `Earned $${g.jobs.earned.toLocaleString()} so far`, () => { g.jobs.end(); this.togglePhone(false); }).style.marginTop = '18px';
-      if (g.story.active) item('Quit story mission', g.story.active.name, () => { g.story.cancel(); this.togglePhone(false); }).style.marginTop = '18px';
-      if (g.contacts?.active) item('Quit current job', g.contacts.active.name, () => { g.contacts.active.fail('You walked away'); this.togglePhone(false); }).style.marginTop = '18px';
-    } else if (name === 'jobs') {
-      body.innerHTML = '<h3>Jobs</h3>';
-      for (const [id, J] of Object.entries(JOBS)) {
-        const r = g.jobs.rank(id);
-        const on = g.jobs.active === id;
-        item(`${J.icon} ${J.name}${on ? ' — ON SHIFT' : ''}`, `${J.desc}<br>Rank: <b>${r.name}</b>${r.next !== null ? ` · ${r.next - r.xp} calls to next rank` : ' · max rank'}`, () => { if (on) g.jobs.end(); else g.jobs.start(id); this.togglePhone(false); });
-      }
-    } else if (name === 'contacts') {
-      body.innerHTML = '<h3>Contacts</h3><p style="opacity:.75;font-size:13px;margin:0 0 10px">People around town who have work for you. Find them, press G to talk. Tap one to set your GPS.</p>';
-      for (const a of g.contacts.actors) {
-        const C = a.contact, st = g.contacts.stage(C), met = a.persona.met;
-        const next = C.missions[st];
-        item(`${met ? C.name : '??? (' + C.role + ')'}  ${'●'.repeat(st)}${'○'.repeat(C.missions.length - st)}`, next ? `Next: <b>${next.title}</b> · near ${g.world.roadNameAt(a.pos.x, a.pos.z) || g.world.districtAt(a.pos.x, a.pos.z)}` : 'All jobs done', () => { g.setGPS(a.pos.x, a.pos.z, true); this.toast(`GPS set to ${met ? C.name : 'the contact'}`, 'good'); this.togglePhone(false); });
-      }
-    } else if (name === 'story') {
-      body.innerHTML = '<h3>Chapter 1 — Wabash Vice</h3>';
-      CHAPTER.forEach((M, i) => {
-        const done = i < g.story.done, locked = i > g.story.done;
-        item(`${done ? '✔ ' : locked ? '🔒 ' : '▶ '}${i + 1}. ${M.title}`, `${M.who}: ${M.blurb}${done ? ' (replay)' : ''} · $${M.pay.toLocaleString()}`, locked ? null : () => { this.togglePhone(false); g.story.start(i); }, done ? 'done' : locked ? 'locked' : '');
-      });
-    } else if (name === 'shop') {
-      body.innerHTML = '<h3>Shop — delivered by drone</h3>';
-      const buy = (title, sub, cost, ok, fn) => item(`${title} — $${cost}`, sub, () => { if (g.money < cost) return this.toast('Not enough money', 'warn'); if (!ok()) return this.toast('You already have the maximum', 'warn'); g.addMoney(-cost); fn(); this.toast(`Bought ${title}`, 'good'); this.phoneScreen('shop', false); });
-      buy('Medkit', `+50 health, press H to use. You have ${g.player.medkits}/5`, 150, () => g.player.medkits < 5, () => g.player.medkits++);
-      buy('Body armor', `Soaks up damage. Armor ${Math.round(g.player.armor)}%`, 500, () => g.player.armor < 100, () => { g.player.armor = 100; });
-      buy('Full heal', `Health ${Math.round(g.player.hp)}/${g.player.maxHP}`, 250, () => g.player.hp < g.player.maxHP, () => { g.player.hp = g.player.maxHP; });
-      buy('Lawyer', `Clears your wanted level (${g.police.wanted}★)`, 1000, () => g.police.wanted > 0, () => g.police.clear());
-    } else if (name === 'skills') {
-      const P = g.prog;
-      body.innerHTML = `<h3>Level ${P.level} · ${P.xp} XP${P.nextXP ? ` / ${P.nextXP}` : ''}</h3><p style="color:#ffd23f;margin:0 0 10px">${P.points} talent point${P.points === 1 ? '' : 's'} to spend</p>`;
-      for (const [k, T] of Object.entries(TALENTS)) {
-        const lv = P.t(k);
-        item(`${T.name}  ${'●'.repeat(lv)}${'○'.repeat(T.max - lv)}`, T.desc + (P.points > 0 && lv < T.max ? ' · <b style="color:#ffd23f">tap to upgrade</b>' : ''), () => { if (P.spend(k)) { this.toast(`${T.name} upgraded!`, 'good'); g.audio.chime(true); } this.phoneScreen('skills', false); });
-      }
-      item('How to earn XP', 'Story missions +150 · activities +80 · job calls +30 · Golden Gears +20 · stunt jumps +15');
-    } else if (name === 'stats') {
-      body.innerHTML = '<h3>Stats</h3>';
-      const k = g.save.karma || 0;
-      item('Money', '$' + g.money.toLocaleString());
-      item('Karma', `${k > 20 ? 'Good citizen' : k < -20 ? 'Menace to society' : 'Neutral'} (${k > 0 ? '+' : ''}${k})`);
-      item('Story', `${g.story.done}/${CHAPTER.length} missions`);
-      for (const id of Object.keys(JOBS)) { const r = g.jobs.rank(id); item(JOBS[id].name, `${r.name} · ${r.xp} calls · $${g.jobs.stats(id).earned.toLocaleString()} earned`); }
-      item('Golden Gears', `${(g.save.gears || []).length}/30 found`);
-    }
-  }
-  phoneBack() { const p = this.phoneStack.pop(); if (p) this.phoneScreen(p, false); else this.togglePhone(false); }
-  big(title, sub = '', kind = '') {
-    const b = $('big'); b.className = 'show ' + kind;
-    $('bigtitle').textContent = title; $('bigsub').textContent = sub;
-    this.bigT = kind === 'wasted' || kind === 'busted' ? 3.5 : 3.2;
-  }
-
-  // ---------------------------------------------------------------- minimap
-  drawMinimap() {
-    const g = this.g, c = this.mctx, S = this.mini.width, R = S / 2;
-    const p = g.focus, v = g.vehicle;
-    const speed = v ? v.speed : 0;
-    const air = v && (v.type === 'plane' || v.type === 'heli') && !v.onGround;
-    const target = air ? 1100 : v ? 300 + speed * 6 : 180;
-    this.mRange = (this.mRange || target) + (target - (this.mRange || target)) * 0.05;
-    const r = this.mRange, k = R / r, ppm = this.ppm;
-    const yaw = g.camYaw;
-    const th = -Math.PI / 2 - Math.atan2(Math.cos(yaw), Math.sin(yaw));
-    c.save();
-    c.clearRect(0, 0, S, S);
-    c.beginPath(); c.arc(R, R, R - 2, 0, Math.PI * 2); c.clip();
-    c.fillStyle = '#4c6a36'; c.fillRect(0, 0, S, S);
-    c.translate(R, R); c.rotate(th); c.scale(k / ppm, k / ppm);
-    const px = (p.x - this.w.minX) * ppm, pz = (p.z - this.w.minZ) * ppm;
-    if (g.weather === 'snow' || g.weather === 'snowsun') c.filter = 'saturate(0.25) brightness(1.35)';
-    c.drawImage(this.img, -px, -pz);
-    c.filter = 'none';
-    // GPS route
-    if (g.gpsPath) {
-      c.strokeStyle = '#b84dff'; c.lineWidth = 5 * ppm / k; c.lineJoin = 'round'; c.globalAlpha = 0.9;
-      c.beginPath();
-      g.gpsPath.forEach((n, i) => { const q = this.w.gNodes[n]; const x = (q[0] - this.w.minX) * ppm - px, z = (q[2] - this.w.minZ) * ppm - pz; i ? c.lineTo(x, z) : c.moveTo(x, z); });
-      c.stroke(); c.globalAlpha = 1;
-    }
-    c.restore();
-    const blip = (x, z, col, size = 4, clampEdge = true, shape = 'dot') => {
-      let dx = (x - p.x) * k, dz = (z - p.z) * k;
-      let sx = dx * Math.cos(th) - dz * Math.sin(th), sy = dx * Math.sin(th) + dz * Math.cos(th);
-      const l = Math.hypot(sx, sy);
-      if (l > R - 8) { if (!clampEdge) return; sx *= (R - 8) / l; sy *= (R - 8) / l; }
-      c.fillStyle = col; c.strokeStyle = '#000'; c.lineWidth = 1.5;
-      c.beginPath();
-      if (shape === 'square') c.rect(R + sx - size, R + sy - size, size * 2, size * 2);
-      else c.arc(R + sx, R + sy, size, 0, Math.PI * 2);
-      c.fill(); c.stroke();
-    };
-    for (const m of g.missions.markers) if (!g.missions.active) blip(m.x, m.z, '#ffd23f', 5, true, 'square');
-    if (g.missions.active) { const cp = g.missions.active.cps[g.missions.active.idx]; blip(cp.x, cp.z, '#ffd23f', 6); }
-    if (g.gps) blip(g.gps.x, g.gps.z, '#b84dff', 6);
-    for (const u of g.police.units) blip(u.v.pos.x, u.v.pos.z, performance.now() % 500 < 250 ? '#ff3b3b' : '#3b6bff', 4, g.police.wanted > 0);
-    if (g.police.heli) blip(g.police.heli.v.pos.x, g.police.heli.v.pos.z, '#ff3b3b', 5);
-    for (const pv of g.parked) if (pv !== v && !pv.dead) blip(pv.pos.x, pv.pos.z, '#7fd1ff', 3, false);
-    for (const b of g.blips) { const q = b.get(); if (q) blip(q.x, q.z, b.color, b.size || 5); }
-    // north marker
-    const nx = Math.sin(th + Math.PI) * 0, ny = 0;
-    const na = th; // world north (-z) direction on screen
-    const nsx = -Math.sin(-na) * (R - 12), nsy = -Math.cos(-na) * (R - 12);
-    c.fillStyle = '#fff'; c.font = 'bold 13px system-ui'; c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.fillText('N', R + nsx + nx, R + nsy + ny);
-    // player arrow
-    const heading = v ? v.yaw : g.player.yaw;
-    const rel = th + Math.atan2(Math.cos(heading), Math.sin(heading));
-    c.save(); c.translate(R, R); c.rotate(rel + Math.PI / 2);
-    c.fillStyle = '#fff'; c.strokeStyle = '#000'; c.lineWidth = 2;
-    c.beginPath(); c.moveTo(0, -9); c.lineTo(6, 7); c.lineTo(0, 3); c.lineTo(-6, 7); c.closePath(); c.fill(); c.stroke();
-    c.restore();
-    c.strokeStyle = 'rgba(0,0,0,0.6)'; c.lineWidth = 3; c.beginPath(); c.arc(R, R, R - 2, 0, Math.PI * 2); c.stroke();
-  }
-
-  // ---------------------------------------------------------------- full map
-  setupMap() {
-    const cv = $('bigmap');
-    this.bctx = cv.getContext('2d');
-    let drag = null;
-    cv.addEventListener('mousedown', (e) => { drag = { x: e.clientX, y: e.clientY, moved: false }; });
-    addEventListener('mousemove', (e) => {
-      if (!drag) return;
-      const s = this.mapScale();
-      this.mapPan.x -= (e.clientX - drag.x) / s; this.mapPan.z -= (e.clientY - drag.y) / s;
-      if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 3) drag.moved = true;
-      drag.x = e.clientX; drag.y = e.clientY;
-    });
-    addEventListener('mouseup', (e) => {
-      if (drag && !drag.moved && e.target === cv) {
-        const [x, z] = this.screenToWorld(e.clientX, e.clientY);
-        this.g.setGPS(x, z, true); this.toast('Waypoint set — follow the purple line', 'good');
-      }
-      drag = null;
-    });
-    cv.addEventListener('wheel', (e) => { this.mapZoom = Math.min(8, Math.max(0.6, this.mapZoom * (e.deltaY < 0 ? 1.15 : 0.87))); }, { passive: true });
-    cv.addEventListener('touchend', (e) => {
-      const t = e.changedTouches[0]; const [x, z] = this.screenToWorld(t.clientX, t.clientY);
-      this.g.setGPS(x, z, true); this.toast('Waypoint set', 'good');
-    });
-    $('mapclose').onclick = () => this.toggleMap(false);
-    $('mapclear').onclick = () => { this.g.setGPS(null); };
-    $('mapzin').onclick = () => { this.mapZoom = Math.min(8, this.mapZoom * 1.4); };
-    $('mapzout').onclick = () => { this.mapZoom = Math.max(0.6, this.mapZoom / 1.4); };
-  }
-  mapScale() { const cv = $('bigmap'); return Math.min(cv.width / this.w.W, cv.height / this.w.Hh) * this.mapZoom; }
-  screenToWorld(sx, sy) {
-    const cv = $('bigmap'), r = cv.getBoundingClientRect(), s = this.mapScale();
-    return [(sx - r.left - cv.width / 2) / s + this.mapCenter().x, (sy - r.top - cv.height / 2) / s + this.mapCenter().z];
-  }
-  mapCenter() { return { x: this.w.minX + this.w.W / 2 + this.mapPan.x, z: this.w.minZ + this.w.Hh / 2 + this.mapPan.z }; }
-  toggleMap(open = !this.mapOpen) {
-    this.mapOpen = open;
-    $('mapwrap').hidden = !open;
-    if (open) {
-      const cv = $('bigmap'); cv.width = innerWidth; cv.height = innerHeight;
-      this.mapPan.x = this.g.focus.x - (this.w.minX + this.w.W / 2); this.mapPan.z = this.g.focus.z - (this.w.minZ + this.w.Hh / 2);
-      this.mapZoom = 2.2;
-      document.exitPointerLock?.();
-    }
-    this.g.paused = open || this.menuOpen || this.phoneOpen;
-  }
-  drawMap() {
-    const cv = $('bigmap'), c = this.bctx, s = this.mapScale(), C = this.mapCenter();
-    const W2 = (x, z) => [(x - C.x) * s + cv.width / 2, (z - C.z) * s + cv.height / 2];
-    c.fillStyle = '#2d3a26'; c.fillRect(0, 0, cv.width, cv.height);
-    const [ox, oy] = W2(this.w.minX, this.w.minZ);
-    c.drawImage(this.img, ox, oy, this.w.W * s, this.w.Hh * s);
-    if (this.g.gpsPath) {
-      c.strokeStyle = '#b84dff'; c.lineWidth = 4; c.beginPath();
-      this.g.gpsPath.forEach((n, i) => { const q = this.w.gNodes[n]; const [x, y] = W2(q[0], q[2]); i ? c.lineTo(x, y) : c.moveTo(x, y); });
-      c.stroke();
-    }
-    c.textAlign = 'center'; c.textBaseline = 'middle';
-    // district names
-    c.font = `bold ${Math.round(13 + this.mapZoom * 2)}px system-ui`;
-    for (const d of this.w.districts) { const [x, y] = W2(d.x, d.z); c.fillStyle = 'rgba(0,0,0,0.6)'; c.fillText(d.name.toUpperCase(), x + 1, y + 1); c.fillStyle = '#fff'; c.fillText(d.name.toUpperCase(), x, y); }
-    if (this.mapZoom > 1.6) {
-      c.font = '11px system-ui';
-      for (const l of this.w.map.labels) {
-        if (l[3] < (this.mapZoom > 4.5 ? 900 : this.mapZoom > 3 ? 3000 : 7000)) continue;
-        const [x, y] = W2(l[1], l[2]); c.fillStyle = 'rgba(0,0,0,0.65)'; c.fillText(l[0], x + 1, y + 1); c.fillStyle = '#ffe9b0'; c.fillText(l[0], x, y);
-      }
-    }
-    for (const m of this.g.missions.markers) {
-      const [x, y] = W2(m.x, m.z);
-      c.fillStyle = '#ffd23f'; c.strokeStyle = '#000'; c.lineWidth = 2; c.fillRect(x - 7, y - 7, 14, 14); c.strokeRect(x - 7, y - 7, 14, 14);
-      c.font = 'bold 12px system-ui'; c.fillStyle = '#fff'; c.fillText(m.name, x, y - 16);
-    }
-    for (const [name, x0, z0] of this.w.landmarks) { const [x, y] = W2(x0, z0); c.fillStyle = '#fff'; c.beginPath(); c.arc(x, y, 5, 0, 7); c.fill(); c.font = 'bold 12px system-ui'; c.fillText(name, x, y + 14); }
-    for (const b of this.g.blips) { const q = b.get(); if (!q) continue; const [x, y] = W2(q.x, q.z); c.fillStyle = b.color; c.strokeStyle = '#000'; c.lineWidth = 2; c.beginPath(); c.arc(x, y, 7, 0, 7); c.fill(); c.stroke(); }
-    if (this.g.gps) { const [x, y] = W2(this.g.gps.x, this.g.gps.z); c.fillStyle = '#b84dff'; c.beginPath(); c.arc(x, y, 8, 0, 7); c.fill(); c.stroke(); }
-    const [px, py] = W2(this.g.focus.x, this.g.focus.z);
-    const h = this.g.vehicle ? this.g.vehicle.yaw : this.g.player.yaw;
-    c.save(); c.translate(px, py); c.rotate(Math.atan2(Math.cos(h), Math.sin(h)) + Math.PI / 2);
-    c.fillStyle = '#fff'; c.strokeStyle = '#000'; c.lineWidth = 2;
-    c.beginPath(); c.moveTo(0, -12); c.lineTo(8, 9); c.lineTo(0, 4); c.lineTo(-8, 9); c.closePath(); c.fill(); c.stroke(); c.restore();
-    c.fillStyle = 'rgba(255,255,255,0.8)'; c.font = '11px system-ui'; c.textAlign = 'right';
-    c.fillText(this.w.map.attribution, cv.width - 10, cv.height - 10);
-  }
-
-  // ---------------------------------------------------------------- menus
-  buildMenus() {
+  // -------------------------------------------------------------- primary flight display
+  pfd(x, y, S, s) {
     const g = this.g;
-    const ft = $('travel'); ft.innerHTML = '';
-    for (const [name, lat, lon] of this.w.fastTravel) {
-      const b = document.createElement('button'); b.textContent = name;
-      b.onclick = () => { this.toggleMenu(false); g.teleport(...this.w.toWorld(lat, lon), name); };
-      ft.appendChild(b);
+    g.save();
+    g.fillStyle = C.panel; this.rr(x - 6, y - 6, S + 12, S + 12, 14); g.fill();
+    const ax = x + S * 0.2, aw = S * 0.6, ay = y + S * 0.12, ah = S * 0.66;
+    const cx = ax + aw / 2, cy = ay + ah / 2, ppd = ah / 50; // pixels per degree of pitch
+    // attitude
+    g.save(); this.rr(ax, ay, aw, ah, 10); g.clip();
+    g.translate(cx, cy); g.rotate(-s.roll * DEG); g.translate(0, s.pitch * ppd);
+    let gr = g.createLinearGradient(0, -ah * 2, 0, 0); gr.addColorStop(0, C.sky2); gr.addColorStop(1, C.sky);
+    g.fillStyle = gr; g.fillRect(-aw * 2, -ah * 6, aw * 4, ah * 6);
+    gr = g.createLinearGradient(0, 0, 0, ah * 2); gr.addColorStop(0, C.gnd); gr.addColorStop(1, C.gnd2);
+    g.fillStyle = gr; g.fillRect(-aw * 2, 0, aw * 4, ah * 6);
+    g.strokeStyle = C.w; g.lineWidth = 2; g.beginPath(); g.moveTo(-aw * 2, 0); g.lineTo(aw * 2, 0); g.stroke();
+    g.font = `600 ${Math.round(S * 0.032)}px ${FONT}`; g.fillStyle = C.w; g.textAlign = 'center'; g.textBaseline = 'middle';
+    for (let p = -90; p <= 90; p += 2.5) {
+      if (p === 0) continue;
+      const yy = -p * ppd; if (Math.abs(yy + s.pitch * ppd) > ah * 0.7) continue;
+      const w2 = p % 10 === 0 ? aw * 0.22 : p % 5 === 0 ? aw * 0.12 : aw * 0.05;
+      g.lineWidth = 1.5; g.beginPath(); g.moveTo(-w2, yy); g.lineTo(w2, yy); g.stroke();
+      if (p % 10 === 0) { g.fillText(Math.abs(p), -w2 - 14, yy); g.fillText(Math.abs(p), w2 + 14, yy); }
     }
-    for (const t of document.querySelectorAll('#menu [data-tab]')) t.onclick = () => this.tab(t.dataset.tab);
-    $('resume').onclick = () => this.toggleMenu(false);
-    const q = $('setq'); q.value = g.settings.quality;
-    q.onchange = () => { g.settings.quality = q.value; g.persist(); this.toast('Quality saved — reloading…'); setTimeout(() => location.reload(), 600); };
-    const wx = $('setweather'); wx.value = g.settings.weather || 'auto';
-    wx.onchange = () => { g.settings.weather = wx.value; g.persist(); this.toast('Weather saved — reloading…'); setTimeout(() => location.reload(), 600); };
-    const inv = $('setinv'); inv.checked = g.settings.invertPitch; inv.onchange = () => { g.settings.invertPitch = inv.checked; g.persist(); };
-    const vol = $('setvol'); vol.value = g.settings.volume; vol.oninput = () => { g.settings.volume = +vol.value; g.audio.setVolume(+vol.value); g.persist(); };
-    const sens = $('setsens'); sens.value = g.settings.sensitivity; sens.oninput = () => { g.settings.sensitivity = +sens.value; g.persist(); };
-    const un = $('setunits'); un.value = g.settings.units; un.onchange = () => { g.settings.units = this.units = un.value; g.persist(); };
-    $('settime').value = g.settings.timeMode === 'fixed' ? 'cycle' : g.settings.timeMode || 'day';
-    $('settime').onchange = () => { g.settings.timeMode = $('settime').value; g.persist(); };
-    $('setday').value = g.settings.dayMinutes; $('setday').onchange = () => { g.settings.dayMinutes = +$('setday').value; g.env.daySeconds = g.settings.dayMinutes * 60; g.persist(); };
-    $('cancelmission').onclick = () => { g.missions.cancel(); g.story.cancel(); g.jobs.end(); this.toggleMenu(false); };
-    $('phback').onclick = () => this.phoneBack();
-    $('phclose').onclick = () => this.togglePhone(false);
-    $('clearwanted').onclick = () => { if (g.money >= 1000 && g.police.wanted) { g.addMoney(-1000); g.police.clear(); this.toast('Paid off the cops: -$1,000'); } else this.toast(g.police.wanted ? 'Need $1,000' : 'You are not wanted'); this.toggleMenu(false); };
+    g.restore();
+    // flight path vector
+    const fpvY = cy + (s.pitch - s.gamma) * ppd, fpvX = cx + clamp(s.drift, -12, 12) * ppd;
+    if (s.airborne) {
+      g.strokeStyle = C.grn; g.lineWidth = 2; g.beginPath(); g.arc(fpvX, fpvY, S * 0.018, 0, 7);
+      g.moveTo(fpvX - S * 0.045, fpvY); g.lineTo(fpvX - S * 0.018, fpvY); g.moveTo(fpvX + S * 0.018, fpvY); g.lineTo(fpvX + S * 0.045, fpvY);
+      g.moveTo(fpvX, fpvY - S * 0.018); g.lineTo(fpvX, fpvY - S * 0.035); g.stroke();
+    }
+    // aircraft symbol
+    g.fillStyle = '#111'; g.strokeStyle = '#ffd23f'; g.lineWidth = 3;
+    g.beginPath(); g.moveTo(cx - aw * 0.32, cy); g.lineTo(cx - aw * 0.12, cy); g.lineTo(cx - aw * 0.12, cy + 8);
+    g.moveTo(cx + aw * 0.32, cy); g.lineTo(cx + aw * 0.12, cy); g.lineTo(cx + aw * 0.12, cy + 8); g.stroke();
+    g.fillStyle = '#ffd23f'; g.fillRect(cx - 3, cy - 3, 6, 6);
+    // bank scale
+    g.save(); g.translate(cx, cy); g.strokeStyle = C.w; g.lineWidth = 2;
+    const R = ah * 0.46;
+    g.beginPath(); g.arc(0, 0, R, (-90 - 60) * DEG, (-90 + 60) * DEG); g.stroke();
+    for (const b of [-60, -45, -30, -20, -10, 0, 10, 20, 30, 45, 60]) {
+      const a = (b - 90) * DEG, l = b % 30 === 0 ? 10 : 6;
+      g.beginPath(); g.moveTo(Math.cos(a) * R, Math.sin(a) * R); g.lineTo(Math.cos(a) * (R - l), Math.sin(a) * (R - l)); g.stroke();
+    }
+    g.rotate(-s.roll * DEG); g.fillStyle = Math.abs(s.roll) > 35 ? C.amb : C.w;
+    g.beginPath(); g.moveTo(0, -R + 2); g.lineTo(-7, -R + 14); g.lineTo(7, -R + 14); g.fill();
+    g.restore();
+    // approach deviation (localizer / glideslope)
+    if (s.app) {
+      g.fillStyle = C.mag; g.strokeStyle = C.w; g.lineWidth = 1.5;
+      const lx = clamp(-s.app.xtk / 150, -1, 1) * aw * 0.4, gy = clamp(s.app.gsErr / 60, -1, 1) * ah * 0.4;
+      for (const k of [-2, -1, 1, 2]) { g.beginPath(); g.arc(cx + k * aw * 0.2, ay + ah - 10, 3, 0, 7); g.stroke(); g.beginPath(); g.arc(ax + aw - 10, cy + k * ah * 0.2, 3, 0, 7); g.stroke(); }
+      this.diamond(cx + lx, ay + ah - 10, 7); this.diamond(ax + aw - 10, cy + gy, 7);
+    }
+    // speed tape
+    this.tape(x, ay, S * 0.17, ah, s.ias, 10, 1, (v) => Math.round(v), s, 'spd');
+    // altitude tape
+    this.tape(ax + aw + S * 0.02, ay, S * 0.19, ah, s.altFt, 100, 5, (v) => Math.round(v), s, 'alt');
+    // vertical speed
+    const vx = x + S - 4, vsP = clamp(s.vsFpm / 4000, -1, 1);
+    g.strokeStyle = 'rgba(255,255,255,0.4)'; g.lineWidth = 1; g.beginPath(); g.moveTo(vx, ay + 10); g.lineTo(vx, ay + ah - 10); g.stroke();
+    g.strokeStyle = s.vsFpm < -2000 && s.agl < 600 ? C.red : C.grn; g.lineWidth = 3;
+    g.beginPath(); g.moveTo(vx - 10, cy); g.lineTo(vx, cy - Math.sign(vsP) * Math.sqrt(Math.abs(vsP)) * ah * 0.45); g.stroke();
+    g.font = `700 ${Math.round(S * 0.034)}px ${MONO}`; g.textAlign = 'right'; g.fillStyle = C.grn;
+    if (Math.abs(s.vsFpm) > 50) g.fillText((s.vsFpm > 0 ? '+' : '') + Math.round(s.vsFpm / 10) * 10, vx - 4, s.vsFpm > 0 ? ay + 4 : ay + ah - 4);
+    // heading
+    this.headingStrip(ax, ay + ah + S * 0.025, aw, S * 0.11, s);
+    // mode annunciators
+    g.font = `700 ${Math.round(S * 0.037)}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'top';
+    const modes = [s.apOn ? 'AP' : '', s.athr ? 'A/THR' : '', s.apOn ? s.apLat : '', s.apOn ? s.apVert : ''].filter(Boolean);
+    let mx = ax + aw / 2 - (modes.length - 1) * S * 0.08;
+    for (const m of modes) { g.fillStyle = C.grn; g.fillText(m, mx, y + 2); mx += S * 0.16; }
+    if (!modes.length) { g.fillStyle = 'rgba(255,255,255,0.55)'; g.fillText(s.assist ? 'ASSIST' : 'MANUAL', ax + aw / 2, y + 2); }
+    g.textAlign = 'left'; g.textBaseline = 'middle'; g.font = `600 ${Math.round(S * 0.033)}px ${FONT}`;
+    g.fillStyle = s.machShow ? C.grn : 'transparent'; g.fillText('M ' + s.mach.toFixed(2), x + 2, y + S * 0.06);
+    g.fillStyle = C.w; g.textAlign = 'right'; g.fillText(`${s.g.toFixed(1)} G`, x + S - 2, y + S * 0.06);
+    g.restore();
   }
-  tab(name) {
-    for (const t of document.querySelectorAll('#menu [data-tab]')) t.classList.toggle('on', t.dataset.tab === name);
-    for (const p of document.querySelectorAll('#menu .pane')) p.hidden = p.id !== 'pane-' + name;
+
+  tape(x, y, w, h, val, step, labelEvery, fmt, s, kind) {
+    const g = this.g, ppu = h / (kind === 'spd' ? 80 : 900), cy = y + h / 2;
+    g.save(); g.fillStyle = 'rgba(40,46,60,0.85)'; this.rr(x, y, w, h, 6); g.fill(); g.clip();
+    g.strokeStyle = C.w; g.fillStyle = C.w; g.lineWidth = 1.5; g.font = `600 ${Math.round(w * 0.22)}px ${MONO}`; g.textBaseline = 'middle';
+    const range = (h / 2) / ppu, start = Math.floor((val - range) / step) * step;
+    // colour bands on the speed tape
+    if (kind === 'spd') {
+      const band = (from, to, col) => { const y0 = cy - (to - val) * ppu, y1 = cy - (from - val) * ppu; g.fillStyle = col; g.fillRect(x + w - 6, y0, 6, y1 - y0); };
+      band(0, s.vs1, C.red); band(s.vs0, s.vfe, '#ffffff'); band(s.vne, 2000, C.red);
+      g.fillStyle = C.w;
+    }
+    for (let v = start; v <= val + range; v += step) {
+      if (kind === 'spd' && v < 0) continue;
+      const yy = cy - (v - val) * ppu;
+      const major = Math.round(v / step) % labelEvery === 0 || kind === 'spd';
+      g.beginPath();
+      if (kind === 'spd') { g.moveTo(x + w - 12, yy); g.lineTo(x + w - 2, yy); } else { g.moveTo(x, yy); g.lineTo(x + (major ? 12 : 6), yy); }
+      g.stroke();
+      if (major && (kind === 'spd' ? v % 20 === 0 : true)) { g.textAlign = kind === 'spd' ? 'right' : 'left'; g.fillText(fmt(v), kind === 'spd' ? x + w - 15 : x + 15, yy); }
+    }
+    // bug
+    const bug = kind === 'spd' ? s.spdBug : s.altBug;
+    if (bug != null) {
+      const yy = clamp(cy - (bug - val) * ppu, y + 4, y + h - 4); g.fillStyle = C.cy;
+      if (kind === 'spd') { g.beginPath(); g.moveTo(x + w, yy); g.lineTo(x + w - 9, yy - 6); g.lineTo(x + w - 9, yy + 6); g.fill(); }
+      else { g.fillRect(x, yy - 6, 6, 12); }
+    }
+    if (kind === 'spd' && s.trend) { g.strokeStyle = C.grn; g.lineWidth = 2; g.beginPath(); g.moveTo(x + w - 4, cy); g.lineTo(x + w - 4, cy - clamp(s.trend, -40, 40) * ppu); g.stroke(); }
+    g.restore();
+    // readout box
+    g.save(); g.fillStyle = '#000'; g.strokeStyle = C.w; g.lineWidth = 1.5;
+    const bh = w * 0.42; this.rr(x - 2, cy - bh / 2, w + 4, bh, 5); g.fill(); g.stroke();
+    g.fillStyle = kind === 'spd' && s.ias < s.vs1 * 1.05 && s.airborne ? C.red : C.w;
+    g.font = `700 ${Math.round(w * 0.27)}px ${MONO}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(fmt(val), x + w / 2, cy + 1);
+    g.restore();
   }
-  toggleMenu(open = !this.menuOpen, tab = 'vehicles') {
-    this.menuOpen = open;
-    $('menu').hidden = !open;
-    if (open) { this.tab(tab); this.g.dealer?.render($('vehgrid')); document.exitPointerLock?.(); $('gearcount').textContent = `${(this.g.save.gears || []).length}/30`; }
-    this.g.paused = open || this.mapOpen || this.phoneOpen;
+
+  headingStrip(x, y, w, h, s) {
+    const g = this.g; g.save(); g.fillStyle = 'rgba(40,46,60,0.85)'; this.rr(x, y, w, h, 6); g.fill(); g.clip();
+    const ppd = w / 60, cx = x + w / 2;
+    g.strokeStyle = C.w; g.fillStyle = C.w; g.lineWidth = 1.5; g.font = `600 ${Math.round(h * 0.36)}px ${MONO}`; g.textAlign = 'center'; g.textBaseline = 'top';
+    for (let d = Math.floor((s.heading - 32) / 5) * 5; d <= s.heading + 32; d += 5) {
+      const xx = cx + wrap180(d - s.heading) * ppd, dd = wrap360(d);
+      g.beginPath(); g.moveTo(xx, y); g.lineTo(xx, y + (dd % 10 === 0 ? 10 : 5)); g.stroke();
+      if (dd % 10 === 0) g.fillText(dd === 0 ? 'N' : dd === 90 ? 'E' : dd === 180 ? 'S' : dd === 270 ? 'W' : String(dd / 10).padStart(2, '0'), xx, y + 12);
+    }
+    if (s.hdgBug != null) { const xx = cx + clamp(wrap180(s.hdgBug - s.heading), -30, 30) * ppd; g.fillStyle = C.cy; g.fillRect(xx - 6, y, 12, 6); }
+    const tx = cx + clamp(wrap180(s.track - s.heading), -30, 30) * ppd; g.fillStyle = C.grn; g.beginPath(); g.arc(tx, y + h - 6, 3.5, 0, 7); g.fill();
+    g.restore();
+    g.fillStyle = '#ffd23f'; g.beginPath(); g.moveTo(cx, y + 9); g.lineTo(cx - 6, y - 1); g.lineTo(cx + 6, y - 1); g.fill();
+    g.fillStyle = '#000'; g.strokeStyle = C.w; this.rr(cx - 26, y + h - 2, 52, h * 0.55, 4); g.fill(); g.stroke();
+    g.fillStyle = C.w; g.font = `700 ${Math.round(h * 0.38)}px ${MONO}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(String(Math.round(s.heading) % 360).padStart(3, '0') + '°', cx, y + h - 2 + h * 0.28);
   }
+
+  // -------------------------------------------------------------- navigation display (heading-up moving map)
+  nd(x, y, S, s) {
+    const g = this.g, cx = x + S / 2, cy = y + S * 0.58, R = S * 0.44, range = this.ndRange * 1852;
+    g.save(); g.fillStyle = C.panel; this.rr(x - 6, y - 6, S + 12, S + 12, 14); g.fill();
+    g.beginPath(); g.arc(cx, cy, R, 0, 7); g.fillStyle = 'rgba(0,0,0,0.55)'; g.fill();
+    g.save(); g.beginPath(); g.arc(cx, cy, R, 0, 7); g.clip();
+    const toXY = (lat, lon) => {
+      const d = distM(s.lat, s.lon, lat, lon), b = (bearingDeg(s.lat, s.lon, lat, lon) - s.heading) * DEG;
+      return [cx + Math.sin(b) * (d / range) * R, cy - Math.cos(b) * (d / range) * R, d];
+    };
+    // range rings
+    g.strokeStyle = 'rgba(255,255,255,0.18)'; g.lineWidth = 1; g.beginPath(); g.arc(cx, cy, R / 2, 0, 7); g.stroke();
+    // airports
+    if (s.t - this.nearCache.t > 1.5 || this.nearCache.range !== this.ndRange) {
+      this.nearCache = { t: s.t, range: this.ndRange, list: nearestAirports(s.lat, s.lon, 40, range * 1.5) };
+    }
+    g.font = `600 ${Math.round(S * 0.036)}px ${FONT}`; g.textBaseline = 'middle'; g.textAlign = 'left';
+    for (const { a } of this.nearCache.list) {
+      const [px, py] = toXY(a.lat, a.lon);
+      const rw = a.runways[0];
+      if (rw && this.ndRange <= 40) {
+        const [x1, y1] = toXY(rw.ends[0].lat, rw.ends[0].lon), [x2, y2] = toXY(rw.ends[1].lat, rw.ends[1].lon);
+        g.strokeStyle = C.w; g.lineWidth = 3; g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
+      }
+      g.strokeStyle = a.size === 3 ? C.cy : a.size === 2 ? '#9fd8ff' : '#7a8ea8'; g.lineWidth = 2;
+      g.beginPath(); g.arc(px, py, a.size === 3 ? 6 : 4, 0, 7); g.stroke();
+      if (a.size >= 2 || this.ndRange <= 20) { g.fillStyle = 'rgba(255,255,255,0.85)'; g.fillText(a.icao, px + 8, py); }
+    }
+    // destination / route
+    if (s.dest) {
+      const [px, py, d] = toXY(s.dest.lat, s.dest.lon);
+      g.strokeStyle = C.mag; g.lineWidth = 2.5; g.setLineDash([8, 6]); g.beginPath(); g.moveTo(cx, cy); g.lineTo(px, py); g.stroke(); g.setLineDash([]);
+      // extended centreline
+      const far = destPoint(s.dest.lat, s.dest.lon, s.dest.hdg + 180, 18000), [fx, fy] = toXY(far[0], far[1]);
+      g.strokeStyle = 'rgba(255,79,216,0.6)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(px, py); g.lineTo(fx, fy); g.stroke();
+      this.diamond(px, py, 7, C.mag);
+    }
+    g.restore();
+    // compass rose
+    g.strokeStyle = C.w; g.lineWidth = 1.5; g.font = `700 ${Math.round(S * 0.04)}px ${MONO}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = C.w;
+    for (let d = 0; d < 360; d += 10) {
+      const a = (d - s.heading - 90) * DEG, l = d % 30 === 0 ? 10 : 5;
+      g.beginPath(); g.moveTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); g.lineTo(cx + Math.cos(a) * (R - l), cy + Math.sin(a) * (R - l)); g.stroke();
+      if (d % 30 === 0) g.fillText(d === 0 ? 'N' : d === 90 ? 'E' : d === 180 ? 'S' : d === 270 ? 'W' : d / 10, cx + Math.cos(a) * (R - 22), cy + Math.sin(a) * (R - 22));
+    }
+    // own aircraft
+    g.fillStyle = '#ffd23f'; g.beginPath(); g.moveTo(cx, cy - 12); g.lineTo(cx - 9, cy + 8); g.lineTo(cx, cy + 4); g.lineTo(cx + 9, cy + 8); g.fill();
+    // track line
+    const ta = (s.track - s.heading - 90) * DEG; g.strokeStyle = C.grn; g.lineWidth = 1.5; g.setLineDash([4, 4]);
+    g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + Math.cos(ta) * R, cy + Math.sin(ta) * R); g.stroke(); g.setLineDash([]);
+    // texts
+    g.textAlign = 'left'; g.textBaseline = 'top'; g.font = `700 ${Math.round(S * 0.042)}px ${MONO}`; g.fillStyle = C.w;
+    g.fillText(`GS ${Math.round(s.gsKt)}  TAS ${Math.round(s.tasKt)}`, x + 4, y + 2);
+    g.textAlign = 'right'; g.fillStyle = C.cy; g.fillText(`${this.ndRange} NM`, x + S - 4, y + 2);
+    if (s.windKt > 0.5) {
+      g.save(); g.translate(x + 22, y + S * 0.18); g.rotate((s.windFrom + 180 - s.heading) * DEG);
+      g.strokeStyle = C.w; g.lineWidth = 2; g.beginPath(); g.moveTo(0, -12); g.lineTo(0, 12); g.moveTo(-5, 6); g.lineTo(0, 12); g.lineTo(5, 6); g.stroke(); g.restore();
+      g.textAlign = 'left'; g.fillStyle = C.w; g.font = `600 ${Math.round(S * 0.036)}px ${MONO}`;
+      g.fillText(`${String(Math.round(s.windFrom)).padStart(3, '0')}/${Math.round(s.windKt)}`, x + 38, y + S * 0.16);
+    }
+    if (s.dest) {
+      g.textAlign = 'right'; g.textBaseline = 'bottom'; g.fillStyle = C.mag; g.font = `700 ${Math.round(S * 0.042)}px ${MONO}`;
+      const dNm = distM(s.lat, s.lon, s.dest.lat, s.dest.lon) / 1852, eta = s.gsKt > 30 ? (dNm / s.gsKt) * 60 : null;
+      g.fillText(`${s.dest.icao} ${s.dest.ident}`, x + S - 4, y + S - 22);
+      g.fillStyle = C.w; g.fillText(`${dNm.toFixed(dNm < 10 ? 1 : 0)} NM${eta ? '  ' + Math.round(eta) + ' min' : ''}`, x + S - 4, y + S - 4);
+    }
+    g.restore();
+  }
+
+  hudSymbology(s) { /* cockpit view uses the big PFD */ }
+
+  diamond(x, y, r, col = C.mag) { const g = this.g; g.fillStyle = col; g.beginPath(); g.moveTo(x, y - r); g.lineTo(x + r * 0.7, y); g.lineTo(x, y + r); g.lineTo(x - r * 0.7, y); g.fill(); }
+  rr(x, y, w, h, r) { const g = this.g; g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
 }

@@ -1,211 +1,138 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-  <title>Wabash Vice — West Lafayette & Lafayette open world</title>
-  <meta name="description" content="A free open-world driving, flying and boating game set in the real West Lafayette and Lafayette, Indiana, built from OpenStreetMap data." />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%F0%9F%9A%97%3C/text%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="src/style.css?v=4a31f118" />
-  <script type="importmap">
-    {
-      "imports": {
-        "three": "./vendor/three/three.module.js",
-        "three/addons/": "./vendor/three/addons/",
-        "./src/actors.js": "./src/actors.js?v=708ddaee",
-        "./src/audio.js": "./src/audio.js?v=f498276c",
-        "./src/cheats.js": "./src/cheats.js?v=5b8e2062",
-        "./src/collide.js": "./src/collide.js?v=57208e66",
-        "./src/contacts.js": "./src/contacts.js?v=9a3b40ba",
-        "./src/dealer.js": "./src/dealer.js?v=9787bd7e",
-        "./src/env.js": "./src/env.js?v=a770b2e8",
-        "./src/facades.js": "./src/facades.js?v=c0e6dc29",
-        "./src/fx.js": "./src/fx.js?v=5d59e6a0",
-        "./src/garage.js": "./src/garage.js?v=753ff613",
-        "./src/guns.js": "./src/guns.js?v=2682e460",
-        "./src/home.js": "./src/home.js?v=7171f2ad",
-        "./src/hud.js": "./src/hud.js?v=edb1baa1",
-        "./src/input.js": "./src/input.js?v=7e2f71af",
-        "./src/jobs.js": "./src/jobs.js?v=c7b8ecc7",
-        "./src/main.js": "./src/main.js?v=4711a950",
-        "./src/missions.js": "./src/missions.js?v=50dbde52",
-        "./src/npc.js": "./src/npc.js?v=8d643057",
-        "./src/outfit.js": "./src/outfit.js?v=9d38c926",
-        "./src/people.js": "./src/people.js?v=4332f8e6",
-        "./src/player.js": "./src/player.js?v=3cef8d21",
-        "./src/progression.js": "./src/progression.js?v=fd10330e",
-        "./src/script.js": "./src/script.js?v=db136a1e",
-        "./src/story.js": "./src/story.js?v=9b63a3dd",
-        "./src/studio.js": "./src/studio.js?v=03e37851",
-        "./src/talk.js": "./src/talk.js?v=581b77d0",
-        "./src/textures.js": "./src/textures.js?v=36e94f72",
-        "./src/theft.js": "./src/theft.js?v=8b0c4420",
-        "./src/vehicles.js": "./src/vehicles.js?v=51196fd7",
-        "./src/wardrobe.js": "./src/wardrobe.js?v=078c04f5",
-        "./src/weapons.js": "./src/weapons.js?v=87d47f86",
-        "./src/weather.js": "./src/weather.js?v=c1a053ee",
-        "./src/world.js": "./src/world.js?v=8f3cbbca"
-      }
-    }
-  </script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0a1020">
+<title>Wabash Flight · fly anywhere on Earth</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈️</text></svg>">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cesium@1.147.0/Build/Cesium/Widgets/widgets.css">
+<link rel="stylesheet" href="src/style.css">
+<script src="https://cdn.jsdelivr.net/npm/cesium@1.147.0/Build/Cesium/Cesium.js"></script>
 </head>
 <body>
-  <canvas id="game"></canvas>
+<div id="globe"></div>
+<canvas id="hud"></canvas>
 
-  <!-- loading -->
-  <div id="loading" class="screen">
-    <div class="logo">WABASH <span>VICE</span></div>
-    <div class="tag">West Lafayette · Lafayette · Indiana</div>
-    <div class="loadtrack"><div id="loadbar"></div></div>
-    <div id="loadmsg">Starting…</div>
+<div id="status"></div>
+<div id="topright">
+  <button class="iconbtn" id="btnAP" title="Autopilot panel (Z toggles autopilot)">AP</button>
+  <button class="iconbtn" id="btnCam" title="Camera (C)">🎥</button>
+  <button class="iconbtn" id="btnMenu" title="Menu (Esc)">☰</button>
+</div>
+<div id="warn"></div>
+<div id="toast"></div>
+<div id="landing" class="hidden"></div>
+
+<div id="ap" class="hidden">
+  <button id="apMaster" class="wide" style="grid-column: span 4">AUTOPILOT OFF</button>
+  <span class="lbl">HDG</span><button data-ap="hdg-">−</button><span class="val" id="apHdg">000</span><button data-ap="hdg+">+</button>
+  <span class="lbl">ALT</span><button data-ap="alt-">−</button><span class="val" id="apAlt">0</span><button data-ap="alt+">+</button>
+  <span class="lbl">V/S</span><button data-ap="vs-">−</button><span class="val" id="apVs">0</span><button data-ap="vs+">+</button>
+  <span class="lbl">SPD</span><button data-ap="spd-">−</button><span class="val" id="apSpd">0</span><button data-ap="spd+">+</button>
+  <div class="wide"><button data-ap="HDG">HDG</button><button data-ap="NAV">NAV</button><button data-ap="APP">APP</button><button data-ap="ATHR">A/THR</button></div>
+</div>
+
+<div id="touch" class="hidden">
+  <div id="stick"><i></i></div>
+  <div id="rud"><button data-rud="-1">◀</button><button data-rud="1">▶</button></div>
+  <div id="tbtns">
+    <button data-act="gear">GEAR</button><button data-act="flapsCycle">FLAPS</button>
+    <button data-hold="brake">BRAKE</button><button data-act="camera">CAM</button>
+    <button data-act="spoilers">SPLR</button><button data-act="burner" id="tBurner">A/B</button>
   </div>
+  <div id="thr"><span>0%</span><i></i></div>
+</div>
 
-  <!-- start -->
-  <div id="start" class="screen" hidden>
-    <div class="logo">WABASH <span>VICE</span></div>
-    <div class="tag">The real West Lafayette &amp; Lafayette — 13,500 real buildings, every street, the Wabash River</div>
-    <button id="play">PLAY</button>
-    <div class="keys">
-      <div><b>WASD</b> move / drive</div><div><b>Mouse</b> look (click to capture)</div>
-      <div><b>F</b> steal / enter / exit a car</div><div><b>V</b> your garage (cars you own)</div>
-      <div><b>M</b> map + GPS</div><div><b>J</b> start mission at a yellow marker</div>
-      <div><b>Shift</b> run / nitro</div><div><b>Space</b> jump / handbrake</div>
-      <div><b>Click / Q</b> punch / swing · <b>E</b> kick · <b>Z</b> weapon</div><div><b>Tab</b> phone: jobs &amp; story</div>
-      <div><b>F1</b> all controls</div><div><b>Esc</b> menu &amp; settings</div>
+<!-- ======================== MAIN MENU ======================== -->
+<div id="menu" class="overlay">
+  <div class="panel">
+    <div class="brand"><h1>Wabash <span>Flight</span></h1><small>Fly anywhere on planet Earth, right in your browser.</small></div>
+    <div class="tabs" id="tabs">
+      <button data-tab="fly" class="active">✈️ Fly</button>
+      <button data-tab="weather">⛅ Weather &amp; time</button>
+      <button data-tab="settings">⚙️ Settings</button>
+      <button data-tab="help">🎮 Controls</button>
     </div>
-    <div class="credit"><a href="index.html" style="color:#cfb991">← Back to the Wabash Vice website</a> · Map data © OpenStreetMap contributors · Not affiliated with Purdue University or Rockstar Games</div>
-  </div>
 
-  <!-- HUD -->
-  <div id="hud" hidden>
-    <div id="topright">
-      <div id="money">$0</div>
-      <div class="lvlrow"><span id="lvl">LV 1</span><div class="xpb"><i id="xpbar"></i></div></div>
-      <div class="stat"><span class="ic sh">⛨</span><div class="sbar armor"><i id="parmor"></i></div></div>
-      <div class="stat"><span class="ic ht">♥</span><div class="sbar health"><i id="phealth"></i></div></div>
-      <div class="stat"><span class="ic st">➤</span><div class="sbar stam"><i id="pstam"></i></div></div>
-      <div class="karma"><span class="kb">bad</span><div class="kbar"><i id="karma"></i></div><span class="kg">good</span></div>
-      <div id="clock"></div>
-      <div id="wanted"></div>
-    </div>
-    <div id="jobpanel" hidden>
-      <div class="jt" id="jobtitle">Police Work</div>
-      <div class="jr"><span>Rank:</span><b id="jobrank">Rookie</b></div>
-      <div class="jr"><span>Earned:</span><b id="jobearned">$0</b></div>
-      <div class="jsub" id="jobsub">Calls from Dispatcher</div>
-      <div class="jcall" id="jobcall">Waiting for a call…</div>
-      <div class="jstate" id="jobstate"></div>
-      <div class="jend">End work <kbd>X</kbd></div>
-    </div>
-    <div id="actions">
-      <div class="act"><span>✚</span><small id="medcount">2</small><kbd>H</kbd></div>
-      <div class="act"><span>☎</span><kbd>Tab</kbd></div>
-      <div class="act"><span>✊</span><kbd>Q</kbd></div>
-    </div>
-    <div id="subs"><b id="subname"></b><span id="subtext"></span></div>
-    <div id="bottomleft">
-      <canvas id="minimap" width="220" height="220"></canvas>
-      <div id="loc"><div id="street"></div><div id="district"></div></div>
-    </div>
-    <div id="speedo" hidden>
-      <div id="dial"><div id="spd">0</div><div id="spdunit">mph</div></div>
-      <div id="vname"></div>
-      <div class="hp"><i id="hpbar"></i></div>
-      <div id="aux"></div>
-    </div>
-    <div id="toast"></div>
-    <div id="prompt"></div>
-    <div id="objective"><span id="objtext"></span><span id="objtime"></span></div>
-    <div id="big"><div id="bigtitle"></div><div id="bigsub"></div></div>
-    <div id="fps"></div>
-  </div>
-
-  <!-- phone -->
-  <div id="phone" hidden>
-    <div class="ph">
-      <div class="phtop"><span id="phclock">12:00</span><span>Boiler Mobile ▂▄▆</span></div>
-      <div id="phbody"></div>
-      <div class="phbtm"><button id="phback">◀ Back</button><button id="phclose">Close (Tab)</button></div>
-    </div>
-  </div>
-
-  <!-- full map -->
-  <div id="mapwrap" hidden>
-    <canvas id="bigmap"></canvas>
-    <div class="mapbar">
-      <b>MAP</b> — click anywhere to set a GPS waypoint · drag to pan · scroll to zoom
-      <button id="mapzin">+</button><button id="mapzout">−</button><button id="mapclear">Clear GPS</button><button id="mapclose">Close (M)</button>
-    </div>
-  </div>
-
-  <!-- pause / menus -->
-  <div id="menu" hidden>
-    <div class="panel">
-      <div class="tabs">
-        <button data-tab="vehicles">My garage</button>
-        <button data-tab="travel">Fast travel</button>
-        <button data-tab="settings">Settings</button>
-        <button data-tab="controls">Controls</button>
-        <button id="resume">Resume ▶</button>
-      </div>
-      <div class="pane" id="pane-vehicles"><div id="vehgrid"></div></div>
-      <div class="pane" id="pane-travel" hidden>
-        <div id="travel" class="row"></div>
-        <p class="note">Golden Gears found: <b id="gearcount">0/30</b> — they're hidden on streets and rooftops all over town ($500 each).</p>
-        <div class="row"><button id="cancelmission">Cancel mission</button><button id="clearwanted">Pay off the cops ($1,000)</button></div>
-      </div>
-      <div class="pane" id="pane-settings" hidden>
-        <label>Graphics quality
-          <select id="setq"><option value="auto">Auto (recommended)</option><option value="low">Low (phones, old laptops)</option><option value="medium">Medium</option><option value="high">High</option><option value="ultra">Ultra (gaming PC)</option></select>
-        </label>
-        <label>Weather <select id="setweather"><option value="clear">Clear and sunny</option><option value="auto">Changes every visit</option><option value="overcast">Overcast</option><option value="snowsun">Snow &amp; sunshine</option><option value="snow">Snowfall (Indiana November!)</option></select></label>
-        <label>Volume <input id="setvol" type="range" min="0" max="1" step="0.05" /></label>
-        <label>Mouse sensitivity <input id="setsens" type="range" min="0.3" max="3" step="0.1" /></label>
-        <label>Units <select id="setunits"><option value="mph">mph / feet</option><option value="kmh">km/h / metres</option></select></label>
-        <label>Time of day <select id="settime"><option value="day">Always sunny day</option><option value="night">Always night</option><option value="cycle">Day &amp; night cycle</option></select></label>
-        <label>Length of a day (real minutes, cycle only) <input id="setday" type="number" min="2" max="240" /></label>
-        <label class="check"><input id="setinv" type="checkbox" /> Invert aircraft pitch (↑ = nose up)</label>
-        <p class="note">Hold <b>T</b> to fast-forward time (day &amp; night cycle only). Your money, gears and settings save automatically in this browser.</p>
-      </div>
-      <div class="pane" id="pane-controls" hidden>
-        <div class="ctrl">
-          <h4>On foot</h4><p><b>WASD</b> move · <b>Shift</b> run · <b>Space</b> jump · <b>F</b> steal / enter any car: parked cars get broken into, traffic gets carjacked · <b>Mouse</b> look · <b>Scroll</b> zoom · <b>C</b> camera · <b>Click</b> or <b>Q</b> punch, swing or shoot (aim with the mouse) · <b>E</b> kick · <b>1</b> fists / melee · <b>2</b> pistol · <b>3</b> SMG · <b>4</b> shotgun · <b>5</b> rifle · <b>Z</b> cycle weapons · <b>H</b> use a medkit</p>
-          <h4>Jobs, phone &amp; story</h4><p><b>Tab</b> phone: start a job (Police, Taxi, Paramedic, Delivery), call contacts for story missions, buy armor &amp; medkits · <b>X</b> end your shift · <b>Y</b>/<b>N</b> accept / decline a call · stand in a <span style="color:#ffd23f">yellow</span> marker and press <b>J</b> for activities</p>
-          <h4>Cars &amp; bikes</h4><p><b>W/S</b> or <b>↑/↓</b> gas / brake &amp; reverse · <b>A/D</b> or <b>←/→</b> steer · <b>Space</b> handbrake (drift) · <b>Shift</b> nitro · <b>Click</b> / <b>Q</b> drive-by shooting (aim with the mouse, <b>2–5</b> pick a gun) · <b>H</b> horn · <b>K</b> siren (emergency vehicles) · <b>R</b> radio</p>
-          <h4>Planes</h4><p><b>W/S</b> throttle · <b>A/D</b> roll (steer on the ground) · <b>↓</b> nose up · <b>↑</b> nose down · <b>Q/E</b> rudder · <b>Shift</b> afterburner · <b>Space</b> wheel brakes. Take off: full throttle down the runway, then hold <b>↓</b>. Exit above 12 m to parachute.</p>
-          <h4>Helicopter</h4><p><b>Space</b> climb · <b>Shift</b> or <b>Z</b> descend · <b>W/S</b> tilt forward / back · <b>A/D</b> turn · <b>Q/E</b> strafe. You can land on rooftops.</p>
-          <h4>Boats</h4><p><b>W/S</b> throttle · <b>A/D</b> steer · launch from the Wabash at Tapawingo Park.</p>
-          <h4>People</h4><p>Walk up to anyone and press <b>G</b> to talk: chat, ask for work, ask the way, compliment, insult, or shake them down. Answer with <b>1–4</b> or click. Wanted? Try talking to a cop with cash in your pocket. People marked 💬 on the map are <b>contacts</b> with jobs for you (phone → Contacts), and ordinary people sometimes ask for a favour when you ask about work.</p>
-          <h4>Everything else</h4><p>You live in West Lafayette: your car is in the driveway, and walking up to the 🏠 front door saves the game. <b>M</b> map &amp; GPS · <b>V</b> your garage: every car you own, click one to have it brought to you (or sell a stolen one) · buy cars at <b style="color:#3fa9ff">Lafayette Motors</b> (🚘 on the map, press <b>J</b> in the blue ring) · <b>J</b> start mission · <b>T</b> fast-forward time · <b>Esc</b> menu · <b>F1</b> help overlay. Gamepads work too (triggers to drive, Y to enter/exit).</p>
+    <section data-page="fly">
+      <div class="grid3" id="planes"></div>
+      <div class="row" style="margin-top:16px">
+        <label>Start</label>
+        <div class="seg" id="startMode">
+          <button data-v="runway">On the runway</button><button data-v="approach">Landing approach</button><button data-v="cruise">In the air</button><button data-v="place">Anywhere (search a place)</button>
         </div>
       </div>
-    </div>
-  </div>
+      <div id="airportPick">
+        <div class="row"><label>Airport</label><input type="search" id="apSearch" class="grow" placeholder="Search 9,800 airports: KLAF, Heathrow, Tokyo, Lukla…" autocomplete="off"></div>
+        <div class="results" id="apResults"></div>
+        <div class="row"><label>Runway</label><select id="rwySel" class="grow"></select></div>
+      </div>
+      <div id="placePick" class="hidden">
+        <div class="row"><label>Place</label><input type="search" id="placeSearch" class="grow" placeholder="Grand Canyon, Mount Everest, Eiffel Tower, Purdue University…" autocomplete="off"><button class="ghost" id="placeGo">Search</button></div>
+        <div class="results" id="placeResults"></div>
+      </div>
+      <div class="row"><label>Destination</label><input type="search" id="destSearch" class="grow" placeholder="Optional: where are you flying to? (shows on your map, NAV and APP autopilot)" autocomplete="off"><button class="ghost" id="destClear">Clear</button></div>
+      <div class="results" id="destResults"></div>
+      <div class="row" style="justify-content:space-between;margin-top:18px">
+        <span class="note" id="flySummary"></span>
+        <div style="display:flex;gap:8px"><button class="ghost hidden" id="resume">Resume</button><button class="big" id="fly">FLY ▶</button></div>
+      </div>
+    </section>
 
-  <div id="help" hidden>
-    <b>Controls</b> — WASD move/drive (Shift sprint, Alt walk) · G talk to people (1–4 to answer) · Click/Q punch or shoot · E kick · 1 fists · 2–5 guns · F steal any car · H medkit · Tab phone (jobs, story) · X end job · F enter/exit · V your garage · M map · J mission · Shift run/nitro · Space jump/handbrake/climb · Plane: W/S throttle, A/D roll, ↓ nose up, ↑ nose down, Q/E rudder · Heli: Space up, Shift down, W/S tilt, A/D turn, Q/E strafe · C camera · R radio · H horn · T time-lapse · Esc menu
-  </div>
+    <section data-page="weather" class="hidden">
+      <div class="row"><label>Time of day</label><input type="range" id="hour" min="0" max="24" step="0.25"><span id="hourTxt" class="note"></span><button class="ghost" id="realTime">Use real time</button></div>
+      <div class="row"><label>Clouds</label><div class="seg" id="clouds"><button data-v="0">Clear</button><button data-v="1">Few</button><button data-v="2">Scattered</button><button data-v="3">Broken</button></div></div>
+      <div class="row"><label>Cloud base</label><input type="range" id="cloudBase" min="300" max="4000" step="100"><span id="cloudBaseTxt" class="note"></span></div>
+      <div class="row"><label>Wind from</label><input type="range" id="windDir" min="0" max="355" step="5"><span id="windDirTxt" class="note"></span></div>
+      <div class="row"><label>Wind speed</label><input type="range" id="windKt" min="0" max="50" step="1"><span id="windKtTxt" class="note"></span></div>
+      <div class="row"><label>Turbulence</label><div class="seg" id="turb"><button data-v="0">None</button><button data-v="1">Light</button><button data-v="2">Moderate</button><button data-v="3">Severe</button></div></div>
+      <div class="row"><label>Visibility haze</label><input type="range" id="haze" min="0" max="10" step="1"><span class="note">thin ↔ thick</span></div>
+    </section>
 
-  <!-- touch controls -->
-  <div id="touch" hidden>
-    <div id="stick"><div id="knob"></div></div>
-    <div class="btns">
-      <button data-btn="!enter">F</button>
-      <button data-btn="jump">⤒</button>
-      <button data-btn="down">⤓</button>
-      <button data-btn="boost">⚡</button>
-      <button data-btn="!vehicles">V</button>
-      <button data-btn="!map">M</button>
-      <button data-btn="!mission">J</button>
-      <button data-btn="!camera">C</button>
-      <button data-btn="!punch">✊</button>
-      <button data-btn="!kick">🦶</button>
-      <button data-btn="!horn">✚</button>
-      <button data-btn="!phone">☎</button>
-      <button data-btn="!weapon">🔄</button>
-    </div>
-  </div>
+    <section data-page="settings" class="hidden">
+      <div class="row"><label>Graphics</label><div class="seg" id="quality"><button data-v="0">Low</button><button data-v="1">Medium</button><button data-v="2">High</button><button data-v="3">Ultra</button></div><span class="note">Lower it on phones and tablets.</span></div>
+      <div class="row"><label>Flying help</label><div class="seg" id="assist"><button data-v="1">Assisted</button><button data-v="0">Realistic</button></div><span class="note">Assisted = auto-trim, auto-rudder, bank &amp; stall protection.</span></div>
+      <div class="row"><label>Pitch keys</label><div class="seg" id="invert"><button data-v="0">W / ↑ = nose down (yoke)</button><button data-v="1">W / ↑ = nose up</button></div></div>
+      <div class="row"><label>Touch controls</label><div class="seg" id="touchMode"><button data-v="auto">Auto</button><button data-v="on">On</button><button data-v="off">Off</button></div></div>
+      <div class="row"><label>Sound</label><input type="range" id="volume" min="0" max="1" step="0.05"></div>
+      <div class="row"><label>Units</label><div class="seg" id="units"><button data-v="ft">Feet &amp; knots</button><button data-v="m">Metres &amp; km/h</button></div></div>
+      <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+      <h3 style="margin:0 0 6px">🌍 Photorealistic upgrade (optional, free)</h3>
+      <p class="note">The game already works everywhere on Earth with satellite imagery and real terrain. Paste a <b>free</b> Cesium ion token to upgrade to Cesium World Terrain, city lights at night and <b>Google photorealistic 3D cities</b> (real buildings in New York, London, Tokyo…). Get one at <a href="https://ion.cesium.com/signup" target="_blank" rel="noopener">ion.cesium.com/signup</a> → Access Tokens → copy the Default token. It stays in this browser only.</p>
+      <div class="row"><label>Cesium ion token</label><input type="password" id="ionToken" class="grow" placeholder="eyJhbGciOi…" autocomplete="off"><button class="ghost" id="ionSave">Save &amp; reload</button></div>
+      <div class="row"><label>3D cities</label><div class="seg" id="photoreal"><button data-v="1">On</button><button data-v="0">Off</button></div><span class="note">Needs the token. Heavy on phones.</span></div>
+    </section>
 
-  <script type="module" src="src/main.js?v=4711a950"></script>
+    <section data-page="help" class="hidden">
+      <div class="keys">
+        <div><span>Pitch (nose down / up)</span><span><kbd>W</kbd><kbd>S</kbd> or <kbd>↑</kbd><kbd>↓</kbd></span></div>
+        <div><span>Roll left / right</span><span><kbd>A</kbd><kbd>D</kbd> or <kbd>←</kbd><kbd>→</kbd></span></div>
+        <div><span>Rudder / steer on ground</span><span><kbd>Q</kbd><kbd>E</kbd></span></div>
+        <div><span>Throttle up / down</span><span><kbd>R</kbd><kbd>F</kbd> or <kbd>+</kbd><kbd>−</kbd></span></div>
+        <div><span>Full / idle throttle</span><span><kbd>Home</kbd><kbd>End</kbd></span></div>
+        <div><span>Brakes (hold) / parking brake</span><span><kbd>Space</kbd> / <kbd>B</kbd></span></div>
+        <div><span>Landing gear</span><span><kbd>G</kbd></span></div>
+        <div><span>Flaps down / up</span><span><kbd>V</kbd> / <kbd>Shift</kbd>+<kbd>V</kbd> (<kbd>]</kbd><kbd>[</kbd>)</span></div>
+        <div><span>Spoilers / airbrake</span><span><kbd>/</kbd></span></div>
+        <div><span>Reverse thrust (jets, on ground)</span><span><kbd>X</kbd></span></div>
+        <div><span>Afterburner (fighter)</span><span><kbd>N</kbd></span></div>
+        <div><span>Trim nose up / down</span><span><kbd>K</kbd> / <kbd>I</kbd></span></div>
+        <div><span>Autopilot on / off</span><span><kbd>Z</kbd></span></div>
+        <div><span>Camera: cycle / chase / cockpit / fly-by / orbit</span><span><kbd>C</kbd> <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd></span></div>
+        <div><span>Look around / zoom</span><span>drag mouse · wheel · double-click resets</span></div>
+        <div><span>Map on/off · HUD on/off</span><span><kbd>M</kbd> · <kbd>U</kbd></span></div>
+        <div><span>Pause · menu · restart</span><span><kbd>P</kbd> · <kbd>Esc</kbd> · <kbd>Backspace</kbd></span></div>
+        <div><span>Gamepad</span><span>L-stick fly · RT/LT throttle · LB/RB rudder · A brake · Y gear · X flaps · B camera</span></div>
+      </div>
+      <p class="note" style="margin-top:14px"><b>First flight:</b> pick the Wabash Trainer at KLAF, hold <kbd>R</kbd> for full power, at 55 knots gently hold <kbd>S</kbd> to lift the nose, then let go. To land: line up with the runway, reduce power so the green VS number reads about −500, add flaps with <kbd>V</kbd>, and raise the nose just before touching down. Aim for a touchdown under 200 ft/min for a “Butter” landing!</p>
+      <p class="note">Satellite imagery © Esri, Maxar, Earthstar Geographics. Terrain: AWS Open Data Terrain Tiles. Airports: OurAirports (public domain). Globe engine: CesiumJS (Apache-2.0). Wabash Flight is a fan-made project and is not affiliated with any flight-simulator company.</p>
+    </section>
+  </div>
+</div>
+
+<div id="loading" class="hidden"><div class="spinner"></div><div id="loadingTxt">Loading the planet…</div></div>
+
+<script type="module" src="src/main.js"></script>
 </body>
 </html>

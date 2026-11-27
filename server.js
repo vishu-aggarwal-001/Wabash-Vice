@@ -7,7 +7,7 @@ const root = __dirname;
 const port = Number(process.env.PORT) || 3000;
 const types = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json', '.bin': 'application/octet-stream', '.jpg': 'image/jpeg', '.png': 'image/png',
+  '.json': 'application/json', '.glb': 'model/gltf-binary', '.jpg': 'image/jpeg', '.png': 'image/png',
   '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.md': 'text/plain; charset=utf-8',
 };
 
@@ -21,4 +21,4 @@ http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
     res.end(data);
   });
-}).listen(port, () => console.log(`Wabash Vice running at http://localhost:${port}`));
+}).listen(port, () => console.log(`Wabash Flight running at http://localhost:${port}`));
