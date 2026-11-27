@@ -96,7 +96,8 @@ class Game {
     r.setSize(innerWidth, innerHeight);
     r.shadowMap.enabled = q.shadows > 0;
     r.shadowMap.type = q.textures === 'lo' ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;   // soft shadows cost a lot on laptop GPUs
-    r.toneMapping = THREE.ACESFilmicToneMapping;
+    // Khronos PBR Neutral keeps real hues: ACES bleached the sky to white and greyed the grass and car paint
+    r.toneMapping = THREE.NeutralToneMapping;
     r.outputColorSpace = THREE.SRGBColorSpace;
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.3, 12000);
@@ -105,6 +106,18 @@ class Game {
       this.composer = new EffectComposer(r, rt);
       this.composer.addPass(new RenderPass(this.scene, this.camera));
       this.bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.22, 0.45, 0.92);
+      // safety net: bloom blurs down to a 1/32-size image and back up, so ONE NaN/Infinity pixel
+      // anywhere (a bad normal, a broken texture) used to become a completely black screen.
+      // Drop bad pixels before they enter the blur; the worst case is now one dark pixel.
+      {
+        const hp = this.bloom.materialHighPassFilter, from = 'vec4 texel = texture2D( tDiffuse, vUv );';
+        if (hp.fragmentShader.includes(from)) {
+          hp.fragmentShader = hp.fragmentShader.replace(from, from +
+            '\n\t\t\tif ( any( isnan( texel ) ) || any( isinf( texel ) ) || texel.r != texel.r || texel.g != texel.g || texel.b != texel.b ) texel = vec4( 0.0 );' +
+            '\n\t\t\ttexel = clamp( texel, vec4( 0.0 ), vec4( 64.0 ) );');
+          hp.needsUpdate = true;
+        } else console.warn('Bloom NaN guard not installed: three.js shader text changed');
+      }
       if (q.ao) {
         const ao = this.ao = new GTAOPass(this.scene, this.camera, innerWidth, innerHeight);
         ao.output = GTAOPass.OUTPUT.Default;
@@ -315,7 +328,7 @@ class Game {
 
   persist() {
     try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify({ v3: true, money: this.money, gears: this.save.gears || [], settings: this.settings, hours: this.env?.hours, seenHelp: this.save.seenHelp, xp: this.save.xp || 0, talents: this.save.talents, karma: this.save.karma || 0, jobs: this.save.jobs, story: this.save.story, look: this.save.look, owned: this.save.owned, owned2: this.save.owned2, myCar: this.save.myCar || null, cars: this.save.cars, carColors: this.save.carColors, weapons: this.save.weapons, weapon: this.save.weapon, ammo: this.save.ammo, starterGun: this.save.starterGun, lastMelee: this.save.lastMelee, v7: true, player: { medkits: this.player?.medkits ?? 2, armor: Math.round(this.player?.armor || 0) } }));
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ v3: true, money: this.money, gears: this.save.gears || [], settings: this.settings, hours: this.env?.hours, seenHelp: this.save.seenHelp, xp: this.save.xp || 0, talents: this.save.talents, karma: this.save.karma || 0, jobs: this.save.jobs, story: this.save.story, contacts: this.save.contacts, look: this.save.look, owned: this.save.owned, owned2: this.save.owned2, myCar: this.save.myCar || null, cars: this.save.cars, carColors: this.save.carColors, weapons: this.save.weapons, weapon: this.save.weapon, ammo: this.save.ammo, starterGun: this.save.starterGun, lastMelee: this.save.lastMelee, v7: true, player: { medkits: this.player?.medkits ?? 2, armor: Math.round(this.player?.armor || 0) } }));
     } catch { /* ignore */ }
   }
   addMoney(n) { this.money = Math.max(0, this.money + n); this.persist(); }
@@ -383,10 +396,32 @@ class Game {
       const half = Math.max(0, s.L / 2 - s.W / 2);
       if (half > 0.5 && [-1, 1].some(k => w.collide(res.x + Math.sin(yaw) * half * k, res.z + Math.cos(yaw) * half * k, s.W / 2, p.y + 0.3, p.y + 2).hit)) continue;
       fallback ||= res;
-      if (free(res.x, res.z)) { this.spawnVehicle(id, res.x, res.z, yaw, true, opts); return; }
+      if (free(res.x, res.z)) { this.spawnVehicle(id, res.x, res.z, this.groundYaw(res.x, res.z, yaw, s), true, opts); return; }
     }
     const res = fallback || w.collide(ox, oz, Math.max(1, s.W / 2), p.y + 0.3, p.y + 2);
-    this.spawnVehicle(id, res.x, res.z, yaw, true, opts);
+    this.spawnVehicle(id, res.x, res.z, this.groundYaw(res.x, res.z, yaw, s), true, opts);
+  }
+  // A car from the menu used to face wherever the camera looked, often straight at a house 15 m away,
+  // so the first thing it did was crash. Line it up with the nearest street (the direction closest
+  // to the camera's), and if a wall is still right in front, turn it around.
+  groundYaw(x, z, yaw, s) {
+    const w = this.world, y0 = this.focus.y;
+    let best = yaw;
+    const n = w.nearestNode(x, z, 40);
+    if (n >= 0) {
+      let bd = Infinity;
+      for (const nb of w.gAdj[n] || []) {
+        const A = w.gNodes[n], B = w.gNodes[nb];
+        const e = Math.atan2(B[0] - A[0], B[2] - A[2]);
+        for (const cand of [e, e + Math.PI]) {
+          const d = Math.abs(Math.atan2(Math.sin(cand - yaw), Math.cos(cand - yaw)));
+          if (d < bd) { bd = d; best = cand; }
+        }
+      }
+    }
+    const blocked = (a) => [6, 12].some(d => w.collide(x + Math.sin(a) * d, z + Math.cos(a) * d, Math.max(1, s.W / 2), y0 + 0.3, y0 + 2).hit);
+    if (blocked(best) && !blocked(best + Math.PI)) best += Math.PI;
+    return Math.atan2(Math.sin(best), Math.cos(best));
   }
   teleport(x, z, name) {
     if (this.vehicle) {

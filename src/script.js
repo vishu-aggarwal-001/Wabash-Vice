@@ -13,6 +13,10 @@ import * as THREE from 'three';
 import { Actor, Driver, spawnCar } from './actors.js';
 
 export const CANCEL = Symbol('cancel');
+// Ending a script rejects its pending waits with CANCEL. Fire-and-forget lines (S.say without await) and
+// promise chains then reported "Uncaught (in promise) Symbol(cancel)" in the console. That rejection is the
+// normal way a script stops, so it is never an error.
+addEventListener('unhandledrejection', (e) => { if (e.reason === CANCEL) e.preventDefault(); });
 const beamGeo = new THREE.CylinderGeometry(1, 1, 1, 32, 1, true);
 const mats = {};
 function beamMat(color) {
@@ -45,7 +49,14 @@ export class Script {
   }
 
   // ---- flow
-  until(fn) { if (this.dead) return Promise.reject(CANCEL); return new Promise((res, rej) => this.waiters.push({ fn, res, rej })); }
+  // A script that ends rejects every pending wait with CANCEL. Waits started without `await` (e.g. a
+  // background S.say) used to surface as "Uncaught (in promise) Symbol(cancel)": mark them handled here;
+  // awaiting code still receives the rejection and stops as before.
+  until(fn) {
+    const p = this.dead ? Promise.reject(CANCEL) : new Promise((res, rej) => this.waiters.push({ fn, res, rej }));
+    p.catch(() => {});
+    return p;
+  }
   wait(s) { const t = this.time + s; return this.until(() => this.time >= t); }
   failIf(fn, msg) { const c = { fn, msg }; this.checks.push(c); return () => { const i = this.checks.indexOf(c); if (i >= 0) this.checks.splice(i, 1); }; }
   every(fn) { this.ticks.push(fn); }
@@ -132,15 +143,21 @@ export class Script {
   async goto(x, z, opts = {}) {
     const r = opts.r ?? 6, g = this.g;
     if (x && typeof x === 'object') { opts = z || {}; z = x.z; x = x.x; }
+    // "Get in the van": the target is the vehicle itself. It used to be the spot where the vehicle was parked when
+    // the step began, so a van nudged by traffic (or by you) could be entered without the step ever completing.
+    const veh = opts.need && typeof opts.need === 'object' ? opts.need : null;
+    const getIn = !!veh && Math.hypot(veh.pos.x - x, veh.pos.z - z) < 1.5;
     const mark = opts.noBeam ? null : this.beam(x, z, { r: Math.max(2, (opts.r ?? 6) * 0.6), color: opts.color ?? 0xffd23f, y: opts.y });
-    const unb = this.blip(() => ({ x, z }), opts.blipColor || '#ffd23f', 6);
+    const unb = this.blip(() => (getIn ? veh.pos : { x, z }), opts.blipColor || '#ffd23f', 6);
     g.setGPS(x, z, opts.route !== false);
     if (opts.text) this.objective(opts.text);
     const ok = () => {
+      if (getIn) return g.vehicle === veh;
       const P = g.focus;
       if (Math.hypot(P.x - x, P.z - z) > (opts.r ?? 6)) return false;
       if (opts.y !== undefined && Math.abs(P.y - opts.y) > 4) return false;
-      if (opts.need === 'foot' && g.vehicle) return false;
+      // arrived in a car at an on-foot spot: say so (several steps only said "Go to Vic", and players sat there stuck)
+      if (opts.need === 'foot' && g.vehicle) { if (g.vehicle.speed < 4) g.hud.prompt('Get out (F): this part is on foot'); return false; }
       if (opts.need === 'car' && !g.vehicle) return false;
       if (opts.need && typeof opts.need === 'object' && g.vehicle !== opts.need) return false;
       if (opts.stop && g.vehicle && g.vehicle.speed > 3) return false;

@@ -5,6 +5,8 @@ import { textTexture } from './textures.js';
 
 function rng(seed) { return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
 
+const EDGE = 60;   // keep checkpoints this far inside the map (vehicles stop at 40 m)
+
 export class Missions {
   constructor(game) {
     this.g = game; this.w = game.world;
@@ -128,11 +130,13 @@ export class Missions {
         const iz = Math.max(2, iz0 - k * 26);
         const z = w.minZ + iz * w.cell, x = w.riverX[iz];
         if (!w.isWater(x, z)) continue;
+        if (z < w.minZ + EDGE || z > w.maxZ - EDGE) continue;   // past the point where boats are stopped
         A.cps.push({ x, z, y: 0, r: 20 });
       }
       A.limit = A.cps.length * 14 + 20;
       A.text = () => `River checkpoint ${A.idx + 1}/${A.cps.length}`;
     }
+    for (const c of A.cps) this.inside(c);
     if (!A.cps.length) { g.hud.toast('Could not set up that mission here', 'warn'); return; }
     this.active = A;
     g.hud.big(m.name, m.desc);
@@ -234,11 +238,19 @@ export class Missions {
       g.audio.chime(true);
       if (A.m.id === 'delivery') { g.addMoney(150); g.hud.toast(`Delivered to ${cp.name}  +$150`, 'good'); }
       A.idx++;
-      if (A.m.id === 'delivery' && A.idx < A.legs) { A.cps.push(this.randomDrop(pos, 500, 1300)); }
+      if (A.m.id === 'delivery' && A.idx < A.legs) { A.cps.push(this.inside(this.randomDrop(pos, 500, 1300))); }
       if (A.idx >= (A.m.id === 'delivery' ? A.legs : A.cps.length)) return this.finish(true);
       this.showCheckpoint();
     }
   }
 
   cancel() { if (this.active) this.finish(false, 'Mission cancelled'); }
+  // Vehicles are stopped 40 m from the edge of the map (world.collide), so a checkpoint out there can never
+  // be reached: Flight School put 2 of its 10 rings past the west edge, River Run its last buoy past the south.
+  inside(c) {
+    const w = this.w;
+    c.x = Math.min(w.maxX - EDGE, Math.max(w.minX + EDGE, c.x));
+    c.z = Math.min(w.maxZ - EDGE, Math.max(w.minZ + EDGE, c.z));
+    return c;
+  }
 }
