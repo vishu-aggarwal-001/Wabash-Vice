@@ -464,7 +464,8 @@ async function fuelDeal(S) {
   const J = S.ll(...L.jail), jp = S.curb(J, 1);
   const danny = S.actor('man', jp.x, jp.z, { mode: 'wave', label: 'DANNY', labelColor: '#7ddc6a', hittable: false, look: { template: 'm_denim' } });
   S.blip(() => danny.pos, '#7ddc6a', 6);
-  await S.goto(danny.pos.x, danny.pos.z, { r: 5, need: 'foot', text: 'Pick Danny up outside the county jail' });
+  // "pick up" means drive up: stopping beside him in any vehicle counts, and so does walking up
+  await S.goto(danny.pos.x, danny.pos.z, { r: 8, stop: true, text: 'Pick Danny up outside the county jail' });
   await S.dialog([
     ['Danny', "Little brother! Look at you. They told me what you did."],
     ['Danny', "Kessler in a cell, Vic owing you favours, half the town knowing your name... Lafayette, huh?"],

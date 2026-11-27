@@ -215,7 +215,14 @@ async function policeSpeeder(S, jobs, id) {
   S.clearTimer();
   await S.say('You', 'Pull over! Hands where I can see them!', 2);
   panel(S, jobs, id, 'Write the ticket');
-  await S.goto(D.v.pos.x, D.v.pos.z, { r: 4.5, need: 'foot', text: 'Get out and walk up to the driver', noBeam: true });
+  // the stopped car keeps rolling for a moment: walk up to where it IS, not where it was when it gave up
+  S.objective('Get out and walk up to the driver');
+  await S.until(() => {
+    g.setGPS(D.v.pos.x, D.v.pos.z, false);
+    if (g.vehicle && g.vehicle.speed < 4 && D.v.pos.distanceTo(S.here()) < 20) g.hud.prompt('Get out (F) and walk up to the driver');
+    return !g.vehicle && D.v.pos.distanceTo(g.player.pos) < 5;
+  });
+  g.setGPS(null); g.audio.chime(true);
   S.payout = 220 + Math.round(Math.max(0, 180 - S.time)); S.result = 'Speeder ticketed';
 }
 
@@ -489,6 +496,7 @@ async function chopOrder(S, jobs, id) {
   const where = nearestLabel(g, p);
   await S.say('Uncle Vic', `I got a buyer for a ${v.spec.name}. There's one parked near ${where}. Bring it to me clean.`);
   S.blip(() => v.pos, '#ff3b3b', 6);
+  g.setGPS(v.pos.x, v.pos.z);   // every other job routes you there; this one only had a minimap dot
   panel(S, jobs, id, `Steal the ${v.spec.name}`);
   S.timer(travelTime(S, p, 60), 'The owner drove it away');
   S.failIf(() => v.dead, 'The car was destroyed');

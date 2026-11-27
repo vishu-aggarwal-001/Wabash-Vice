@@ -269,3 +269,30 @@ body.in-showroom #hud, body.in-showroom #touch { display: none !important; }
 }
 /* body blocks browser gestures for the game; let these panels scroll by touch */
 #showroom .sr-info, #showroom .sr-strip, #showroom .sr-cats, #menu .panel { touch-action: pan-x pan-y; }
+
+/* ---- phones and tablets (v0.4): every touch button on screen, none on top of the HUD ----
+   The old grid was 4 rows of fixed 58 px circles 120 px above the bottom edge: on a landscape
+   phone (about 360 px tall) the top row (F, jump, down, boost) ran off the top of the screen and the
+   rest covered the money, health and armor bars. Now the circles scale with the screen and sit in
+   the bottom-right corner, the speedometer moves to the bottom middle, ammo next to the buttons. */
+@media (pointer: coarse) {
+  :root { --tb: clamp(40px, 10.5vmin, 58px); --tg: 8px; }
+  #touch .btns { right: max(10px, env(safe-area-inset-right)); bottom: max(10px, env(safe-area-inset-bottom)); grid-template-columns: repeat(5, var(--tb)); gap: var(--tg); }
+  #touch button { width: var(--tb); height: var(--tb); font-size: calc(var(--tb) * 0.36); padding: 0; }
+  #stick { left: max(18px, env(safe-area-inset-left)); bottom: max(18px, env(safe-area-inset-bottom)); }
+  #speedo { top: auto; bottom: 4px; right: calc(5 * var(--tb) + 4 * var(--tg) + 18px); transform: scale(.62); transform-origin: bottom right; }
+  body #ammo, body #ammo.incar { right: calc(5 * var(--tb) + 4 * var(--tg) + 22px); bottom: 14px; }
+  body.driving #ammo, body #ammo.incar { bottom: 132px; }
+}
+@media (pointer: coarse) and (max-height: 420px) {
+  #stick { width: 120px; height: 120px; }
+  #knob { left: 35px; top: 35px; }
+  #bottomleft { width: 190px; }
+  #minimap { width: 120px; height: 120px; }
+}
+/* portrait: the buttons stack above the joystick instead of beside it */
+@media (pointer: coarse) and (orientation: portrait) {
+  #touch .btns { bottom: 190px; }
+  #speedo { left: auto; right: 10px; bottom: 8px; transform: scale(.7); transform-origin: bottom right; }
+  body #ammo, body #ammo.incar { right: 12px; bottom: calc(190px + 3 * var(--tb) + 2 * var(--tg) + 10px); }
+}

@@ -99,8 +99,7 @@ export class Dealer {
     g.persist();
     g.audio.chime?.(true);
     this.justBought = id;
-    this.renderShowroom();
-    this.flash(`SOLD! The ${s.name} is yours`);
+    if (this.open) { this.renderShowroom(); this.flash(`SOLD! The ${s.name} is yours`); }   // bought from outside the showroom: no UI to refresh
   }
   deliver(id) {
     const g = this.g;
@@ -242,7 +241,8 @@ export class Dealer {
   stats(s) {
     // bars are relative to the best vehicle in the same category
     const peers = CATALOG.filter(c => c.cat === s.cat);
-    const acc = (c) => c.accel ?? c.thrust / Math.sqrt(c.mass / 1000) ?? 1;
+    // planes have thrust instead of accel; anything with neither gets a neutral 1 (the old `x / y ?? 1` could never fall back, it gave NaN)
+    const acc = (c) => c.accel ?? (c.thrust ? c.thrust / Math.sqrt(c.mass / 1000) : 1);
     const hand = (c) => c.grip ?? c.roll ?? 2;
     const rows = [
       ['Top speed', mph(s) + ' mph', mph(s) / Math.max(...peers.map(mph))],
