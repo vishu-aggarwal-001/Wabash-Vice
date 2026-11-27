@@ -5,6 +5,11 @@
 /* global Cesium */
 import { DEG } from './math.js';
 
+// The game's own Cesium ion token (free plan), built in at the owner's request so everyone gets
+// Cesium World Terrain, Bing imagery and Google photorealistic 3D cities. A token pasted in Settings
+// is used instead. If it stops working or runs out for the month, the game uses the free world map.
+export const BUILT_IN_ION_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6IlljZ3VjbEl4YXJtTzNGVFYiLCJqdGkiOiI2MTc4NjFhNS04ZDMzLTRkMjctYTNiYi0yMTRlYmE1MjE1ZTciLCJpZCI6NTU4MzQzLCJpc3MiOiJodHRwczovL2FwaS5jZXNpdW0uY29tIiwiYXVkIjoidW5kZWZpbmVkX2RlZmF1bHQiLCJpYXQiOjE3OTU4MTA5MTV9.9pmAUDOCgFXZQCfGcucQR9rHvk3lRSDVfwgKSgrrlDs';
+
 // ------------------------------------------------------------ keyless worldwide terrain (Terrarium PNG tiles)
 class TerrariumTerrainProvider {
   constructor() {
@@ -64,7 +69,7 @@ class TerrariumTerrainProvider {
 export class World {
   constructor(container, settings) {
     this.settings = settings;
-    const ion = (settings.ionToken || '').trim();
+    const ion = ((settings.ionToken || '').trim() || BUILT_IN_ION_TOKEN).trim();
     if (ion) Cesium.Ion.defaultAccessToken = ion;
     this.hasIon = !!ion;
     this.viewer = new Cesium.Viewer(container, {
@@ -104,13 +109,9 @@ export class World {
     let base = null;
     if (this.hasIon) {
       try { base = Cesium.ImageryLayer.fromProviderAsync(Cesium.IonImageryProvider.fromAssetId(2)); } catch (e) { console.warn(e); }
+      if (base) { const b0 = base; b0.errorEvent.addEventListener(() => { v.imageryLayers.remove(b0); v.imageryLayers.add(this._esri(), 0); }); }
     }
-    if (!base) {
-      base = new Cesium.ImageryLayer(new Cesium.UrlTemplateImageryProvider({
-        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        maximumLevel: 19, credit: new Cesium.Credit('Imagery © Esri, Maxar, Earthstar Geographics, and the GIS User Community'),
-      }));
-    }
+    if (!base) base = this._esri();
     v.imageryLayers.add(base);
     // terrain
     let terrainOk = false;
@@ -119,15 +120,24 @@ export class World {
         globe.terrainProvider = await Cesium.CesiumTerrainProvider.fromIonAssetId(1, { requestVertexNormals: true, requestWaterMask: true });
         terrainOk = true;
         // night-time city lights (NASA Black Marble)
-        const night = Cesium.ImageryLayer.fromProviderAsync(Cesium.IonImageryProvider.fromAssetId(3812));
-        night.dayAlpha = 0.0; night.nightAlpha = 0.9; night.brightness = 2.2;
-        v.imageryLayers.add(night);
+        // only if the account has added NASA Black Marble (asset 3812) from the ion Asset Depot
+        Cesium.IonImageryProvider.fromAssetId(3812).then((p) => {
+          const night = v.imageryLayers.addImageryProvider(p);
+          night.dayAlpha = 0.0; night.nightAlpha = 0.9; night.brightness = 2.2;
+        }).catch(() => {});
         globe.showWaterEffect = true;
-      } catch (e) { console.warn('ion terrain failed', e); this.ionError = 'Your Cesium ion token did not work, using the free world map instead.'; }
+      } catch (e) { console.warn('ion terrain failed', e); this.ionError = 'Photorealistic mode is unavailable right now, using the free world map instead.'; this.hasIon = false; }
     }
     if (!terrainOk) { this.terrarium = new TerrariumTerrainProvider(); globe.terrainProvider = this.terrarium; }
     if (this.hasIon && this.settings.photoreal) await this.setPhotoreal(true);
     this.initClouds();
+  }
+
+  _esri() {
+    return new Cesium.ImageryLayer(new Cesium.UrlTemplateImageryProvider({
+      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      maximumLevel: 19, credit: new Cesium.Credit('Imagery © Esri, Maxar, Earthstar Geographics, and the GIS User Community'),
+    }));
   }
 
   async setPhotoreal(on) {

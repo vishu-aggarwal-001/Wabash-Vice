@@ -21,7 +21,7 @@ const DEFAULTS = {
 };
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 let S;
-try { S = { ...DEFAULTS, quality: isTouch ? 1 : 2, ...JSON.parse(localStorage.getItem('wabashFlight') || '{}') }; } catch { S = { ...DEFAULTS }; }
+try { S = { ...DEFAULTS, quality: isTouch ? 1 : 2, photoreal: isTouch ? 0 : 1, ...JSON.parse(localStorage.getItem('wabashFlight') || '{}') }; } catch { S = { ...DEFAULTS }; }
 const save = () => { try { localStorage.setItem('wabashFlight', JSON.stringify(S)); } catch { /* private mode */ } };
 
 // ------------------------------------------------------------------ globals
@@ -715,7 +715,7 @@ function buildMenu() {
   $('#ionToken').value = S.ionToken || '';
   $('#ionSave').onclick = () => { S.ionToken = $('#ionToken').value.trim(); save(); location.reload(); };
   seg('#photoreal', 'photoreal', async () => {
-    if (!world.hasIon) { toast('Paste a Cesium ion token first'); return; }
+    if (!world.hasIon) { toast('Photorealistic mode is unavailable right now'); return; }
     await world.setPhotoreal(S.photoreal === 1);
   });
   summary();

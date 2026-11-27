@@ -98,10 +98,10 @@
       <div class="row"><label>Sound</label><input type="range" id="volume" min="0" max="1" step="0.05"></div>
       <div class="row"><label>Units</label><div class="seg" id="units"><button data-v="ft">Feet &amp; knots</button><button data-v="m">Metres &amp; km/h</button></div></div>
       <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
-      <h3 style="margin:0 0 6px">🌍 Photorealistic upgrade (optional, free)</h3>
-      <p class="note">The game already works everywhere on Earth with satellite imagery and real terrain. Paste a <b>free</b> Cesium ion token to upgrade to Cesium World Terrain, city lights at night and <b>Google photorealistic 3D cities</b> (real buildings in New York, London, Tokyo…). Get one at <a href="https://ion.cesium.com/signup" target="_blank" rel="noopener">ion.cesium.com/signup</a> → Access Tokens → copy the Default token. It stays in this browser only.</p>
-      <div class="row"><label>Cesium ion token</label><input type="password" id="ionToken" class="grow" placeholder="eyJhbGciOi…" autocomplete="off"><button class="ghost" id="ionSave">Save &amp; reload</button></div>
-      <div class="row"><label>3D cities</label><div class="seg" id="photoreal"><button data-v="1">On</button><button data-v="0">Off</button></div><span class="note">Needs the token. Heavy on phones.</span></div>
+      <h3 style="margin:0 0 6px">🌍 Photorealistic 3D cities</h3>
+      <p class="note">Wabash Flight uses Cesium World Terrain and Google photorealistic 3D cities (real buildings in New York, London, Tokyo…). Turn them off on slower phones and tablets. Optional: paste your own <a href="https://ion.cesium.com/signup" target="_blank" rel="noopener">Cesium ion</a> token to use it instead of the built-in one.</p>
+      <div class="row"><label>Own ion token</label><input type="password" id="ionToken" class="grow" placeholder="optional" autocomplete="off"><button class="ghost" id="ionSave">Save &amp; reload</button></div>
+      <div class="row"><label>3D cities</label><div class="seg" id="photoreal"><button data-v="1">On</button><button data-v="0">Off</button></div><span class="note">Heavy on phones. Off by default on touch devices.</span></div>
     </section>
 
     <section data-page="help" class="hidden">
