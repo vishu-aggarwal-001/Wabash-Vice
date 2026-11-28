@@ -302,7 +302,7 @@ def trainer():
     write_anim('trainer')
 
 # ================================================================ AIRLINER (twin-jet narrowbody)
-def airliner():
+def airliner(name='airliner', four=False, hump=False, tail=None, cheat_mat=None):
     R = 1.98
     secs = [(18.6, 0, 0.3, 0.05, 0.05), (18.2, 0, 0.25, 0.75, 0.8), (17.0, 0, 0.3, 1.5, 1.6), (15.0, 0, 0.45, 1.95, 2.0),
             (12.0, 0, 0.5, R, 2.05), (-10.0, 0, 0.5, R, 2.05), (-14.0, 0, 0.95, 1.55, 1.6), (-17.5, 0, 1.6, 0.6, 0.75),
@@ -349,18 +349,28 @@ def airliner():
         gear.extend(cyl((-1.2, y, -1.0), (-1.2, y, -3.0), 0.18))
         gear.extend(wheel((-1.2, y + 0.35, -3.3), 0.57, 0.38)).extend(wheel((-1.2, y - 0.35, -3.3), 0.57, 0.38))
     tailpaint, _ = wing_split([(-13.5, 4.5, 0, 5.0), (-17.8, 9.9, 0, 2.25)], [(4.5, 9.6, 0.3)], t=0.105, camber=0, vertical=True)
-    write_glb(os.path.join(OUT, 'airliner.glb'), [
-        ('body', [(body, WHITE), (belly, NAVY), (cheat, GOLD), (windows, BLACK), (cockpit, BLACK), (w, GREY), (lets, GOLD),
-                  (ht, WHITE), (vt, NAVY), (tailpaint, GOLD), (eng, WHITE), (fan, DARK), (pyl, GREY),
+    if four:   # outboard engines for the jumbo
+        for sg in (1, -1):
+            y = 10.2 * sg
+            eng.extend(loft([(1.6, y, -1.15, 0.95, 0.95), (1.3, y, -1.15, 1.06, 1.06), (-1.0, y, -1.2, 1.0, 1.0), (-2.4, y, -1.25, 0.66, 0.66)], n=24))
+            fan.extend(loft([(1.55, y, -1.15, 0.88, 0.88), (1.4, y, -1.15, 0.2, 0.2)], n=24))
+            pyl.extend(box((-0.4, y, -0.45), (3.2, 0.25, 0.7)))
+    if hump:   # upper deck
+        body.extend(loft([(17.2, 0, 1.6, 0.5, 0.3), (15.5, 0, 2.05, 1.5, 0.75), (11.0, 0, 2.25, 1.6, 0.8), (6.5, 0, 2.15, 1.45, 0.7), (3.5, 0, 1.9, 0.6, 0.35)], n=28))
+        windows.extend(loft([(15.0, 0, 2.55, 1.52, 0.1, 6), (7.5, 0, 2.6, 1.5, 0.1, 6)], n=28))
+    TAIL = tail or NAVY
+    write_glb(os.path.join(OUT, name + '.glb'), [
+        ('body', [(body, WHITE), (belly, TAIL), (cheat, cheat_mat or GOLD), (windows, BLACK), (cockpit, BLACK), (w, GREY), (lets, GOLD),
+                  (ht, WHITE), (vt, TAIL), (tailpaint, cheat_mat or GOLD), (eng, WHITE), (fan, DARK), (pyl, GREY),
                   (box((-6.1, 17.05, 0.65), (0.3, 0.1, 0.1)), REDL), (box((-6.1, -17.05, 0.65), (0.3, 0.1, 0.1)), GRNL)], None),
-        ('gear', [(gear, DARK)], None)] + surfaces('airliner', wparts, hparts, vparts, GREY, WHITE, NAVY, ail=20, elev=25, rud=25, flap=35)
-        + [hinge_node('airliner', f'spoiler{side}{k}', m if side == 'L' else mirror_y(m), GREY, h0 if side == 'L' else (h0[0], -h0[1], h0[2]),
+        ('gear', [(gear, DARK)], None)] + surfaces(name, wparts, hparts, vparts, GREY, WHITE, TAIL, ail=20, elev=25, rud=25, flap=35)
+        + [hinge_node(name, f'spoiler{side}{k}', m if side == 'L' else mirror_y(m), GREY, h0 if side == 'L' else (h0[0], -h0[1], h0[2]),
                       h1 if side == 'L' else (h1[0], -h1[1], h1[2]), (0, 0, 1), 50, 'spoiler')
            for k, (m, h0, h1) in enumerate(sp_parts) for side in ('L', 'R')])
-    write_anim('airliner')
+    write_anim(name)
 
 # ================================================================ FIGHTER (single-engine multirole)
-def fighter():
+def fighter(name='fighter', twin=False, paint=None):
     body = loft([(8.6, 0, 0.1, 0.03, 0.03), (7.4, 0, 0.12, 0.32, 0.32), (5.5, 0, 0.18, 0.55, 0.55), (3.5, 0, 0.2, 0.75, 0.7, 2.6),
                  (0.0, 0, 0.15, 1.05, 0.68, 3), (-3.5, 0, 0.12, 0.95, 0.65, 3), (-5.8, 0, 0.12, 0.62, 0.6), (-6.4, 0, 0.12, 0.58, 0.58)], n=28)
     canopy = loft([(5.2, 0, 0.55, 0.05, 0.05), (4.6, 0, 0.6, 0.36, 0.3), (3.0, 0, 0.75, 0.48, 0.42), (1.0, 0, 0.62, 0.42, 0.3), (-0.4, 0, 0.45, 0.2, 0.15)], n=20)
@@ -376,6 +386,17 @@ def fighter():
     htL, hparts = wing_split([(-4.2, 0.6, 0.05, 2.6), (-6.4, 3.0, 0.05, 1.0)], [(0.6, 3.0, 0.62)], t=0.05, camber=0)
     ht = Mesh().extend(htL).extend(mirror_y(htL))
     vt, vparts = wing_split([(-2.6, 0.7, 0, 3.6), (-5.9, 3.6, 0, 1.3)], [(1.0, 3.4, 0.3)], t=0.05, camber=0, vertical=True)
+    if twin:   # two fins canted 20 degrees outward (Hornet style), each with its own rudder
+        def cant(pts, side):
+            a = math.radians(20) * side; P = np.array(pts, float) * [1, 1, 0.85]
+            R = np.array([[1, 0, 0], [0, math.cos(a), -math.sin(a)], [0, math.sin(a), math.cos(a)]])
+            return P @ R.T + [0.6, 1.05 * side, 0.1]
+        vfins = Mesh(); vp2 = []
+        for side in (1, -1):
+            vfins.add(cant(vt.v, side), np.array(vt.n) @ np.array([[1, 0, 0], [0, math.cos(math.radians(20) * side), -math.sin(math.radians(20) * side)], [0, math.sin(math.radians(20) * side), math.cos(math.radians(20) * side)]]).T, vt.i)
+            for (m, h0, h1) in vparts:
+                vp2.append((Mesh().add(cant(m.v, side), m.n, m.i), tuple(cant([h0], side)[0]), tuple(cant([h1], side)[0]), side))
+        vt = vfins
     noz = loft([(-6.0, 0, 0.12, 0.56, 0.56), (-7.0, 0, 0.12, 0.48, 0.48)], n=24)
     burner = loft([(-6.95, 0, 0.12, 0.42, 0.42), (-8.5, 0, 0.12, 0.3, 0.3), (-10.0, 0, 0.12, 0.05, 0.05)], n=20)
     rails = cyl((0.2, 5.1, -0.05), (-3.2, 5.1, -0.05), 0.07).extend(cyl((0.2, -5.1, -0.05), (-3.2, -5.1, -0.05), 0.07))
@@ -383,15 +404,92 @@ def fighter():
     gear.extend(cyl((4.5, 0, -0.4), (4.5, 0, -1.55), 0.07)).extend(wheel((4.5, 0, -1.7), 0.24, 0.16))
     for sg in (1, -1):
         gear.extend(cyl((-1.0, 1.1 * sg, -0.4), (-1.0, 1.25 * sg, -1.5), 0.1)).extend(wheel((-1.0, 1.25 * sg, -1.66), 0.34, 0.22))
-    write_glb(os.path.join(OUT, 'fighter.glb'), [
+    P = paint or CAMO; P2 = CAMO2 if paint is None else paint
+    extra_nodes = []
+    if twin:
+        extra_nodes = [hinge_node(name, 'rudder' + ('L' if sd > 0 else 'R'), m, P, h0, h1, (0, -1, 0), 30, 'rud') for (m, h0, h1, sd) in vp2]
+        vparts = []
+    write_glb(os.path.join(OUT, name + '.glb'), [
         ('body', [(body, CAMO), (canopy, {'c': (0.55, 0.45, 0.2), 'm': 0.95, 'r': 0.05, 'a': 0.8}), (intake, CAMO2),
                   (loft([(8.62, 0, 0.1, 0.03, 0.03), (7.4, 0, 0.12, 0.33, 0.33), (6.6, 0, 0.14, 0.45, 0.45)], n=28), RADOME),
                   (w, CAMO2), (strake, CAMO2), (ht, CAMO2), (vt, CAMO2), (noz, DARK), (rails, GREY),
                   (box((7.0, 0, 0.12), (1.2, 0.02, 0.02)), GOLD)], None),
         ('burner', [(burner, FLAME)], None),
-        ('gear', [(gear, DARK)], None)] + surfaces('fighter', wparts, hparts, vparts, CAMO, CAMO, CAMO, ail=21, elev=20, rud=30, flap=20, flaperon=True))
-    write_anim('fighter')
+        ('gear', [(gear, DARK)], None)] + surfaces(name, wparts, hparts, vparts, CAMO, CAMO, CAMO, ail=21, elev=20, rud=30, flap=20, flaperon=True) + extra_nodes)
+    write_anim(name)
+
+
+# ================================================================ LIGHT-AIRCRAFT VARIANTS (stand-ins for real types)
+CUBYELLOW = {'c': (0.97, 0.76, 0.1), 'm': 0.0, 'r': 0.4}
+RED = {'c': (0.78, 0.08, 0.08), 'm': 0.0, 'r': 0.4}
+BLUE = {'c': (0.1, 0.2, 0.55), 'm': 0.0, 'r': 0.4}
+
+def prop_blades(center, length=0.96, n=2):
+    blade = Mesh()
+    for k in range(n):
+        a = 2 * math.pi * k / n; c, s_ = math.cos(a), math.sin(a)
+        b = box((0, 0, length / 2), (0.04, 0.15, length))
+        V = np.array(b.v); N = np.array(b.n); R = np.array([[1, 0, 0], [0, c, -s_], [0, s_, c]])
+        blade.add(V @ R.T, N @ R.T, b.i)
+    return Mesh().add(np.array(blade.v) + center, blade.n, blade.i)
+
+def light(name, paint, trim, low=False, tail_real=None, twin=False, ttail=False, canopy=False):
+    """trainer-sized airframe in the trainer's frame (the game scales it to the real length).
+    tail_real = (L, track, h) for a taildragger in real metres."""
+    body = loft([(3.55, 0, 0.35, 0.05, 0.05), (3.35, 0, 0.35, 0.42, 0.42), (2.6, 0, 0.35, 0.55, 0.6, 3),
+                 (1.6, 0, 0.45, 0.6, 0.75, 3), (0.2, 0, 0.5, 0.6, 0.8, 3), (-1.2, 0, 0.55, 0.5, 0.62, 3),
+                 (-3.0, 0, 0.75, 0.25, 0.35, 3), (-4.6, 0, 0.95, 0.1, 0.18, 3)])
+    stripe = loft([(2.0, 0, 0.18, 0.62, 0.12, 4), (-3.0, 0, 0.62, 0.27, 0.1, 4)], n=16)
+    if canopy: glass = loft([(1.4, 0, 1.05, 0.05, 0.05), (0.9, 0, 1.25, 0.42, 0.32), (-0.2, 0, 1.3, 0.42, 0.3), (-1.0, 0, 1.1, 0.15, 0.1)], n=20)
+    else: glass = loft([(1.75, 0, 1.05, 0.5, 0.22, 3), (1.1, 0, 1.18, 0.6, 0.15, 3), (-0.6, 0, 1.15, 0.55, 0.12, 3)])
+    wz = -0.2 if low else 1.3
+    wst = [(1.05, 0.55, wz, 1.6), (1.05, 3.0, wz + 0.03 + (0.12 if low else 0), 1.6), (0.95, 5.5, wz + (0.3 if low else 0.08), 1.2)]
+    winL, wparts = wing_split(wst, [(0.6, 3.0, 0.3), (3.1, 5.35, 0.27)], t=0.14, camber=0.03 if not canopy else 0.0)
+    win = Mesh().extend(winL).extend(mirror_y(winL))
+    parts = [(body, paint), (stripe, trim), (glass, GLASS), (win, paint)]
+    if not low: parts.append((cyl((0.6, 0.6, 0.15), (0.4, 2.6, 1.3), 0.045).extend(cyl((0.6, -0.6, 0.15), (0.4, -2.6, 1.3), 0.045)), GREY))
+    hz = 2.1 if ttail else 0.85
+    htL, hparts = wing_split([(-3.6 - (0.5 if ttail else 0), 0.1, hz, 1.05), (-3.8 - (0.6 if ttail else 0), 1.75, hz, 0.75)], [(0.1, 1.75, 0.42)], t=0.09, camber=0)
+    htail = Mesh().extend(htL).extend(mirror_y(htL))
+    vtail, vparts = wing_split([(-3.1, 0.9, 0, 1.6), (-4.2 if not ttail else -3.9, 2.2, 0, 0.8 if not ttail else 1.0)], [(0.95, 2.15, 0.42)], t=0.09, camber=0, vertical=True)
+    parts += [(htail, paint), (vtail, trim)]
+    nodes = []
+    if twin:   # two engine nacelles with their own propellers, no nose engine
+        nac = Mesh()
+        for sg in (1, -1):
+            y = 1.9 * sg
+            nac.extend(loft([(2.3, y, wz - 0.05, 0.05, 0.05), (2.1, y, wz - 0.05, 0.28, 0.28), (1.2, y, wz - 0.08, 0.34, 0.36), (-0.6, y, wz, 0.18, 0.2)], n=18))
+        parts += [(nac, paint), (loft([(3.6, 0, 0.35, 0.05, 0.05), (3.0, 0, 0.35, 0.45, 0.45), (2.6, 0, 0.35, 0.55, 0.6, 3)]), paint)]
+        for i, sg in enumerate((1, -1)):
+            c = (2.38, 1.9 * sg, wz - 0.05)
+            nodes.append((f'prop{i + 1}', [(prop_blades(c, 0.85, 4), BLACK)], c))
+    else:
+        parts += [(loft([(3.55, 0, 0.35, 0.18, 0.18), (3.5, 0, 0.35, 0.26, 0.26)]), BLACK),
+                  (loft([(3.95, 0, 0.35, 0.02, 0.02), (3.75, 0, 0.35, 0.13, 0.13), (3.56, 0, 0.35, 0.17, 0.17)]), trim)]
+        nodes.append(('prop', [(prop_blades((3.62, 0, 0.35)), BLACK)], (3.62, 0, 0.35)))
+    gear = Mesh()
+    if tail_real:
+        L, track, h = tail_real; k = L / 8.2
+        xm, xt, hb, tb = 0.06 * 8.2, -0.42 * 8.2, h / k, track / k
+        zt = -hb + (xm - xt) * math.tan(math.radians(11))
+        for sg in (1, -1):
+            gear.extend(cyl((xm + 0.15, 0.4 * sg, 0.0), (xm, tb / 2 * sg, -hb + 0.22), 0.05)).extend(wheel((xm, tb / 2 * sg, -hb + 0.22), 0.22, 0.14))
+        gear.extend(cyl((xt + 0.2, 0, zt + 0.35), (xt, 0, zt + 0.08), 0.03)).extend(wheel((xt, 0, zt + 0.08), 0.08, 0.05))
+    else:
+        gear.extend(cyl((2.6, 0, 0.0), (2.6, 0, -0.75), 0.04)).extend(wheel((2.6, 0, -0.92), 0.19, 0.12))
+        for sg in (1, -1):
+            gear.extend(cyl((-0.2, 0.45 * sg, 0.05), (-0.35, 1.15 * sg, -0.75), 0.05)).extend(wheel((-0.35, 1.18 * sg, -0.92), 0.22, 0.14))
+    tip = wst[-1]
+    parts += [(box((tip[0], 5.55, tip[2]), (0.12, 0.05, 0.05)), REDL), (box((tip[0], -5.55, tip[2]), (0.12, 0.05, 0.05)), GRNL)]
+    write_glb(os.path.join(OUT, name + '.glb'), [('body', parts, None)] + nodes + [('gear', [(gear, DARK)], None)]
+              + surfaces(name, wparts, hparts, vparts, paint, paint, trim, ail=22 if canopy else 20, elev=25, rud=25, flap=30))
+    write_anim(name)
 
 if __name__ == '__main__':
     os.makedirs(OUT, exist_ok=True)
     trainer(); airliner(); fighter()
+    light('cub', CUBYELLOW, BLACK, tail_real=(6.83, 1.83, 1.25))
+    light('extra', WHITE, RED, low=True, tail_real=(6.94, 1.8, 1.15), canopy=True)
+    light('kingair', WHITE, BLUE, low=True, twin=True, ttail=True)
+    airliner('jumbo', four=True, hump=True, tail=BLUE, cheat_mat=BLUE)
+    fighter('hornet', twin=True)

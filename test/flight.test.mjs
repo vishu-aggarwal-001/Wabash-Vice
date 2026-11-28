@@ -26,7 +26,21 @@ const REF = {
   fighter: { vs1: [115, 140], vs0: [105, 130], roll: [350, 800], climb: [3000, 60000], vmaxM: [1.6, 2.2], brake: [700, 1300] },
 };
 
+// real types: published stall speeds (POH / type data, at typical weights) and takeoff runs
+Object.assign(REF, {
+  c172: { vs1: [46, 56], vs0: [40, 50], roll: [180, 420], climb: [550, 900], vmax: [115, 140], brake: [130, 300] },
+  cub: { vs1: [28, 42], vs0: [28, 42], roll: [60, 200], climb: [350, 800], vmax: [70, 95], brake: [60, 200] },
+  extra330: { vs1: [48, 66], vs0: [48, 66], roll: [100, 300], climb: [1000, 4000], vmax: [170, 215], brake: [120, 420] },
+  kingair: { vs1: [85, 110], vs0: [70, 95], roll: [350, 900], climb: [1500, 3500], vmaxKtMin: 280, brake: [350, 900] },
+  a320: { vs1: [135, 165], vs0: [100, 120], roll: [700, 1500], climb: [1800, 3500], vmaxM: [0.82, 0.92], brake: [550, 1100] },
+  b738: { vs1: [135, 170], vs0: [100, 125], roll: [800, 1700], climb: [1800, 3500], vmaxM: [0.82, 0.92], brake: [600, 1200] },
+  b744: { vs1: [140, 195], vs0: [105, 135], roll: [1100, 3200], climb: [1300, 3000], vmaxM: [0.86, 0.97], brake: [900, 2000] },
+  b789: { vs1: [130, 185], vs0: [100, 130], roll: [1100, 2700], climb: [1500, 3500], vmaxM: [0.86, 0.97], brake: [800, 1800] },
+  f16: { ...REF.fighter }, fa18: { vs1: [100, 135], vs0: [95, 130], roll: [400, 1000], climb: [3000, 60000], vmaxM: [1.5, 2.0], brake: [700, 1500] },
+});
+const ONLY = process.env.ONLY ? process.env.ONLY.split(',') : null;
 for (const key of Object.keys(AIRCRAFT)) {
+  if (ONLY && !ONLY.includes(key)) continue;
   const d = AIRCRAFT[key], ref = REF[key];
   console.log(`\n${d.name}`);
   // stall speeds
@@ -66,7 +80,8 @@ for (const key of Object.keys(AIRCRAFT)) {
 
   // top speed
   s = airborne(key, key === 'fighter' ? 12200 : sc.alt, sc.spd / KT, { assist: true }); s.throttle = 1; s.fm.ctrl.burner = !!d.afterburner; s.run(key === 'fighter' ? 420 : 240);
-  if (ref.vmax) check(s.fm.out.V / KT >= ref.vmax[0] && s.fm.out.V / KT <= ref.vmax[1], 'top speed', `${(s.fm.out.V / KT).toFixed(0)} kt TAS`);
+  if (ref.vmaxKtMin) check(s.fm.out.V / KT >= ref.vmaxKtMin && !s.fm.crashed, 'top speed', `${(s.fm.out.V / KT).toFixed(0)} kt TAS ${s.fm.crashReason}`);
+  else if (ref.vmax) check(s.fm.out.V / KT >= ref.vmax[0] && s.fm.out.V / KT <= ref.vmax[1], 'top speed', `${(s.fm.out.V / KT).toFixed(0)} kt TAS`);
   else check(s.fm.out.mach >= ref.vmaxM[0] && s.fm.out.mach <= ref.vmaxM[1] && !s.fm.crashed, 'top speed', `Mach ${s.fm.out.mach.toFixed(2)} ${s.fm.crashReason}`);
 
   // full aft stick in Assisted mode never stalls the wing
@@ -81,7 +96,8 @@ for (const key of Object.keys(AIRCRAFT)) {
   check(stalled && !s.fm.crashed && s.fm.out.stallMix < 0.1, 'Realistic: stalls and recovers', `alt ${((s.fm.h - 200) / FT).toFixed(0)} ft`);
 
   // autoland: calm, 15 kt crosswind, 20 kt headwind + moderate turbulence
-  for (const [label, wind, turb] of [['calm', [0, 0, 0], 0], ['15 kt crosswind', windOf(180, 15), 0], ['headwind + turbulence', windOf(90, 20), 1.6]]) {
+  const xw = Math.min(15, d.xwind ?? 15); // never more than the type's demonstrated crosswind
+  for (const [label, wind, turb] of [['calm', [0, 0, 0], 0], [`${xw} kt crosswind`, windOf(180, xw), 0], ['headwind + turbulence', windOf(90, 20), 1.6]]) {
     s = makeSim(key, { wind }); fm = s.fm; fm.turbulence = turb;
     const dist = d.engine === 'prop' ? 5500 : 12000, [la, lo] = destPoint(RWY.lat, RWY.lon, 270, dist);
     fm.ctrl.flaps = d.approachFlaps; fm.ctrl.gearDown = true; fm.gearPos = 1;
@@ -113,14 +129,14 @@ for (const key of Object.keys(AIRCRAFT)) {
     check(td && !fm.crashed && td.fpm > -700, `autoland on a ${Math.round(slope * 100)}% up-sloping runway`, td ? `${td.fpm.toFixed(0)} ft/min ${fm.crashReason}` : `no touchdown ${fm.crashReason}`); }
 
   // crosswind takeoff hands-off stays on the runway
-  s = makeSim(key, { wind: windOf(180, 15) }); fm = s.fm; s.groundStart(90); s.run(2); s.throttle = 1; let dev = 0;
+  s = makeSim(key, { wind: windOf(180, xw) }); fm = s.fm; s.groundStart(90); s.run(2); s.throttle = 1; let dev = 0;
   s.run(80, () => { if (fm.onGround) dev = Math.max(dev, Math.abs(xtOf(fm))); if (fm.out.ias >= d.vr) s.stick.y = fm.hpr.pitch < d.rotatePitch ? 0.6 : 0; if (!fm.onGround && s.agl() > 20) return false; });
   check(dev < 8 && !fm.crashed, 'crosswind takeoff tracks the centre line', `${dev.toFixed(1)} m`);
 
   // assisted crab touchdown in a crosswind: de-crabs, no tip-over
-  s = makeSim(key, { wind: windOf(180, 15) }); fm = s.fm; fm.ctrl.flaps = d.approachFlaps; fm.ctrl.gearDown = true; fm.gearPos = 1;
-  const crab = Math.asin(15 * KT / d.vref) / DEG;
-  fm.spawnAir(40, -86, 200 + fm.restHeight + 4, 90 + crab, d.vref, -2); fm.vel[1] += 15 * KT; s.throttle = 0;
+  s = makeSim(key, { wind: windOf(180, xw) }); fm = s.fm; fm.ctrl.flaps = d.approachFlaps; fm.ctrl.gearDown = true; fm.gearPos = 1;
+  const crab = Math.asin(xw * KT / d.vref) / DEG;
+  fm.spawnAir(40, -86, 200 + fm.restHeight + 4, 90 + crab, d.vref, -2); fm.vel[1] += xw * KT; s.throttle = 0;
   s.run(60, () => { s.brake = fm.onGround ? 0.7 : 0; if (fm.onGround && fm.groundSpeed < 1) return false; });
   check(!fm.crashed && Math.abs(xtOf(fm)) < 15, 'Assisted crosswind landing (no flare, crabbed) stays upright', `${xtOf(fm).toFixed(1)} m off, ${fm.crashReason}`);
 

@@ -1,0 +1,66 @@
+{
+ "nodes": {
+  "rudderL": {
+   "axis": [
+    -0.56546,
+    0.77503,
+    0.28209
+   ],
+   "sign": 1,
+   "max": 30,
+   "input": "rud"
+  },
+  "rudderR": {
+   "axis": [
+    -0.56546,
+    0.77503,
+    -0.28209
+   ],
+   "sign": 1,
+   "max": 30,
+   "input": "rud"
+  },
+  "flaperonL": {
+   "axis": [
+    -0.28174,
+    -0.0117,
+    -0.95942
+   ],
+   "sign": -1,
+   "max": 21,
+   "input": "flaperonL",
+   "flapMax": 20
+  },
+  "elevatorL": {
+   "axis": [
+    -0.55278,
+    0.0,
+    -0.83333
+   ],
+   "sign": 1,
+   "max": 20,
+   "input": "elev"
+  },
+  "flaperonR": {
+   "axis": [
+    -0.28174,
+    -0.0117,
+    0.95942
+   ],
+   "sign": 1,
+   "max": 21,
+   "input": "flaperonR",
+   "flapMax": 20
+  },
+  "elevatorR": {
+   "axis": [
+    -0.55278,
+    0.0,
+    0.83333
+   ],
+   "sign": -1,
+   "max": 20,
+   "input": "elev"
+  }
+ }
+}

@@ -144,7 +144,7 @@ export class FlightModel {
     let T = 0;
     const N = this.N;
     if (d.engine === 'prop') {
-      const P = d.power * N * Math.pow(atm.sigma, 0.9);
+      const P = d.power * N * Math.pow(atm.sigma, d.powerLapse ?? 0.9);
       T = Math.min(d.staticThrust * N * atm.sigma, (P * d.propEff) / Math.max(V, 5));
     } else T = jetThrust(d, N, atm.sigma, mach, c.burner);
     if (d.engine === 'jet' && c.reverse && this.onGround && d.reverse) T = -d.thrust * d.reverse * N;
@@ -246,9 +246,9 @@ export class FlightModel {
       if (pt.kind === 'nose') {
         // nose-wheel steering, limited so a full-lock turn never pulls more than ~0.3 g sideways (no tip-overs)
         const V = Math.hypot(this.vel[0], this.vel[1]);
-        const wb = this._wheelbase ??= Math.max(1, d.gear[0][0] - d.gear[1][0]);
+        const wb = this._wheelbase ??= Math.max(1, Math.abs(d.gear[0][0] - d.gear[1][0]));
         const maxSt = Math.min(d.steer, Math.atan((0.3 * G * wb) / Math.max(V * V, 1e-3)));
-        const st = c.rud * maxSt;
+        const st = c.rud * maxSt * (pt.p[0] < 0 ? -1 : 1); // a tail wheel turns the other way
         fwdB = [Math.cos(st), -Math.sin(st), 0];
       }
       let fw = qrot(this.q, fwdB); fw = [fw[0], fw[1], 0];
@@ -302,7 +302,7 @@ export class FlightModel {
     const D = q * d.S * (d.CD0 + d.k * CL * CL + d.flapCD * fl + d.gearCD * (this.ctrl.gearDown ? 1 : 0) + waveDrag(d, V / atm.a));
     const T = D + d.mass * G * Math.sin(gammaDeg * DEG);
     let N;
-    if (d.engine === 'prop') N = Math.max(T / (d.staticThrust * atm.sigma), (T * V) / (d.power * Math.pow(atm.sigma, 0.9) * d.propEff));
+    if (d.engine === 'prop') N = Math.max(T / (d.staticThrust * atm.sigma), (T * V) / (d.power * Math.pow(atm.sigma, d.powerLapse ?? 0.9) * d.propEff));
     else N = T / jetThrust(d, 1, atm.sigma, V / atm.a, false);
     return clamp(N, 0.05, 1);
   }

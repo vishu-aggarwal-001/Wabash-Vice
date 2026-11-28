@@ -196,9 +196,18 @@ export class FlightAssist {
       const gs = fm.groundSpeed;
       if (Math.abs(rud) < 0.05) {
         if (Math.abs(ail) > 0.05) { rud = clamp(ail * 1.2, -1, 1); this.gndHdg = null; }
-        else if (gs > 0.5) {
+        else if (gs > 5 && this.runway && this._onRunway(fm)) {
+          // hands off on a runway: follow its centre line (take-off and landing roll)
+          const R = this.runway, b = bearingDeg(R.lat, R.lon, fm.latDeg, fm.lonDeg), dd = distM(R.lat, R.lon, fm.latDeg, fm.lonDeg);
+          const xtk = dd * Math.sin((b - R.hdg) * DEG); // + = right of the centre line
+          const want = R.hdg - clamp(xtk * 0.4, -10, 10);
+          const e = wrap180(want - o.heading);
+          this.gI = clamp((this.gI || 0) + e * dt * 0.1, -0.5, 0.5); this.gndHdg = null;
+          rud = clamp(e * 0.3 + this.gI + fm.w[2] * 2.5, -1, 1);
+        } else if (gs > 0.5) {
           // hands off: keep rolling straight (holds the heading you had when you let go of the steering)
-          if (this.gndHdg == null) { this.gndHdg = o.heading; this.gI = 0; }
+          // just landed after a de-crab: keep rolling the way we were tracking (the runway), not where the nose bounced
+          if (this.gndHdg == null) { this.gndHdg = this.landTrack != null && fm.t - this.landTrackT < 4 ? this.landTrack : o.heading; this.gI = 0; }
           const e = wrap180(this.gndHdg - o.heading);
           this.gI = clamp(this.gI + e * dt * 0.15, -0.6, 0.6);
           rud = clamp(e * 0.35 + this.gI + fm.w[2] * 2.5, -1, 1);
@@ -218,11 +227,21 @@ export class FlightAssist {
     const aglG = fm.h - fm.groundH - fm.restHeight;
     // (starts about 1.5 s before touchdown, and banks the upwind wing down a little so you don't drift)
     if (Math.abs(rud) < 0.05 && fm.gearPos > 0.95 && fm.vs < 0 && aglG < Math.max(1.5, -fm.vs * 1.5) && fm.groundSpeed > 10) {
-      rud = clamp(wrap180(fm.track - o.heading) * 0.12 + fm.w[2] * 2.5, -1, 1);
-      this.decrab = true;
+      // big jets keep some crab into the touchdown (as their pilots do); light aircraft line up fully
+      const frac = d.b > 40 ? 0.5 : 1;
+      rud = clamp(wrap180(fm.track - o.heading) * frac * 0.12 + fm.w[2] * 2.5, -1, 1);
+      this.decrab = true; this.landTrack = fm.track; this.landTrackT = fm.t;
     } else this.decrab = false;
     if (!this.decrab && Math.abs(rud) < 0.05) rud = clamp(fm.out.beta * 6, -0.6, 0.6); // auto-rudder: kill sideslip
     return this._air(fm, stick, dt, elev, ail, rud);
+  }
+
+  // on (and lined up with) the runway we know about?
+  _onRunway(fm) {
+    const R = this.runway, o = fm.hpr;
+    const b = bearingDeg(R.lat, R.lon, fm.latDeg, fm.lonDeg), dd = distM(R.lat, R.lon, fm.latDeg, fm.lonDeg);
+    const along = dd * Math.cos((b - R.hdg) * DEG), xtk = dd * Math.sin((b - R.hdg) * DEG);
+    return Math.abs(xtk) < (R.halfW || 25) + 15 && along > -100 && along < (R.len || 4000) + 100 && Math.abs(wrap180(o.heading - R.hdg)) < 25;
   }
 
   _air(fm, stick, dt, elev, ail, rud) {
@@ -248,7 +267,8 @@ export class FlightAssist {
     const gs = gainSched(fm);
     if (Math.abs(stick.y) < 0.04 && V > d.vr * 0.8 && Math.abs(o.roll) < 60) {
       if (this.holdGamma === null) {
-        this.holdGamma = clamp(gamma, -10 * DEG, (d.engine === 'prop' ? 7 : 12) * DEG); this.i = fm.ctrl.trim / gs;
+        const strong = d.engine !== 'prop' || (d.staticThrust * (d.engines || 1)) / (d.mass * 9.81) > 0.35;
+        this.holdGamma = clamp(gamma, -10 * DEG, (strong ? 12 : 7) * DEG); this.i = fm.ctrl.trim / gs;
         // just took off? keep climbing away instead of settling back onto the runway
         if (fm.h - fm.groundH < 150 && o.pitch > 4 && fm.ctrl.throttle > 0.5) this.holdGamma = Math.max(this.holdGamma, (d.engine === 'prop' ? 5 : 7) * DEG);
       }
@@ -270,10 +290,11 @@ export class FlightAssist {
     if (n < -1.5 && elev < 0) elev *= 0.3;
     // stall protection (angle-of-attack limiter): pulling harder can't stall the wing in Assisted mode
     const aLim = d.alphaStall + d.flapStall * fm.flapPos - 2 * DEG;
-    if (elev > 0 && fm.out.alpha > aLim - 3 * DEG) elev *= clamp((aLim - fm.out.alpha) / (3 * DEG), 0, 1);
-    if (fm.out.alpha > aLim) elev = Math.min(elev, -clamp((fm.out.alpha - aLim) / DEG * 0.15, 0, 0.5));
-    // pitch-attitude and low-energy protection (not on the fighter): no zoom climbs that end in a stall
-    if (d.gLimit < 6) {
+    const aPred = fm.out.alpha - fm.w[1] * 0.25; // where alpha is heading in a quarter second (pitch rate)
+    if (elev > 0 && aPred > aLim - 3 * DEG) elev *= clamp((aLim - aPred) / (3 * DEG), 0, 1);
+    if (aPred > aLim) elev = Math.min(elev, -clamp((aPred - aLim) / DEG * 0.15, 0, 0.5));
+    // pitch-attitude and low-energy protection (not on fighters): no zoom climbs that end in a stall
+    if (d.engine !== 'jet' || d.gLimit < 6) {
       const pMax = 25 - 5 * fm.flapPos;
       if (elev > 0 && o.pitch > pMax - 5) elev *= clamp((pMax - o.pitch) / 5, 0, 1);
       if (o.pitch > pMax) elev -= (o.pitch - pMax) * 0.05;

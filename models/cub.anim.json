@@ -1,0 +1,74 @@
+{
+ "nodes": {
+  "flapL": {
+   "axis": [
+    0.0,
+    0.01224,
+    -0.99993
+   ],
+   "sign": -1,
+   "max": 30,
+   "input": "flap"
+  },
+  "aileronL": {
+   "axis": [
+    0.07656,
+    0.01994,
+    -0.99687
+   ],
+   "sign": -1,
+   "max": 20,
+   "input": "ail"
+  },
+  "elevatorL": {
+   "axis": [
+    -0.01576,
+    0.0,
+    -0.99988
+   ],
+   "sign": 1,
+   "max": 25,
+   "input": "elev"
+  },
+  "flapR": {
+   "axis": [
+    0.0,
+    0.01224,
+    0.99993
+   ],
+   "sign": 1,
+   "max": 30,
+   "input": "flap"
+  },
+  "aileronR": {
+   "axis": [
+    0.07656,
+    0.01994,
+    0.99687
+   ],
+   "sign": -1,
+   "max": 20,
+   "input": "ail"
+  },
+  "elevatorR": {
+   "axis": [
+    -0.01576,
+    0.0,
+    0.99988
+   ],
+   "sign": -1,
+   "max": 25,
+   "input": "elev"
+  },
+  "rudder": {
+   "axis": [
+    -0.43946,
+    0.89826,
+    -0.0
+   ],
+   "sign": 1,
+   "max": 25,
+   "input": "rud"
+  }
+ }
+}

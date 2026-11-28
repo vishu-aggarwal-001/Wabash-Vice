@@ -7,6 +7,7 @@ export { AIRCRAFT, DEG, KT, FT, clamp, destPoint, bearingDeg, distM };
 export const GROUND = 200;
 export function makeSim(key, opts = {}) {
   const def = AIRCRAFT[key], fm = new FlightModel(def), ap = new Autopilot(), assist = new FlightAssist();
+  assist.runway = { lat: 40, lon: -86, hdg: 90, halfW: 30, len: 3500 }; // the test runway 09 (west end at 40N 86W)
   fm.groundH = opts.ground ?? GROUND;
   const sim = { fm, ap, assist, def, t: 0, stick: { x: 0, y: 0, rud: 0 }, throttle: 0, brake: 0, assistOn: opts.assist ?? true, log: [] };
   sim.step = (dt = 1 / 60) => {

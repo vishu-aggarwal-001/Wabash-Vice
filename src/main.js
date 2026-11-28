@@ -9,7 +9,7 @@ import { Controls } from './controls.js';
 import { AXIS_FNS, BUTTON_FNS, devKey, defaultBindings } from './hardware.js';
 import { Autopilot, FlightAssist } from './autopilot.js';
 import { Sound } from './audio.js';
-import { loadAirports, searchAirports, runwayEnds, findAirport, bestRunwayEnd } from './airports.js';
+import { loadAirports, searchAirports, runwayEnds, findAirport, bestRunwayEnd, nearestAirports } from './airports.js';
 import { loadGeoid, geoidHeight } from './geoid.js';
 import { Lights } from './lights.js';
 
@@ -75,7 +75,7 @@ async function getModel(key) {
   if (models[key]) return models[key];
   const m = await Cesium.Model.fromGltfAsync({
     url: AIRCRAFT[key].model, forwardAxis: Cesium.Axis.X, shadows: Cesium.ShadowMode.ENABLED,
-    minimumPixelSize: 24, maximumScale: 400, backFaceCulling: false,
+    minimumPixelSize: 24, maximumScale: 400, backFaceCulling: false, scale: AIRCRAFT[key].modelScale ?? 1,
   });
   m.show = false;
   // hinged control surfaces (made by tools/build_models.py): node -> hinge axis, direction, travel and input
@@ -213,6 +213,19 @@ async function startFlightInner() {
   updateTouchVisibility();
 }
 
+function runwayUnder(lat, lon, hdg) {
+  let best = null;
+  for (const { a } of nearestAirports(lat, lon, 3, 6000)) for (const r of a.runways) for (const [e, f] of [[r.ends[0], r.ends[1]], [r.ends[1], r.ends[0]]]) {
+    const h = bearingDeg(e.lat, e.lon, f.lat, f.lon), len = distM(e.lat, e.lon, f.lat, f.lon);
+    if (Math.abs(wrap180(h - hdg)) > 25) continue;
+    const b = bearingDeg(e.lat, e.lon, lat, lon), d = distM(e.lat, e.lon, lat, lon);
+    const xt = Math.abs(d * Math.sin((b - h) * DEG)), al = d * Math.cos((b - h) * DEG);
+    if (al < -2000 || al > len + 200) continue;
+    if (!best || xt < best.xt) best = { lat: e.lat, lon: e.lon, hdg: h, len, halfW: (r.widthFt || 100) * FT / 2, xt };
+  }
+  return best && best.xt < 80 ? best : null;
+}
+
 function windVec() {
   const from = S.windDir * DEG, s = S.windKt * KT;
   return [-Math.sin(from) * s, -Math.cos(from) * s, 0];
@@ -250,6 +263,8 @@ function tick() {
   if (Math.floor(now / 1000) !== Math.floor((now - dt * 1000) / 1000)) {
     world.updateClouds(fm.latDeg, fm.lonDeg, groundFilt, S.clouds, S.cloudBase, false);
     world.probeTerrain(fm.latDeg, fm.lonDeg);
+    // the runway we are on or about to land on (for the assisted centre-line hold)
+    if (fm.h - groundFilt < 150) assist.runway = runwayUnder(fm.latDeg, fm.lonDeg, fm.hpr.heading); else assist.runway = null;
     lights.updateDaylight(Cesium.JulianDate.toDate(viewer.clock.currentTime), fm.latDeg, fm.lonDeg);
     world.setDaylight(1 - lights.night);
     // the sun lights the plane only by day (otherwise it is lit from below the horizon at night)
@@ -477,10 +492,10 @@ function updatePlane(dt) {
   lights.updateAircraft(fm, null, m, simTime, true);
   plane.show = camMode !== 1 && !fm.crashed;
   // propeller
-  const prop = plane.getNode && plane.getNode('prop');
-  if (prop) {
-    propAngle += (8 + fm.N * 40) * dt * (fm.crashed ? 0 : 1);
-    prop.matrix = Cesium.Matrix4.multiply(prop.originalMatrix, Cesium.Matrix4.fromRotationTranslation(Cesium.Matrix3.fromRotationX(propAngle)), new Cesium.Matrix4());
+  propAngle += (8 + fm.N * 40) * dt * (fm.crashed ? 0 : 1);
+  for (const pn of ['prop', 'prop1', 'prop2', 'prop3', 'prop4']) {
+    const prop = plane.getNode && plane.getNode(pn);
+    if (prop) prop.matrix = Cesium.Matrix4.multiply(prop.originalMatrix, Cesium.Matrix4.fromRotationTranslation(Cesium.Matrix3.fromRotationX(propAngle)), new Cesium.Matrix4());
   }
   // control surfaces follow the controls: ailerons, elevators, rudder, flaps, spoilers
   if (plane.anim) {
@@ -980,4 +995,4 @@ function summary() {
 }
 
 boot().catch((e) => { console.error(e); loading(true, 'Something went wrong: ' + e.message); });
-window.__sim = { simUpdate: (dt) => simUpdate(dt), get fm() { return fm; }, get hud() { return hud; }, get lights() { return lights; }, get paused() { return paused; }, get perf() { return perf.last; }, get started() { return started; }, get ap() { return ap; }, get world() { return world; }, get controls() { return controls; }, onAction, startFlight, S, setCam };
+window.__sim = { simUpdate: (dt) => simUpdate(dt), get fm() { return fm; }, get hud() { return hud; }, get lights() { return lights; }, get paused() { return paused; }, get perf() { return perf.last; }, get started() { return started; }, get ap() { return ap; }, get assist() { return assist; }, get plane() { return plane; }, get world() { return world; }, get controls() { return controls; }, onAction, startFlight, S, setCam };
