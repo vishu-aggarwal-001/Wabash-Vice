@@ -93,7 +93,7 @@ kbd { background: rgba(255,255,255,0.1); border-radius: 5px; padding: 1px 6px; f
 #stick i { position: absolute; left: 50%; top: 50%; width: 60px; height: 60px; margin: -30px 0 0 -30px; border-radius: 50%; background: rgba(255,255,255,0.35); border: 2px solid #fff; }
 #thr { position: absolute; right: 4vw; bottom: 8vh; width: 64px; height: 190px; border-radius: 18px; background: rgba(255,255,255,0.08); border: 2px solid rgba(255,255,255,0.22); touch-action: none; }
 #thr i { position: absolute; left: 4px; right: 4px; bottom: 4px; border-radius: 12px; background: linear-gradient(0deg, rgba(60,240,122,0.6), rgba(255,210,63,0.8)); }
-#thr span { position: absolute; top: -22px; width: 100%; text-align: center; font: 800 13px ui-monospace, monospace; }
+#thr span { position: absolute; top: 6px; width: 100%; text-align: center; font: 800 13px ui-monospace, monospace; z-index: 1; text-shadow: 0 1px 3px #000; pointer-events: none; }
 #tbtns { position: absolute; right: calc(4vw + 76px); bottom: 8vh; display: grid; grid-template-columns: repeat(2, 52px); gap: 8px; }
 #tbtns button { height: 46px; border-radius: 12px; background: rgba(10,16,28,0.6); border: 1px solid rgba(255,255,255,0.25); font: 800 12px Inter, sans-serif; }
 #tbtns button.on { border-color: var(--good); color: var(--good); }

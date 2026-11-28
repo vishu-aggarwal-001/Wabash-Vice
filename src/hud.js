@@ -28,7 +28,7 @@ export class HUD {
       // phone / tablet layout: PFD bottom-centre between the stick and the buttons, map top-right
       const size = Math.min(H * (big ? 0.5 : 0.42), W * 0.32, 420);
       this.pfd(W / 2 - size / 2, H - size - 10, size, s);
-      if (s.showND) { const nd = Math.min(H * 0.3, W * 0.2, 280); this.nd(W - nd - 14, 66, nd, s); }
+      if (s.showND) { const nd = Math.min(H * 0.27, W * 0.2, 280); this.nd(W - nd - 14, 62, nd, s); }
       return;
     }
     let size = big ? Math.min(W * 0.5, H * 0.52, 520) : Math.min(W * 0.36, H * 0.4, 360);
@@ -109,6 +109,12 @@ export class HUD {
     g.beginPath(); g.moveTo(vx - 10, cy); g.lineTo(vx, cy - Math.sign(vsP) * Math.sqrt(Math.abs(vsP)) * ah * 0.45); g.stroke();
     g.font = `700 ${Math.round(S * 0.034)}px ${MONO}`; g.textAlign = 'right'; g.fillStyle = C.grn;
     if (Math.abs(s.vsFpm) > 50) g.fillText((s.vsFpm > 0 ? '+' : '') + Math.round(s.vsFpm / 10) * 10, vx - 4, s.vsFpm > 0 ? ay + 4 : ay + ah - 4);
+    // radio altimeter (height above the ground) below 2,500 ft
+    if (s.airborne && s.agl < 2500) {
+      g.font = `700 ${Math.round(S * 0.04)}px ${MONO}`; g.textAlign = 'center'; g.textBaseline = 'bottom';
+      g.fillStyle = s.agl < 50 ? C.amb : C.grn;
+      g.fillText(`RA ${s.agl < 100 ? Math.max(0, Math.round(s.agl)) : Math.round(s.agl / 10) * 10}`, cx, ay + ah - 4);
+    }
     // heading
     this.headingStrip(ax, ay + ah + S * 0.025, aw, S * 0.11, s);
     // mode annunciators

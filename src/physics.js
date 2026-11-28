@@ -8,6 +8,49 @@ import {
 
 const G = 9.80665;
 
+// control-surface effectiveness falls off at very high dynamic pressure (stick forces / blowback)
+export const ctrlAuth = (qbar) => clamp(Math.sqrt(9000 / Math.max(qbar, 1)), 0.3, 1);
+// propeller slipstream over the tail keeps the elevator and rudder working at low airspeed
+export const propWash = (d, N, qbar) => 1 + (d.engine === 'prop' ? Math.min((d.propwash * N) / Math.max(qbar, 50), 20) : 0);
+// Lift coefficient: linear up to 3 deg before the stall, then the curve rounds over to CLmax at the
+// stall angle, then blends into post-stall (flat-plate) lift over the next 4 degrees.
+export function liftModel(d, alpha, flap = 0, spoiler = 0) {
+  const aStall = d.alphaStall + d.flapStall * flap;
+  const aAbs = Math.abs(alpha), sgn = alpha < 0 ? -1 : 1;
+  const ROUND = 6 * DEG, over0 = aAbs - (aStall - ROUND / 2);
+  let CLlin = d.CL0 + d.CLa * alpha + d.flapCL * flap - (d.spoilerCL || 0) * spoiler;
+  if (over0 > 0) { const o = Math.min(over0, ROUND); CLlin -= sgn * d.CLa * (o * o / (2 * ROUND) + Math.max(0, over0 - ROUND)); }
+  const CLpost = 1.8 * Math.sin(alpha) * Math.cos(alpha) + d.flapCL * flap * 0.5;
+  const sx = clamp((aAbs - aStall) / (4 * DEG), 0, 1);
+  const stallMix = sx * sx * (3 - 2 * sx);
+  const stallWarn = clamp((aAbs - aStall + 2.5 * DEG) / (2.5 * DEG), 0, 1);
+  return { CL: lerp(CLlin, CLpost, stallMix), CLlin, stallMix, stallWarn, aStall };
+}
+// highest lift coefficient the wing can make (for stall speeds on the speed tape)
+export function clMax(d, flap = 0) {
+  let m = 0; for (let a = 0; a < 40 * DEG; a += 0.1 * DEG) m = Math.max(m, liftModel(d, a, flap).CL); return m;
+}
+// 1-g stall speed (equivalent airspeed, m/s)
+export const stallSpeed = (d, flap = 0, mass = d.mass) => Math.sqrt((2 * mass * G) / (1.225 * d.S * clMax(d, flap)));
+// transonic wave drag: Korn-style rise from the critical Mach number to a peak just past Mach 1, then easing off
+export function waveDrag(d, M) {
+  if (M <= d.mcrit) return 0;
+  const peak = d.waveMax ?? 0.03, mPk = 1.1;
+  if (M < mPk) return Math.min(peak, 20 * (M - d.mcrit) ** 4 + peak * ((M - d.mcrit) / (mPk - d.mcrit)) ** 3);
+  return peak * Math.sqrt(mPk / M);
+}
+// jet thrust with altitude and speed. High-bypass airliner engines lose thrust with speed;
+// low-bypass afterburning fighter engines gain thrust from ram pressure.
+export function jetThrust(d, N, sigma, M, burner) {
+  if (d.afterburner) {
+    const ab = burner ? 1 : 0, Mc = Math.min(M, 2.2);
+    const max = ab ? d.afterburner * (1 + 0.25 * Mc) : d.thrust * (1 - 0.1 * Math.min(Mc, 0.6) + 0.12 * Math.max(0, Mc - 0.6));
+    return max * N * Math.pow(sigma, 0.8);
+  }
+  const m = Math.min(M, 1.2);
+  return d.thrust * N * Math.pow(sigma, 0.9) * (1 - 0.5 * m + 0.2 * m * m);
+}
+
 export class FlightModel {
   constructor(def) {
     this.def = def;
@@ -33,7 +76,10 @@ export class FlightModel {
     this.crashed = false; this.crashReason = ''; this.touchdown = null;
     this.onGround = speed === 0; this.wasOnGround = this.onGround;
     this.N = speed > 0 ? 0.7 : 0; this.t = 0; this.maxG = 1;
-    this.out = { V: speed, alpha: 0, beta: 0, mach: 0, qbar: 0, T: 0, CL: 0, stallMix: 0, nz: 1, rho: 1.225, lift: 0, agl: 0 };
+    // air data valid from the very first frame (the assist / autopilot gain schedules read qbar)
+    const atm = atmosphere(h);
+    this.out = { V: speed, alpha: 0, beta: 0, mach: speed / atm.a, qbar: 0.5 * atm.rho * speed * speed, T: 0, CL: 0, stallMix: 0, stallWarn: 0,
+      nz: 1, rho: atm.rho, lift: 0, agl: h - this.groundH, ias: speed * Math.sqrt(atm.sigma) };
     this.flapPos = this.def.flaps.length > 1 ? this.ctrl.flaps / (this.def.flaps.length - 1) : 0;
     this.gearPos = this.ctrl.gearDown ? 1 : 0;
   }
@@ -71,24 +117,18 @@ export class FlightModel {
     const mach = V / atm.a;
     const S = d.S, b = d.b, cc = d.c;
 
-    // --- lift
+    // --- lift (see liftModel)
     const flap = this.flapPos;
-    const aStall = d.alphaStall + d.flapStall * flap;
-    const CLlin = d.CL0 + d.CLa * alpha + d.flapCL * flap - (d.spoilerCL || 0) * this.spoilerPos;
-    const CLpost = 1.8 * Math.sin(alpha) * Math.cos(alpha) + d.flapCL * flap * 0.5;
-    const over = Math.abs(alpha) - aStall;
-    const stallMix = 1 / (1 + Math.exp(-over / (2 * DEG)));
-    const stallBuffet = stallMix > 0.15 ? stallMix : 0;
-    let CL = lerp(CLlin, CLpost, stallMix);
+    const { CL: CLaero, CLlin, stallMix, stallWarn: stallBuffet, aStall } = liftModel(d, alpha, flap, this.spoilerPos);
+    let CL = CLaero;
     // ground effect: more lift, less induced drag within one wingspan of the ground
     const agl = this.h - this.groundH;
     const ge = clamp(agl / b, 0.05, 1);
     const geFactor = (16 * ge) ** 2 / (1 + (16 * ge) ** 2);
     CL *= 1 + 0.08 * (1 - geFactor);
-    // --- drag
+    // --- drag (parasite + induced + flaps/gear/spoilers + post-stall + sideslip + transonic wave drag)
     let CD = d.CD0 + d.k * CLlin * CLlin * geFactor + d.flapCD * flap + d.gearCD * this.gearPos + d.spoilerCD * this.spoilerPos
-      + stallMix * 1.1 * Math.sin(alpha) ** 2 + 0.5 * beta * beta;
-    if (mach > d.mcrit) CD += 18 * (mach - d.mcrit) ** 2 * (mach < 1.1 ? 1 : 0.6);
+      + stallMix * 1.1 * Math.sin(alpha) ** 2 + 0.5 * beta * beta + waveDrag(d, mach);
     const CY = d.CYb * beta;
 
     // force directions in body frame
@@ -105,11 +145,8 @@ export class FlightModel {
     if (d.engine === 'prop') {
       const P = d.power * N * Math.pow(atm.sigma, 0.9);
       T = Math.min(d.staticThrust * N * atm.sigma, (P * d.propEff) / Math.max(V, 5));
-    } else {
-      const max = c.burner && d.afterburner ? d.afterburner : d.thrust;
-      T = max * N * Math.pow(atm.sigma, 0.75) * (1 - 0.25 * Math.min(mach, 1.2) + (d.afterburner ? 0.3 * Math.max(0, mach - 0.8) : 0));
-      if (c.reverse && this.onGround && d.reverse) T = -d.thrust * d.reverse * N;
-    }
+    } else T = jetThrust(d, N, atm.sigma, mach, c.burner);
+    if (d.engine === 'jet' && c.reverse && this.onGround && d.reverse) T = -d.thrust * d.reverse * N;
     F = add(F, [T, 0, 0]);
 
     // --- aerodynamic moments (pilot sign convention), then to body FLU torques
@@ -117,17 +154,18 @@ export class FlightModel {
     const p = this.w[0], qp = -this.w[1], r = -this.w[2];
     const ph = (p * b) / (2 * Vr), qh = (qp * cc) / (2 * Vr), rh = (r * b) / (2 * Vr);
     // control surfaces lose authority at very high dynamic pressure (stick forces / blowback)
-    const auth = clamp(Math.sqrt(9000 / Math.max(qbar, 1)), 0.3, 1) * (1 - 0.6 * stallMix * 0.5);
-    const wash = d.engine === 'prop' ? (d.propwash * N) / Math.max(qbar, 50) : 0;  // prop wash over the tail
-    const ctrlQ = 1 + Math.min(wash, 20);
+    const auth = ctrlAuth(qbar) * (1 - 0.3 * stallMix);
+    const wash = propWash(d, N, qbar);  // prop wash over the tail
+    // rudder travel limiter on the airliner (fly-by-wire limits rudder at high speed, like the real thing)
+    const rudLim = d.rudderLimiter ? clamp((d.vr * 1.4 / Math.max(V, 1)) ** 2, 0.12, 1) : 1;
     const elev = clamp(c.elev + c.trim, -1, 1);
     const Cl = d.Clb * beta + d.Clp * ph + d.Clr * rh + d.Clda * c.ail * auth * (1 - 0.5 * stallMix);
-    const Cm = d.Cm0 + d.Cma * alpha + d.Cmq * qh + d.Cmde * elev * auth * Math.min(ctrlQ, 4) + d.Cmflap * flap
+    const Cm = d.Cm0 + d.Cma * alpha + d.Cmq * qh + d.Cmde * elev * auth * Math.min(wash, 4) + d.Cmflap * flap
       + (Math.abs(alpha) > aStall ? -0.15 * Math.sign(alpha) * stallMix : 0);
-    const Cn = d.Cnb * beta + d.Cnr * rh + d.Cndr * c.rud * auth * Math.min(ctrlQ, 6) + d.Cnda * c.ail;
+    const Cn = d.Cnb * beta + d.Cnr * rh + d.Cndr * c.rud * rudLim * auth * Math.min(wash, 6) + d.Cnda * c.ail;
     let M = [qS * b * Cl, -qS * cc * Cm, -qS * b * Cn];
     // stall buffet / wing drop
-    if (stallBuffet && !this.onGround) M = add(M, [qS * b * 0.02 * noise1(this.t * 7) * stallBuffet, qS * cc * 0.01 * noise1(this.t * 9 + 3), 0]);
+    if (stallMix > 0.05 && !this.onGround) M = add(M, [qS * b * 0.02 * noise1(this.t * 7) * stallMix, qS * cc * 0.01 * noise1(this.t * 9 + 3) * stallMix, 0]);
 
     // --- forces into world frame + gravity
     let Fw = qrot(this.q, F);
@@ -169,10 +207,10 @@ export class FlightModel {
     // --- outputs
     const lift = CL * qS;
     const nz = dot(qinvrot(this.q, sub(acc, [0, 0, -G])), [0, 0, 1]) / G;
-    this.out = { V, alpha, beta, mach, qbar, T, CL, stallMix, nz, rho: atm.rho, lift, agl };
+    this.out = { V, alpha, beta, mach, qbar, T, CL, stallMix, stallWarn: stallBuffet, nz, rho: atm.rho, lift, agl, ias: V * Math.sqrt(atm.sigma) };
     if (!this.onGround) this.maxG = Math.max(this.maxG, nz);
     if (nz > d.gLimit * 1.6 && !this.onGround) this._crash('Over-stressed the airframe');
-    if (mach > d.mmo * 1.25 || V > d.vne * 1.35) this._crash('Exceeded maximum speed');
+    if (mach > d.mmo * 1.25 || V * Math.sqrt(atm.sigma) > d.vne * 1.35) this._crash('Exceeded maximum speed');
   }
 
   _contacts(dt) {
@@ -204,8 +242,11 @@ export class FlightModel {
       // wheel rolling direction (horizontal projection of body x, nose wheel steered)
       let fwdB = [1, 0, 0];
       if (pt.kind === 'nose') {
-        const V = len(this.vel);
-        const st = c.rud * d.steer * clamp(1 - V / 40, 0.15, 1);
+        // nose-wheel steering, limited so a full-lock turn never pulls more than ~0.3 g sideways (no tip-overs)
+        const V = Math.hypot(this.vel[0], this.vel[1]);
+        const wb = this._wheelbase ??= Math.max(1, d.gear[0][0] - d.gear[1][0]);
+        const maxSt = Math.min(d.steer, Math.atan((0.3 * G * wb) / Math.max(V * V, 1e-3)));
+        const st = c.rud * maxSt;
         fwdB = [Math.cos(st), -Math.sin(st), 0];
       }
       let fw = qrot(this.q, fwdB); fw = [fw[0], fw[1], 0];
@@ -219,7 +260,7 @@ export class FlightModel {
         muLong = 0.015 + brake * d.brake;
       } else muLong = 0.5;
       const fLong = -clamp(vLong * 8, -1, 1) * muLong * Nf;
-      const fLat = -clamp(vLat * 3, -1, 1) * (pt.gear ? 0.75 : 0.5) * Nf;
+      const fLat = -clamp(vLat * (pt.gear ? 15 : 3), -1, 1) * (pt.gear ? 0.75 : 0.5) * Nf; // tyres grip sideways (near-static friction)
       const f = [fw[0] * fLong + side[0] * fLat, fw[1] * fLong + side[1] * fLat, Nf];
       F = add(F, f);
       M = add(M, cross(pt.p, qinvrot(this.q, f)));
@@ -244,7 +285,8 @@ export class FlightModel {
   trimFor(V, flaps = 0) {
     const d = this.def, atm = atmosphere(this.h), q = 0.5 * atm.rho * V * V;
     const alpha = clamp(((d.mass * G) / (q * d.S) - d.CL0 - d.flapCL * flaps) / d.CLa, -0.1, d.alphaStall * 0.8);
-    const elev = clamp(-(d.Cm0 + d.Cma * alpha + d.Cmflap * flaps) / d.Cmde, -0.8, 0.8);
+    const N = this.throttleFor(V, 0);
+    const elev = clamp(-(d.Cm0 + d.Cma * alpha + d.Cmflap * flaps) / (d.Cmde * ctrlAuth(q) * Math.min(propWash(d, N, q), 4)), -0.8, 0.8);
     return { alpha, elev };
   }
 
@@ -253,11 +295,11 @@ export class FlightModel {
     const d = this.def, atm = atmosphere(this.h), q = 0.5 * atm.rho * V * V;
     const nF = d.flaps.length - 1, fl = nF > 0 ? this.ctrl.flaps / nF : 0;
     const CL = (d.mass * G * Math.cos(gammaDeg * DEG)) / (q * d.S);
-    const D = q * d.S * (d.CD0 + d.k * CL * CL + d.flapCD * fl + d.gearCD * (this.ctrl.gearDown ? 1 : 0));
+    const D = q * d.S * (d.CD0 + d.k * CL * CL + d.flapCD * fl + d.gearCD * (this.ctrl.gearDown ? 1 : 0) + waveDrag(d, V / atm.a));
     const T = D + d.mass * G * Math.sin(gammaDeg * DEG);
     let N;
     if (d.engine === 'prop') N = Math.max(T / (d.staticThrust * atm.sigma), (T * V) / (d.power * Math.pow(atm.sigma, 0.9) * d.propEff));
-    else N = T / (d.thrust * Math.pow(atm.sigma, 0.75) * (1 - 0.25 * Math.min(V / atm.a, 1.2)));
+    else N = T / jetThrust(d, 1, atm.sigma, V / atm.a, false);
     return clamp(N, 0.05, 1);
   }
 

@@ -2,13 +2,14 @@
 /* global Cesium */
 import { DEG, KT, FT, clamp, smooth, wrap360, wrap180, qrot, qToMat3, qmul, qaxis, destPoint, distM, bearingDeg, atmosphere } from './math.js';
 import { AIRCRAFT } from './aircraft.js';
-import { FlightModel } from './physics.js';
+import { FlightModel, stallSpeed } from './physics.js';
 import { World } from './world.js';
 import { HUD } from './hud.js';
 import { Controls } from './controls.js';
 import { Autopilot, FlightAssist } from './autopilot.js';
 import { Sound } from './audio.js';
 import { loadAirports, searchAirports, runwayEnds, findAirport, bestRunwayEnd } from './airports.js';
+import { loadGeoid, geoidHeight } from './geoid.js';
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -34,6 +35,7 @@ let crashFx = [], contrail = null, toastTimer = 0, landingTimer = 0, lastTouch =
 let simTime = 0, autobrake = false, lastApMsg = '';
 const CAMS = ['Chase', 'Cockpit', 'Fly-by', 'Orbit'];
 
+const tip = (keys, touch) => (touchUI ? touch : keys); // control hints for keyboard vs touch players
 function toast(msg, ms = 2500) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms); }
 function loading(on, txt) { $('#loading').classList.toggle('hidden', !on); if (txt) $('#loadingTxt').textContent = txt; }
 
@@ -45,7 +47,7 @@ async function boot() {
   viewer = world.viewer;
   await world.init();
   if (world.ionError) toast(world.ionError, 5000);
-  await loadAirports();
+  await Promise.all([loadAirports(), loadGeoid()]);
   hud = new HUD($('#hud')); hud.resize();
   window.addEventListener('resize', () => hud.resize());
   sound = new Sound(); sound.setVolume(S.volume);
@@ -53,7 +55,7 @@ async function boot() {
   controls = new Controls(viewer.canvas, { onAction });
   applyWeather();
   buildMenu();
-  setupTouch();
+  setupTouch(); updateTouchVisibility();
   setupAPPanel();
   viewer.scene.preUpdate.addEventListener(tick);
   // pretty idle view of the start airport behind the menu
@@ -79,7 +81,15 @@ async function getModel(key) {
 }
 
 // ------------------------------------------------------------------ spawning
+let starting = false;
 async function startFlight() {
+  if (starting) return;
+  starting = true;
+  try { await startFlightInner(); } catch (e) { console.error(e); toast('Could not start the flight: ' + e.message, 6000); loading(false); showMenu(true); }
+  finally { starting = false; }
+}
+async function startFlightInner() {
+  started = false; // stop the previous flight from moving the camera while the new scenery loads
   showMenu(false);
   sound.start(AIRCRAFT[S.aircraft].engine);
   loading(true, 'Loading scenery…');
@@ -89,7 +99,7 @@ async function startFlight() {
   plane = await getModel(S.aircraft);
   planeKey = S.aircraft;
   fm = new FlightModel(def);
-  ap.disengage(); ap.msg = ''; lastApMsg = ''; autobrake = false; assist.holdGamma = null; assist.trim = 0;
+  ap.disengage(); ap.msg = ''; lastApMsg = ''; autobrake = false; ap.landed = false; assist = new FlightAssist();
   controls.throttle = 0; crashFx.forEach((p) => viewer.scene.primitives.remove(p)); crashFx = [];
   $('#landing').classList.add('hidden');
   setDestination(S.dest ? findAirport(S.dest) : null, true);
@@ -104,14 +114,14 @@ async function startFlight() {
     const ends = runwayEnds(ap0);
     rwy = ends[clamp(S.runway, 0, ends.length - 1)] || ends[0];
     hdg = bearingDeg(rwy.lat, rwy.lon, rwy.far.lat, rwy.far.lon);
-    elevGuess = ap0.elevFt * FT;
+    elevGuess = ap0.elevFt * FT + geoidHeight(rwy.lat, rwy.lon); // field elevation is above sea level, the globe uses the ellipsoid
     if (mode === 'runway') {
       const len = distM(rwy.lat, rwy.lon, rwy.far.lat, rwy.far.lon);
       [lat, lon] = destPoint(rwy.lat, rwy.lon, hdg, Math.min(70, len * 0.05));
     } else if (mode === 'approach') {
       const dist = def.engine === 'prop' ? 5500 : 12000;
       [lat, lon] = destPoint(rwy.lat, rwy.lon, hdg + 180, dist);
-      if (!dest) setDestination(ap0, false, rwy);
+      setDestination(ap0, true, rwy); // the approach is to this runway
     } else { // cruise: 20 km out from the airport, flying toward it
       [lat, lon] = destPoint(rwy.lat, rwy.lon, hdg + 180, 25000);
     }
@@ -141,24 +151,31 @@ async function startFlight() {
   if (mode === 'runway') {
     c.flaps = def.takeoffFlaps ?? 1; c.throttle = 0;
     fm.reset(lat, lon, h + fm.restHeight, hdg, 0, 0);
-    toast(`${ap0.icao} runway ${rwy.ident}: full throttle (R), lift off at ${Math.round(def.vr / KT)} kt (S)`, 5000);
+    toast(`${ap0.icao} runway ${rwy.ident}: ${tip('full throttle (hold R or press Home)', 'slide the throttle all the way up')}, then at ${Math.round(def.vr / KT)} kt ${tip('gently hold S', 'gently pull the stick down')} to lift off`, 6000);
   } else if (mode === 'approach') {
     const dist = distM(lat, lon, rwy.lat, rwy.lon);
     c.flaps = def.approachFlaps; c.gearDown = true;
     const spd = def.vref + 10 * KT;
-    fm.spawnAir(lat, lon, h + 15 + Math.tan(3 * DEG) * (dist + 300), hdg, spd, -3);
+    // on the 3 degree glide path to the runway (its elevation, not the ground under us)
+    const rwyH = dest && dest.icao === ap0.icao ? dest.elevM : elevGuess;
+    fm.spawnAir(lat, lon, Math.max(rwyH + fm.restHeight + Math.tan(3 * DEG) * (dist + 300), h + 150), hdg, spd, -3);
     c.throttle = fm.throttleFor(spd, -3); controls.throttle = c.throttle; fm.N = c.throttle;
     toast(`Final approach to ${ap0.icao} runway ${rwy.ident}. Follow the pink diamonds, or press APP on the autopilot.`, 6000);
   } else {
     const sc = def.spawnCruise;
     c.flaps = 0; c.gearDown = false;
-    const alt = Math.max(h + sc.alt * (mode === 'place' ? 0.6 : 1), h + 600);
+    // never start inside a mountain: clear the highest terrain around us and along the way by 1,000 ft
+    const pts = [[lat, lon]];
+    for (let b = 0; b < 360; b += 45) for (const r of [3000, 8000]) pts.push(destPoint(lat, lon, b, r));
+    for (let r = 2000; r <= 30000; r += 2000) pts.push(destPoint(lat, lon, hdg, r));
+    const hiTerrain = await world.terrainMax(pts);
+    let alt = Math.max(h + sc.alt * (mode === 'place' ? 0.6 : 1), h + 600, (hiTerrain ?? -1e9) + 300);
     fm.spawnAir(lat, lon, alt, hdg, sc.spd, 0);
     c.throttle = fm.throttleFor(sc.spd, 0); controls.throttle = c.throttle; fm.N = c.throttle;
-    ap.engage(fm); ap.alt = alt; ap.spd = sc.spd;
-    toast('Autopilot is holding altitude. Press Z (or AP) to take control.', 5000);
+    fm.geoidN = geoidHeight(lat, lon); ap.engage(fm); ap.alt = Math.round((alt - fm.geoidN) / FT / 100) * 100 * FT; ap.spd = sc.spd * Math.sqrt(atmosphere(alt).sigma); ap.vMode = 'ALT';
+    toast(`Autopilot is holding altitude. ${tip('Press Z', 'Move the stick')} to take control.`, 5000);
   }
-  if (mode === 'place') toast(`Flying over ${S.place.name.split(',')[0]}. Autopilot on, press Z to take over.`, 5000);
+  if (mode === 'place') toast(`Flying over ${S.place.name.split(',')[0]}. Autopilot on: ${tip('press Z', 'move the stick')} to take over.`, 5000);
   fm.gearPos = c.gearDown ? 1 : 0;
   fm.flapPos = def.flaps.length > 1 ? c.flaps / (def.flaps.length - 1) : 0;
   controls.throttle = c.throttle;
@@ -183,7 +200,7 @@ function setDestination(airport, silent, rwyEnd) {
   if (!airport) { S.dest = null; return; }
   const e = rwyEnd || bestRunwayEnd(airport, S.windKt > 3 ? S.windDir : null);
   if (!e) return;
-  dest = { icao: airport.icao, ident: e.ident, lat: e.lat, lon: e.lon, hdg: bearingDeg(e.lat, e.lon, e.far.lat, e.far.lon), elevM: airport.elevFt * FT, name: airport.name };
+  dest = { icao: airport.icao, ident: e.ident, lat: e.lat, lon: e.lon, hdg: bearingDeg(e.lat, e.lon, e.far.lat, e.far.lon), elevM: airport.elevFt * FT + geoidHeight(e.lat, e.lon), name: airport.name };
   ap.target = dest;
   if (!silent) toast(`Destination: ${airport.name} runway ${e.ident}`);
 }
@@ -194,15 +211,23 @@ function tick() {
   let dt = Math.min((now - lastT) / 1000, 0.1);
   lastT = now;
   if (!started || !fm) return;
-  const def = fm.def;
+  if (!paused) governor(dt);
   simUpdate(dt);
   updatePlane(dt);
   updateCamera(dt);
   updateHUD(dt);
-  if (Math.floor(now / 1000) !== Math.floor((now - dt * 1000) / 1000)) world.updateClouds(fm.latDeg, fm.lonDeg, groundFilt, S.clouds, S.cloudBase, false);
+  if (Math.floor(now / 1000) !== Math.floor((now - dt * 1000) / 1000)) {
+    world.updateClouds(fm.latDeg, fm.lonDeg, groundFilt, S.clouds, S.cloudBase, false);
+    world.probeTerrain(fm.latDeg, fm.lonDeg);
+    // once the runway's scenery has loaded, use its real height for the glide path (field elevation is only a guess)
+    if (dest && !dest.measured && distM(fm.latDeg, fm.lonDeg, dest.lat, dest.lon) < 9000) {
+      const th = world.groundHeight(dest.lat, dest.lon, undefined);
+      if (th !== undefined && Math.abs(th - dest.elevM) < 60) { dest.elevM = th; dest.measured = true; }
+    }
+  }
   sound.update({
     N: fm.N, V: fm.out.V || 0, onGround: fm.onGround, groundSpeed: fm.groundSpeed, burner: fm.ctrl.burner && fm.N > 0.5,
-    stall: !fm.onGround && (fm.out.stallMix || 0) > 0.25 && !fm.crashed, warning: !!warnText && !fm.crashed, inside: camMode === 1, paused: paused || fm.crashed,
+    stall: !fm.onGround && ((fm.out.stallMix || 0) > 0.25 || (fm.out.stallWarn || 0) > 0.6) && !fm.crashed, warning: !!warnText && !fm.crashed, inside: camMode === 1, paused: paused || fm.crashed,
   });
 }
 
@@ -216,30 +241,58 @@ function simUpdate(dt) {
     const a = assist.apply(fm, stick, dt, S.assist === 1);
     let elev = a.elev, ail = a.ail, rud = a.rud;
     if (a.trim !== null && S.assist === 1) c.trim = a.trim;
-    if (controls.trim) c.trim = clamp(c.trim + controls.trim * dt * 0.15, -0.6, 0.6);
+    if (controls.trim) {
+      // Assisted: the trim keys raise/lower the climb angle the auto-trim holds. Realistic: real elevator trim.
+      if (S.assist === 1 && !fm.onGround && assist.holdGamma !== null) assist.holdGamma = clamp(assist.holdGamma + controls.trim * dt * 2 * DEG, -10 * DEG, 15 * DEG);
+      else c.trim = clamp(c.trim + controls.trim * dt * 0.15, -0.6, 0.6);
+    }
     if (ap.on) {
       if (Math.abs(stick.x) > 0.5 || Math.abs(stick.y) > 0.5) { ap.disengage('Autopilot disconnected'); toast('Autopilot disconnected'); }
       else {
         const o = ap.fly(fm, dt);
-        if (o) { elev = o.elev + stick.y * 0.2; ail = o.ail; c.trim = 0; if (o.throttle !== null) controls.throttle = o.throttle; }
-        else { toast(ap.msg, 3500); if (ap.landed) { autobrake = true; controls.throttle = 0; } }
+        if (o) {
+          elev = o.elev + stick.y * 0.2; ail = o.ail; if (o.rud !== undefined) rud = o.rud; c.trim = 0;
+          if (o.throttle !== null) controls.throttle = o.throttle;
+          if (o.rollout) { c.spoilers = o.spoilers; c.reverse = !!o.reverse; autobrake = true; }
+        } else { toast(ap.msg, 3500); if (ap.landed) { autobrake = true; controls.throttle = 0; c.reverse = false; } }
+        if (ap.on && ap.terrain && !simUpdate.terr) toast('Autopilot: too close to the ground, climbing', 3000);
+        simUpdate.terr = ap.on && ap.terrain;
         if (ap.on && ap.msg && ap.msg !== lastApMsg) { toast(ap.msg, 3500); }
         lastApMsg = ap.msg;
-        if (ap.on && (fm.out.stallMix || 0) > 0.4) { ap.disengage('Autopilot off: stall!'); toast('Autopilot off: stall!'); }
+        if (ap.on && !fm.onGround && (fm.out.stallMix || 0) > 0.4) { ap.disengage('Autopilot off: stall!'); toast('Autopilot off: stall!'); }
       }
     }
     c.elev = clamp(elev, -1, 1); c.ail = clamp(ail, -1, 1); c.rud = clamp(rud, -1, 1);
+    if (c.reverse && !fm.onGround) c.reverse = false; // reversers stow in the air
     c.throttle = controls.throttle;
-    if (autobrake && (fm.groundSpeed < 2 || controls.throttle > 0.3 || !fm.onGround)) autobrake = false;
+    if (autobrake && !ap.rollout && (fm.groundSpeed < 2 || controls.throttle > 0.3 || !fm.onGround)) autobrake = false;
+    if (!ap.rollout && ap.landed && c.spoilers && fm.groundSpeed < 2) c.spoilers = 0;
     c.brake = Math.max(controls.brake, touchBrake ? 1 : 0, autobrake ? 0.6 : 0);
     // terrain under us
     const raw = world.groundHeight(fm.latDeg, fm.lonDeg, groundFilt);
     groundFilt = fm.onGround ? smooth(groundFilt, raw, 1.5, dt) : (fm.h - raw < 60 ? smooth(groundFilt, raw, 8, dt) : raw);
     fm.groundH = groundFilt;
     fm.wind = windVec();
+    fm.geoidN = geoidHeight(fm.latDeg, fm.lonDeg);
     fm.step(dt);
     events(dt);
   }
+}
+
+// keep it smooth on any hardware: if the frame rate stays under ~24 fps, step the graphics down
+// (render resolution, then shadows, then terrain detail) until it recovers. Off when you pick a quality by hand.
+const gov = { ema: 1 / 60, slowT: 0, step: 0 };
+function governor(dt) {
+  if (S.autoQuality === false || document.hidden || simTime < 8) return;
+  gov.ema += (dt - gov.ema) * 0.05;
+  gov.slowT = gov.ema > 1 / 24 ? gov.slowT + dt : 0;
+  if (gov.slowT < 4 || gov.step >= 5) return;
+  gov.slowT = 0; gov.step++;
+  const v = viewer, sc = v.scene;
+  if (gov.step <= 2) v.resolutionScale = Math.max(0.5, v.resolutionScale * 0.8);
+  else if (gov.step === 3) { v.shadows = false; sc.globe.shadows = Cesium.ShadowMode.DISABLED; v.scene.highDynamicRange = false; }
+  else { sc.globe.maximumScreenSpaceError *= 1.5; if (world.tileset) world.tileset.maximumScreenSpaceError *= 1.5; }
+  toast('Lowered the graphics a little to keep it smooth', 2500);
 }
 
 let warnText = '';
@@ -254,14 +307,15 @@ function events(dt) {
       showLanding(td);
     }
   }
-  if (fm.crashed && !crashFx.length) crashEffects();
+  if (fm.crashed && !crashFx.length) { crashEffects(); const w0 = $('#warn'); w0.textContent = ''; w0.classList.remove('blink'); }
   // warnings
   const agl = fm.h - fm.groundH;
   const ias = (o.V || 0) * Math.sqrt((o.rho || 1.225) / 1.225);
   warnText = '';
   if (!fm.onGround) {
-    if ((o.stallMix || 0) > 0.25) warnText = 'STALL';
+    if ((o.stallMix || 0) > 0.25 || (o.stallWarn || 0) > 0.6) warnText = 'STALL';
     else if (ias > def.vne || o.mach > def.mmo) warnText = 'OVERSPEED';
+    else if (fm.flapPos > 0.05 && ias > def.vfe + 5 * KT) warnText = 'FLAPS OVERSPEED';
     else if (agl < 450 && fm.vs < -Math.max(8, agl / 9) && !(dest && distM(fm.latDeg, fm.lonDeg, dest.lat, dest.lon) < 3000 && fm.vs > -12)) warnText = 'PULL UP';
     else if (agl < 150 && !fm.ctrl.gearDown && def.retractable && fm.vs < -1) warnText = 'GEAR!';
     else if (Math.abs(fm.hpr.roll) > 70 && def.gLimit < 6) warnText = 'BANK ANGLE';
@@ -331,7 +385,7 @@ function setupContrail() {
     image: particleImage('rgba(255,255,255,0.9)', 'rgba(255,255,255,0)'), startColor: Cesium.Color.WHITE.withAlpha(0.6), endColor: Cesium.Color.WHITE.withAlpha(0),
     startScale: 1, endScale: 8, minimumParticleLife: 8, maximumParticleLife: 14, speed: 0.5, imageSize: new Cesium.Cartesian2(5, 5),
     emissionRate: 0, emitter: new Cesium.CircleEmitter(0.5), sizeInMeters: true, modelMatrix: Cesium.Matrix4.IDENTITY.clone(),
-    emitterModelMatrix: Cesium.Matrix4.fromTranslation(new Cesium.Cartesian3(fm.def.body[1][0], 0, 0)),
+    emitterModelMatrix: Cesium.Matrix4.fromTranslation(new Cesium.Cartesian3(Math.min(...fm.def.body.map((p) => p[0])), 0, 0)),
   }));
 }
 
@@ -422,14 +476,14 @@ function updateHUD(dt) {
   const unitsM = S.units === 'm';
   const prevIas = updateHUD.prev ?? ias; updateHUD.prev = smooth(prevIas, ias, 4, dt);
   const gamma = Math.atan2(fm.vs, Math.max(fm.groundSpeed, 1)) / DEG;
-  const vs1 = Math.sqrt((2 * def.mass * 9.81) / (1.225 * def.S * (def.CL0 + def.CLa * def.alphaStall))) / KT;
-  const vs0 = Math.sqrt((2 * def.mass * 9.81) / (1.225 * def.S * (def.CL0 + def.CLa * (def.alphaStall + def.flapStall) + def.flapCL))) / KT;
+  if (!def._vs) def._vs = [stallSpeed(def, 0) / KT, stallSpeed(def, 1) / KT];
+  const [vs1, vs0] = def._vs;
   const windFrom = S.windDir, windKt = S.windKt;
   hud.draw({
     show: showHUD && !paused, cockpit: camMode === 1, showND, touch: touchUI,
     pitch: hpr.pitch, roll: hpr.roll, heading: hpr.heading, track: fm.groundSpeed > 3 ? fm.track : hpr.heading,
     gamma: fm.groundSpeed > 3 ? gamma : hpr.pitch, drift: fm.groundSpeed > 3 ? wrap180(fm.track - hpr.heading) : 0, airborne: !fm.onGround,
-    ias: unitsM ? ias * 3.6 : ias / KT, altFt: unitsM ? fm.h : fm.h / FT, vsFpm: unitsM ? fm.vs : fm.vs / FT * 60, agl: (fm.h - fm.groundH) / FT,
+    ias: unitsM ? ias * 3.6 : ias / KT, altFt: unitsM ? fm.h - (fm.geoidN || 0) : (fm.h - (fm.geoidN || 0)) / FT, vsFpm: unitsM ? fm.vs : fm.vs / FT * 60, agl: (fm.h - fm.groundH - fm.restHeight) / FT,
     mach: o.mach || 0, machShow: (o.mach || 0) > 0.4, g: o.nz || 1, trend: ((ias - prevIas) / Math.max(dt, 1e-3)) * 10 / KT * (unitsM ? 1.852 : 1) * 0.1,
     vs1: unitsM ? vs1 * 1.852 : vs1, vs0: unitsM ? vs0 * 1.852 : vs0, vfe: (def.vfe / KT) * (unitsM ? 1.852 : 1), vne: (def.vne / KT) * (unitsM ? 1.852 : 1),
     apOn: ap.on, athr: ap.on && ap.athr, apLat: ap.hdgMode, apVert: ap.hdgMode === 'APP' ? 'G/S' : ap.vMode,
@@ -465,7 +519,7 @@ function approachInfo() {
   const off = wrap180(b - dest.hdg);
   if (Math.abs(off) > 60) return null;
   const along = d * Math.cos(off * DEG) + 300;
-  return { xtk: d * Math.sin(off * DEG), gsErr: fm.h - (dest.elevM + 15 + Math.tan(3 * DEG) * along) };
+  return { xtk: d * Math.sin(off * DEG), gsErr: fm.h - fm.restHeight - (dest.elevM + Math.tan(3 * DEG) * along) };
 }
 
 // ------------------------------------------------------------------ actions
@@ -475,7 +529,7 @@ function onAction(a) {
   switch (a) {
     case 'gear':
       if (!def.retractable) { toast('This plane has fixed landing gear'); break; }
-      if (fm.onGround && c.gearDown) { toast('Not on the ground!'); break; }
+      if (fm.onGround && c.gearDown) { toast("Can't raise the gear on the ground"); break; }
       c.gearDown = !c.gearDown; toast(c.gearDown ? 'Gear down' : 'Gear up', 1200); break;
     case 'flapsDown': c.flaps = Math.min(nF, c.flaps + 1); toast(`Flaps ${def.flaps[c.flaps]}°`, 1000); break;
     case 'flapsUp': c.flaps = Math.max(0, c.flaps - 1); toast(`Flaps ${def.flaps[c.flaps]}°`, 1000); break;
@@ -483,7 +537,10 @@ function onAction(a) {
     case 'spoilers': if (!def.spoilerCD) { toast('No spoilers on this plane'); break; } c.spoilers = c.spoilers ? 0 : 1; break;
     case 'parking': c.parking = !c.parking; toast(c.parking ? 'Parking brake set' : 'Parking brake released', 1200); break;
     case 'burner': if (!def.afterburner) { toast('Only the fighter has an afterburner'); break; } c.burner = !c.burner; toast(c.burner ? 'Afterburner ON 🔥' : 'Afterburner off', 1200); break;
-    case 'reverse': if (!def.reverse) { toast('No reverse thrust on this plane'); break; } c.reverse = !c.reverse; break;
+    case 'reverse':
+      if (!def.reverse) { toast('No reverse thrust on this plane'); break; }
+      if (!fm.onGround && !c.reverse) { toast('Reverse thrust works on the ground only'); break; }
+      c.reverse = !c.reverse; toast(c.reverse ? 'Reverse thrust: throttle up to slow down' : 'Reversers stowed', 1500); break;
     case 'camera': setCam((camMode + 1) % 4); break;
     case 'cam1': setCam(0); break; case 'cam2': setCam(1); break; case 'cam3': setCam(2); break; case 'cam4': setCam(3); break;
     case 'autopilot': toggleAP(); break;
@@ -516,23 +573,33 @@ function setupAPPanel() {
   for (const b of $$('#ap [data-ap]')) {
     const act = b.dataset.ap;
     const fire = () => {
-      if (!fm) return;
-      const step = S.units === 'm' ? 1 : 1;
+      if (!fm || !started) return;
+      const step = 1;
+      if (!ap.on && act !== 'ATHR') {
+        if (fm.onGround) { toast('Take off first, then use the autopilot'); return; }
+        ap.engage(fm);
+      }
       switch (act) {
         case 'hdg-': ap.hdg = wrap360(ap.hdg - 5); ap.hdgMode = 'HDG'; break;
         case 'hdg+': ap.hdg = wrap360(ap.hdg + 5); ap.hdgMode = 'HDG'; break;
         case 'alt-': ap.alt = Math.max(0, ap.alt - 500 * FT * step); ap.vMode = 'VS'; ap.vs = -Math.abs(ap.vs || 1000 * FT / 60); break;
         case 'alt+': ap.alt += 500 * FT * step; ap.vMode = 'VS'; ap.vs = Math.abs(ap.vs || 1500 * FT / 60); break;
-        case 'vs-': ap.vMode = 'VS'; ap.vs -= 500 * FT / 60; break;
-        case 'vs+': ap.vMode = 'VS'; ap.vs += 500 * FT / 60; break;
-        case 'spd-': ap.spd = Math.max(fm.def.vref * 0.9, ap.spd - 5 * KT); break;
+        case 'vs-': case 'vs+': {
+          if (ap.vMode !== 'VS') ap.vs = 0;
+          ap.vMode = 'VS'; ap.vs += (act === 'vs+' ? 500 : -500) * FT / 60;
+          // the selected altitude must lie in the direction we are climbing/descending, else move it 1,000 ft that way
+          const hMsl = fm.h - (fm.geoidN || 0), dir = Math.sign(ap.vs);
+          if (dir && Math.sign(ap.alt - hMsl) !== dir) ap.alt = Math.max(0, (Math.round(hMsl / FT / 100) * 100 + dir * 1000) * FT);
+          if (!dir) ap.vMode = 'ALT';
+          break;
+        }
+        case 'spd-': ap.spd = Math.max(fm.def.vref * 1.25, ap.spd - 5 * KT); break;
         case 'spd+': ap.spd = Math.min(fm.def.vne * 0.95, ap.spd + 5 * KT); break;
         case 'HDG': ap.hdgMode = 'HDG'; ap.hdg = Math.round(fm.hpr.heading); if (ap.vMode === 'APP') ap.vMode = 'ALT'; break;
         case 'NAV': if (!dest) { toast('Set a destination in the menu first'); break; } ap.hdgMode = 'NAV'; break;
         case 'APP': if (!dest) { toast('Set a destination in the menu first'); break; } ap.hdgMode = 'APP'; if (!fm.ctrl.gearDown) toast('Approach armed: put the gear down and flaps out!'); break;
         case 'ATHR': ap.athr = !ap.athr; break;
       }
-      if (!ap.on && act !== 'ATHR' && !fm.onGround) ap.engage(fm), (ap.hdgMode = ['NAV', 'APP'].includes(act) && dest ? act : ap.hdgMode);
       refreshAP();
     };
     b.addEventListener('click', fire);
@@ -708,7 +775,7 @@ function buildMenu() {
   seg('#turb', 'turb', applyWeather);
   slider('#haze', 'haze', () => '', applyWeather);
   // settings
-  seg('#quality', 'quality', () => world.applyQuality(S.quality));
+  seg('#quality', 'quality', () => { S.autoQuality = false; save(); gov.step = 0; world.applyQuality(S.quality); });
   seg('#assist', 'assist'); seg('#invert', 'invert'); seg('#units', 'units');
   seg('#touchMode', 'touchMode', updateTouchVisibility, false);
   slider('#volume', 'volume', () => '', () => sound.setVolume(S.volume));

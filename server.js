@@ -1,9 +1,10 @@
 // Tiny zero-dependency static server: `npm start` then open http://localhost:3000
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = __dirname;
+const root = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT) || 3000;
 const types = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -15,7 +16,7 @@ http.createServer((req, res) => {
   let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
   if (p.endsWith('/')) p += 'index.html';
   const file = path.normalize(path.join(root, p));
-  if (!file.startsWith(root)) { res.writeHead(403); return res.end('Forbidden'); }
+  if (file !== root && !file.startsWith(root + path.sep)) { res.writeHead(403); return res.end('Forbidden'); }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404); return res.end('Not found'); }
     res.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });

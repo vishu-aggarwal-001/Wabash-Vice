@@ -1,7 +1,7 @@
 // World airport + runway database (OurAirports, public domain), ~9,800 airports.
 // Row: [icao, iata, name, city, country, lat, lon, elevFt, size(3 large, 2 medium, 1 small), runways]
 // Runway: [leIdent, leLat, leLon, leHdgTrue, heIdent, heLat, heLon, heHdgTrue, lengthFt, widthFt, paved]
-import { distM, bearingDeg } from './math.js';
+import { distM, bearingDeg, destPoint } from './math.js';
 
 let DB = [];
 export async function loadAirports() {
@@ -16,6 +16,13 @@ export async function loadAirports() {
     })),
     key: `${a[0]} ${a[1]} ${a[2]} ${a[3]}`.toLowerCase(),
   }));
+  // a few runways list the same point for both ends: rebuild the far end from the published heading and length
+  for (const ap of DB) for (const r of ap.runways) {
+    const [a, b] = r.ends;
+    if (distM(a.lat, a.lon, b.lat, b.lon) < 150 && Number.isFinite(a.hdg) && r.lengthFt > 500) {
+      [b.lat, b.lon] = destPoint(a.lat, a.lon, a.hdg, r.lengthFt * 0.3048);
+    }
+  }
   return DB;
 }
 export const airports = () => DB;
