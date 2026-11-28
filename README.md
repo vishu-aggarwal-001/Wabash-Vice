@@ -42,6 +42,8 @@
 
 On a phone or tablet you get an on-screen joystick, a throttle slider and buttons.
 
+**Joysticks, yokes, throttles and rudder pedals:** plug in as many as you like (stick + throttle + pedals works), press a button on each, then in *Settings → Joystick* click **Detect** next to a control and move it. Common devices (Extreme 3D Pro, T.16000M, X52, T.Flight HOTAS, Saitek yoke/quadrant/pedals, T-Rudder) are set up automatically. Use Chrome or Edge. Press **`** to see the frame rate.
+
 ## Run it locally
 
 ```bash
