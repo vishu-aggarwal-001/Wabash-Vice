@@ -127,6 +127,77 @@ def wheel(c, r, w):
     c = np.array(c, float)
     return cyl(c + [0, w / 2, 0], c - [0, w / 2, 0], r, n=18)
 
+
+# ---------------------------------------------------------------- hinged control surfaces
+ANIM = {}  # per model: node name -> {axis (glTF frame), sign, max (deg), input}
+
+def _interp(stations, y):
+    """linear interpolation of (le_x, y, z, chord) at span y (stations sorted by y)"""
+    for a, b in zip(stations, stations[1:]):
+        if a[1] <= y <= b[1] + 1e-9:
+            t = 0 if b[1] == a[1] else (y - a[1]) / (b[1] - a[1])
+            return tuple(a[k] + (b[k] - a[k]) * t for k in range(4))
+    return stations[-1] if y > stations[-1][1] else stations[0]
+
+def wing_split(stations, surfs, t=0.12, camber=0.02, vertical=False):
+    """A wing (one side, +y; or a fin when vertical) with hinged trailing-edge surfaces cut out.
+    surfs: list of (y0, y1, chord_fraction). Returns (fixed_mesh, [(surface_mesh, hinge0, hinge1)])."""
+    cuts = sorted(set([s[1] for s in stations] + [y for (y0, y1, cf) in surfs for y in (y0, y1)]))
+    fixed = Mesh(); parts = []
+    for ya, yb in zip(cuts, cuts[1:]):
+        cover = next((sf for sf in surfs if sf[0] <= ya + 1e-9 and yb <= sf[1] + 1e-9), None)
+        sa, sb = _interp(stations, ya), _interp(stations, yb)
+        k = 1 - cover[2] if cover else 1.0
+        fixed.extend(wing([(sa[0], sa[1], sa[2], sa[3] * k), (sb[0], sb[1], sb[2], sb[3] * k)], t=t / max(k, 0.5), camber=camber, mirror=False, vertical=vertical))
+    for (y0, y1, cf) in surfs:
+        s0, s1 = _interp(stations, y0), _interp(stations, y1)
+        h0 = (s0[0] - s0[3] * (1 - cf), s0[1], s0[2]); h1 = (s1[0] - s1[3] * (1 - cf), s1[1], s1[2])
+        surf = wing([(h0[0] - 0.02 * s0[3], y0, s0[2], s0[3] * cf), (h1[0] - 0.02 * s1[3], y1, s1[2], s1[3] * cf)], t=t * 0.9, camber=0, mirror=False, vertical=vertical)
+        if vertical: h0 = (h0[0], 0.0, y0); h1 = (h1[0], 0.0, y1)
+        parts.append((surf, h0, h1))
+    return fixed, parts
+
+def mirror_y(m):
+    V = np.array(m.v) * [1, -1, 1]; N = np.array(m.n) * [1, -1, 1]
+    I = np.array(m.i).reshape(-1, 3)[:, ::-1].ravel().tolist()
+    return Mesh().add(V, N, I)
+
+def hinge_node(model, name, mesh, mat, h0, h1, want, maxdeg, inp):
+    """register a hinged surface: rotates about the h0->h1 hinge line; 'want' = body-frame direction the trailing
+    edge moves for a positive command"""
+    h0 = np.array(h0, float); h1 = np.array(h1, float)
+    ax = (h1 - h0) / np.linalg.norm(h1 - h0)
+    te = np.array([-1.0, 0, 0])  # trailing edge sits aft of the hinge
+    moved = np.cross(ax, te)       # direction the TE moves for a small +rotation
+    sign = 1 if np.dot(moved, np.array(want, float)) > 0 else -1
+    g = to_gltf([ax])[0]
+    ANIM.setdefault(model, {})[name] = {'axis': [round(float(v), 5) for v in g], 'sign': sign, 'max': maxdeg, 'input': inp}
+    return (name, [(mesh, mat)], tuple(h0))
+
+def surfaces(model, wparts, hparts, vparts, wmat, hmat, vmat, ail, elev, rud, flap, flaperon=False):
+    """nodes for ailerons/flaps (wing parts: inner = flap, outer = aileron unless flaperon), elevators, rudder"""
+    nodes = []
+    mir = lambda h: (h[0], -h[1], h[2])
+    for side in ('L', 'R'):
+        for k, (m, h0, h1) in enumerate(wparts):
+            mm = m if side == 'L' else mirror_y(m); a, b = (h0, h1) if side == 'L' else (mir(h0), mir(h1))
+            if flaperon:   # one surface does both: + = trailing edge down on the left wing for right roll
+                nodes.append(hinge_node(model, f'flaperon{side}', mm, wmat, a, b, (0, 0, -1), ail, 'flaperonL' if side == 'L' else 'flaperonR'))
+                ANIM[model][f'flaperon{side}']['flapMax'] = flap
+            elif k == 0 and len(wparts) > 1:
+                nodes.append(hinge_node(model, f'flap{side}', mm, wmat, a, b, (0, 0, -1), flap, 'flap'))
+            else:
+                nodes.append(hinge_node(model, f'aileron{side}', mm, wmat, a, b, (0, 0, -1) if side == 'L' else (0, 0, 1), ail, 'ail'))
+        for (m, h0, h1) in hparts:
+            mm = m if side == 'L' else mirror_y(m); a, b = (h0, h1) if side == 'L' else (mir(h0), mir(h1))
+            nodes.append(hinge_node(model, f'elevator{side}', mm, hmat, a, b, (0, 0, 1), elev, 'elev'))
+    for (m, h0, h1) in vparts:
+        nodes.append(hinge_node(model, 'rudder', m, vmat, h0, h1, (0, -1, 0), rud, 'rud'))
+    return nodes
+
+def write_anim(model):
+    with open(os.path.join(OUT, model + '.anim.json'), 'w') as f: json.dump({'nodes': ANIM.get(model, {})}, f, indent=1)
+
 # ---------------------------------------------------------------- GLB writer
 def to_gltf(p):  # body FLU -> glTF Y-up (x fwd, y up, z right)
     p = np.asarray(p, float); return np.stack([p[:, 0], p[:, 2], -p[:, 1]], 1)
@@ -151,6 +222,7 @@ def write_glb(path, nodes):
             d = {'pbrMetallicRoughness': {'baseColorFactor': list(m['c']) + [m.get('a', 1.0)],
                  'metallicFactor': m.get('m', 0.1), 'roughnessFactor': m.get('r', 0.5)}, 'doubleSided': True}
             if 'e' in m: d['emissiveFactor'] = list(m['e'])
+            elif m.get('a', 1.0) >= 1: d['emissiveFactor'] = [round(0.11 * c, 4) for c in m['c']]
             if m.get('a', 1.0) < 1: d['alphaMode'] = 'BLEND'
             gl['materials'].append(d); mats[key] = len(gl['materials']) - 1
         return mats[key]
@@ -177,15 +249,17 @@ def write_glb(path, nodes):
     print(path, len(out) // 1024, 'KB')
 
 # ---------------------------------------------------------------- materials
-WHITE = {'c': (0.92, 0.92, 0.94), 'm': 0.2, 'r': 0.35}
-GOLD = {'c': (0.81, 0.66, 0.29), 'm': 0.5, 'r': 0.35}      # old-gold stripe
+WHITE = {'c': (0.93, 0.93, 0.92), 'm': 0.0, 'r': 0.42}        # gloss paint
+GOLD = {'c': (0.81, 0.66, 0.29), 'm': 0.2, 'r': 0.4}      # old-gold stripe
 BLACK = {'c': (0.06, 0.06, 0.07), 'm': 0.3, 'r': 0.4}
 GLASS = {'c': (0.08, 0.13, 0.2), 'm': 0.9, 'r': 0.05, 'a': 0.85}
-GREY = {'c': (0.55, 0.57, 0.6), 'm': 0.7, 'r': 0.35}
+GREY = {'c': (0.68, 0.69, 0.7), 'm': 0.55, 'r': 0.42}        # bare aluminium
 DARK = {'c': (0.18, 0.18, 0.2), 'm': 0.6, 'r': 0.5}
 TYRE = {'c': (0.04, 0.04, 0.04), 'm': 0.0, 'r': 0.9}
-NAVY = {'c': (0.08, 0.14, 0.3), 'm': 0.3, 'r': 0.4}
-CAMO = {'c': (0.42, 0.46, 0.5), 'm': 0.35, 'r': 0.55}
+NAVY = {'c': (0.08, 0.14, 0.3), 'm': 0.0, 'r': 0.4}
+CAMO = {'c': (0.47, 0.5, 0.53), 'm': 0.05, 'r': 0.6}         # air-superiority grey
+CAMO2 = {'c': (0.33, 0.36, 0.4), 'm': 0.05, 'r': 0.6}
+RADOME = {'c': (0.2, 0.21, 0.23), 'm': 0.0, 'r': 0.5}
 FLAME = {'c': (1.0, 0.55, 0.15), 'e': (1.0, 0.5, 0.12), 'a': 0.7, 'r': 1.0}
 REDL = {'c': (1, 0.1, 0.1), 'e': (1, 0.1, 0.1)}
 GRNL = {'c': (0.1, 1, 0.2), 'e': (0.1, 1, 0.2)}
@@ -197,10 +271,13 @@ def trainer():
                  (-3.0, 0, 0.75, 0.25, 0.35, 3), (-4.6, 0, 0.95, 0.1, 0.18, 3)])
     stripe = loft([(2.0, 0, 0.18, 0.62, 0.12, 4), (-3.0, 0, 0.62, 0.27, 0.1, 4)], n=16)
     cabin_glass = loft([(1.75, 0, 1.05, 0.5, 0.22, 3), (1.1, 0, 1.18, 0.6, 0.15, 3), (-0.6, 0, 1.15, 0.55, 0.12, 3)])
-    win = wing([(1.05, 0.55, 1.3, 1.6), (1.05, 3.0, 1.32, 1.6), (0.95, 5.5, 1.38, 1.2)], t=0.14, camber=0.03)
+    wst = [(1.05, 0.55, 1.3, 1.6), (1.05, 3.0, 1.32, 1.6), (0.95, 5.5, 1.38, 1.2)]
+    winL, wparts = wing_split(wst, [(0.6, 3.0, 0.3), (3.1, 5.35, 0.27)], t=0.14, camber=0.03)
+    win = Mesh().extend(winL).extend(mirror_y(winL))
     strut = cyl((0.6, 0.6, 0.15), (0.4, 2.6, 1.3), 0.045).extend(cyl((0.6, -0.6, 0.15), (0.4, -2.6, 1.3), 0.045))
-    htail = wing([(-3.6, 0.1, 0.85, 1.05), (-3.8, 1.75, 0.85, 0.75)], t=0.09, camber=0)
-    vtail = wing([(-3.1, 0.9, 0, 1.6), (-4.2, 2.2, 0, 0.8)], t=0.09, camber=0, mirror=False, vertical=True)
+    htL, hparts = wing_split([(-3.6, 0.1, 0.85, 1.05), (-3.8, 1.75, 0.85, 0.75)], [(0.1, 1.75, 0.42)], t=0.09, camber=0)
+    htail = Mesh().extend(htL).extend(mirror_y(htL))
+    vtail, vparts = wing_split([(-3.1, 0.9, 0, 1.6), (-4.2, 2.2, 0, 0.8)], [(0.95, 2.15, 0.42)], t=0.09, camber=0, vertical=True)
     cowl = loft([(3.55, 0, 0.35, 0.18, 0.18), (3.5, 0, 0.35, 0.26, 0.26)])
     spinner = loft([(3.95, 0, 0.35, 0.02, 0.02), (3.75, 0, 0.35, 0.13, 0.13), (3.56, 0, 0.35, 0.17, 0.17)])
     blade = Mesh()
@@ -221,7 +298,8 @@ def trainer():
         ('body', [(body, WHITE), (stripe, GOLD), (cabin_glass, GLASS), (win, WHITE), (strut, GREY), (htail, WHITE),
                   (vtail, GOLD), (cowl, BLACK), (spinner, GOLD), (lights_l, REDL), (lights_r, GRNL)], None),
         ('prop', [(blade, BLACK)], (3.62, 0, 0.35)),
-        ('gear', [(gear, DARK)], None)])
+        ('gear', [(gear, DARK)], None)] + surfaces('trainer', wparts, hparts, vparts, WHITE, WHITE, GOLD, ail=20, elev=25, rud=25, flap=30))
+    write_anim('trainer')
 
 # ================================================================ AIRLINER (twin-jet narrowbody)
 def airliner():
@@ -244,10 +322,20 @@ def airliner():
     cv = np.array(cockpit.v); keep = cv[:, 2] > 0.95
     tri = np.array(cockpit.i).reshape(-1, 3); tri = tri[keep[tri].all(1)]
     cockpit = Mesh().add(cv * [1, 1.01, 1.01], cockpit.n, tri.ravel().tolist())
-    w = wing([(4.5, 1.6, -0.9, 7.0), (0.5, 6.5, -0.45, 4.3), (-6.0, 17.0, 0.6, 1.5)], t=0.12, camber=0.02)
+    wst = [(4.5, 1.6, -0.9, 7.0), (0.5, 6.5, -0.45, 4.3), (-6.0, 17.0, 0.6, 1.5)]
+    wL, wparts = wing_split(wst, [(2.0, 10.5, 0.25), (11.0, 15.8, 0.22)], t=0.12, camber=0.02)
+    w = Mesh().extend(wL).extend(mirror_y(wL))
+    # ground/flight spoilers: thin panels on top of the wing just ahead of the flaps, hinged at their front edge
+    sp_parts = []
+    for (y0, y1) in ((3.0, 6.0), (6.2, 10.2)):
+        s0, s1 = _interp(wst, y0), _interp(wst, y1)
+        h0 = (s0[0] - s0[3] * 0.6, y0, s0[2] + 0.05 * s0[3]); h1 = (s1[0] - s1[3] * 0.6, y1, s1[2] + 0.05 * s1[3])
+        sp = wing([(h0[0], y0, h0[2], s0[3] * 0.15), (h1[0], y1, h1[2], s1[3] * 0.15)], t=0.08, camber=0, mirror=False)
+        sp_parts.append((sp, h0, h1))
     lets = wing([(-5.8, 17.0, 0.6, 1.45), (-7.0, 17.3, 2.6, 0.7)], t=0.08, camber=0)
-    ht = wing([(-14.0, 0.6, 1.9, 4.2), (-17.6, 6.2, 2.4, 1.6)], t=0.1, camber=0)
-    vt = wing([(-12.0, 2.3, 0, 5.8), (-17.8, 9.8, 0, 2.2)], t=0.1, camber=0, mirror=False, vertical=True)
+    htL, hparts = wing_split([(-14.0, 0.6, 1.9, 4.2), (-17.6, 6.2, 2.4, 1.6)], [(0.8, 6.0, 0.3)], t=0.1, camber=0)
+    ht = Mesh().extend(htL).extend(mirror_y(htL))
+    vt, vparts = wing_split([(-12.0, 2.3, 0, 5.8), (-17.8, 9.8, 0, 2.2)], [(2.6, 9.6, 0.3)], t=0.1, camber=0, vertical=True)
     eng = Mesh(); fan = Mesh(); pyl = Mesh()
     for sg in (1, -1):
         y = 5.75 * sg
@@ -260,12 +348,16 @@ def airliner():
         y = 3.8 * sg
         gear.extend(cyl((-1.2, y, -1.0), (-1.2, y, -3.0), 0.18))
         gear.extend(wheel((-1.2, y + 0.35, -3.3), 0.57, 0.38)).extend(wheel((-1.2, y - 0.35, -3.3), 0.57, 0.38))
-    tailpaint = wing([(-13.5, 4.5, 0, 5.0), (-17.8, 9.9, 0, 2.25)], t=0.105, camber=0, mirror=False, vertical=True)
+    tailpaint, _ = wing_split([(-13.5, 4.5, 0, 5.0), (-17.8, 9.9, 0, 2.25)], [(4.5, 9.6, 0.3)], t=0.105, camber=0, vertical=True)
     write_glb(os.path.join(OUT, 'airliner.glb'), [
         ('body', [(body, WHITE), (belly, NAVY), (cheat, GOLD), (windows, BLACK), (cockpit, BLACK), (w, GREY), (lets, GOLD),
                   (ht, WHITE), (vt, NAVY), (tailpaint, GOLD), (eng, WHITE), (fan, DARK), (pyl, GREY),
                   (box((-6.1, 17.05, 0.65), (0.3, 0.1, 0.1)), REDL), (box((-6.1, -17.05, 0.65), (0.3, 0.1, 0.1)), GRNL)], None),
-        ('gear', [(gear, DARK)], None)])
+        ('gear', [(gear, DARK)], None)] + surfaces('airliner', wparts, hparts, vparts, GREY, WHITE, NAVY, ail=20, elev=25, rud=25, flap=35)
+        + [hinge_node('airliner', f'spoiler{side}{k}', m if side == 'L' else mirror_y(m), GREY, h0 if side == 'L' else (h0[0], -h0[1], h0[2]),
+                      h1 if side == 'L' else (h1[0], -h1[1], h1[2]), (0, 0, 1), 50, 'spoiler')
+           for k, (m, h0, h1) in enumerate(sp_parts) for side in ('L', 'R')])
+    write_anim('airliner')
 
 # ================================================================ FIGHTER (single-engine multirole)
 def fighter():
@@ -278,10 +370,12 @@ def fighter():
     intake = Mesh()
     for sg in (1, -1):
         intake.extend(loft([(3.0, 0.95 * sg, -0.2, 0.28, 0.42, 3), (2.2, 0.95 * sg, -0.2, 0.33, 0.45, 3), (-1.5, 0.8 * sg, -0.1, 0.3, 0.4, 3)], n=16))
-    w = wing([(1.5, 0.9, 0.0, 6.2), (-3.2, 5.0, -0.05, 1.6)], t=0.05, camber=0)
+    wL, wparts = wing_split([(1.5, 0.9, 0.0, 6.2), (-3.2, 5.0, -0.05, 1.6)], [(1.0, 4.4, 0.24)], t=0.05, camber=0)
+    w = Mesh().extend(wL).extend(mirror_y(wL))
     strake = wing([(4.5, 0.6, 0.15, 3.0), (1.6, 1.3, 0.05, 1.0)], t=0.04, camber=0)
-    ht = wing([(-4.2, 0.6, 0.05, 2.6), (-6.4, 3.0, 0.05, 1.0)], t=0.05, camber=0)
-    vt = wing([(-2.6, 0.7, 0, 3.6), (-5.9, 3.6, 0, 1.3)], t=0.05, camber=0, mirror=False, vertical=True)
+    htL, hparts = wing_split([(-4.2, 0.6, 0.05, 2.6), (-6.4, 3.0, 0.05, 1.0)], [(0.6, 3.0, 0.62)], t=0.05, camber=0)
+    ht = Mesh().extend(htL).extend(mirror_y(htL))
+    vt, vparts = wing_split([(-2.6, 0.7, 0, 3.6), (-5.9, 3.6, 0, 1.3)], [(1.0, 3.4, 0.3)], t=0.05, camber=0, vertical=True)
     noz = loft([(-6.0, 0, 0.12, 0.56, 0.56), (-7.0, 0, 0.12, 0.48, 0.48)], n=24)
     burner = loft([(-6.95, 0, 0.12, 0.42, 0.42), (-8.5, 0, 0.12, 0.3, 0.3), (-10.0, 0, 0.12, 0.05, 0.05)], n=20)
     rails = cyl((0.2, 5.1, -0.05), (-3.2, 5.1, -0.05), 0.07).extend(cyl((0.2, -5.1, -0.05), (-3.2, -5.1, -0.05), 0.07))
@@ -290,11 +384,13 @@ def fighter():
     for sg in (1, -1):
         gear.extend(cyl((-1.0, 1.1 * sg, -0.4), (-1.0, 1.25 * sg, -1.5), 0.1)).extend(wheel((-1.0, 1.25 * sg, -1.66), 0.34, 0.22))
     write_glb(os.path.join(OUT, 'fighter.glb'), [
-        ('body', [(body, CAMO), (canopy, {'c': (0.55, 0.45, 0.2), 'm': 0.95, 'r': 0.05, 'a': 0.8}), (intake, CAMO),
-                  (w, CAMO), (strake, CAMO), (ht, CAMO), (vt, CAMO), (noz, DARK), (rails, GREY),
+        ('body', [(body, CAMO), (canopy, {'c': (0.55, 0.45, 0.2), 'm': 0.95, 'r': 0.05, 'a': 0.8}), (intake, CAMO2),
+                  (loft([(8.62, 0, 0.1, 0.03, 0.03), (7.4, 0, 0.12, 0.33, 0.33), (6.6, 0, 0.14, 0.45, 0.45)], n=28), RADOME),
+                  (w, CAMO2), (strake, CAMO2), (ht, CAMO2), (vt, CAMO2), (noz, DARK), (rails, GREY),
                   (box((7.0, 0, 0.12), (1.2, 0.02, 0.02)), GOLD)], None),
         ('burner', [(burner, FLAME)], None),
-        ('gear', [(gear, DARK)], None)])
+        ('gear', [(gear, DARK)], None)] + surfaces('fighter', wparts, hparts, vparts, CAMO, CAMO, CAMO, ail=21, elev=20, rud=30, flap=20, flaperon=True))
+    write_anim('fighter')
 
 if __name__ == '__main__':
     os.makedirs(OUT, exist_ok=True)

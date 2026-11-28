@@ -5,10 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0a1020">
 <title>Wabash Flight · fly anywhere on Earth</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈️</text></svg>">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23e9d29a' d='M16 2l2 9 11 5v3l-11-2-1 7 4 3v2l-5-1-5 1v-2l4-3-1-7-11 2v-3l11-5z'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cesium@1.147.0/Build/Cesium/Widgets/widgets.css">
 <link rel="stylesheet" href="src/style.css">
 <script src="https://cdn.jsdelivr.net/npm/cesium@1.147.0/Build/Cesium/Cesium.js"></script>
+<script>
+  // if jsDelivr is blocked or down (some school and office networks), load the same Cesium build from unpkg
+  if (!window.Cesium) {
+    window.CESIUM_BASE_URL = 'https://unpkg.com/cesium@1.147.0/Build/Cesium/';
+    document.write('<link rel="stylesheet" href="https://unpkg.com/cesium@1.147.0/Build/Cesium/Widgets/widgets.css"><script src="https://unpkg.com/cesium@1.147.0/Build/Cesium/Cesium.js"><\/script>');
+  }
+</script>
 </head>
 <body>
 <div id="globe"></div>
@@ -17,10 +24,11 @@
 <div id="status"></div>
 <div id="topright">
   <button class="iconbtn" id="btnAP" title="Autopilot panel (Z toggles autopilot)">AP</button>
-  <button class="iconbtn" id="btnCam" title="Camera (C)">🎥</button>
-  <button class="iconbtn" id="btnMenu" title="Menu (Esc)">☰</button>
+  <button class="iconbtn" id="btnCam" title="Camera (C)"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h4l2-3h6l2 3h4v13H3z"/><circle cx="12" cy="13" r="4"/></svg></button>
+  <button class="iconbtn" id="btnMenu" title="Menu (Esc)"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
 </div>
 <div id="warn"></div>
+<div id="perf" class="hidden"></div>
 <div id="toast"></div>
 <div id="landing" class="hidden"></div>
 
@@ -49,10 +57,10 @@
   <div class="panel">
     <div class="brand"><h1>Wabash <span>Flight</span></h1><small>Fly anywhere on planet Earth, right in your browser.</small></div>
     <div class="tabs" id="tabs">
-      <button data-tab="fly" class="active">✈️ Fly</button>
-      <button data-tab="weather">⛅ Weather &amp; time</button>
-      <button data-tab="settings">⚙️ Settings</button>
-      <button data-tab="help">🎮 Controls</button>
+      <button data-tab="fly" class="active">Fly</button>
+      <button data-tab="weather">Weather &amp; time</button>
+      <button data-tab="settings">Settings</button>
+      <button data-tab="help">Controls</button>
     </div>
 
     <section data-page="fly">
@@ -98,7 +106,17 @@
       <div class="row"><label>Sound</label><input type="range" id="volume" min="0" max="1" step="0.05"></div>
       <div class="row"><label>Units</label><div class="seg" id="units"><button data-v="ft">Feet &amp; knots</button><button data-v="m">Metres &amp; km/h</button></div></div>
       <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
-      <h3 style="margin:0 0 6px">🌍 Photorealistic 3D cities</h3>
+      <h3 style="margin:0 0 6px">Joystick, yoke, throttle, pedals &amp; gamepad</h3>
+      <p class="note">Plug in any number of controllers (stick + throttle + rudder pedals works). Press a button on each so the browser shows it. To set something up, click <b>Detect</b> and move that control. Your setup is saved for each device. Use Chrome or Edge: Safari on Mac doesn't see most joysticks, and Firefox on Mac can miss slider throttles.</p>
+      <div id="hwDevices"></div>
+      <div id="hwPrompt" class="hwprompt"></div>
+      <div id="hwAxes" class="hwlist"></div>
+      <details><summary class="note" style="cursor:pointer;margin:8px 0">Buttons</summary><div id="hwButtons" class="hwlist"></div></details>
+      <div class="row"><label>Dead zone</label><input type="range" id="hwDz" min="0" max="0.2" step="0.01"><span id="hwDzTxt" class="note"></span></div>
+      <div class="row"><label>Response curve</label><input type="range" id="hwCurve" min="0" max="1" step="0.05"><span id="hwCurveTxt" class="note"></span><span class="note">more = finer control near the centre</span></div>
+      <div class="row"><button class="ghost" id="hwHat"></button><button class="ghost" id="hwReset">Reset controller setup</button></div>
+      <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+      <h3 style="margin:0 0 6px">Photorealistic 3D cities</h3>
       <p class="note">Wabash Flight uses Cesium World Terrain and Google photorealistic 3D cities (real buildings in New York, London, Tokyo…). Turn them off on slower phones and tablets. Optional: paste your own <a href="https://ion.cesium.com/signup" target="_blank" rel="noopener">Cesium ion</a> token to use it instead of the built-in one.</p>
       <div class="row"><label>Own ion token</label><input type="password" id="ionToken" class="grow" placeholder="optional" autocomplete="off"><button class="ghost" id="ionSave">Save &amp; reload</button></div>
       <div class="row"><label>3D cities</label><div class="seg" id="photoreal"><button data-v="1">On</button><button data-v="0">Off</button></div><span class="note">Heavy on phones. Off by default on touch devices.</span></div>
@@ -121,9 +139,11 @@
         <div><span>Autopilot on / off</span><span><kbd>Z</kbd></span></div>
         <div><span>Camera: cycle / chase / cockpit / fly-by / orbit</span><span><kbd>C</kbd> <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd></span></div>
         <div><span>Look around / zoom</span><span>drag mouse · wheel · double-click resets</span></div>
-        <div><span>Map on/off · HUD on/off</span><span><kbd>M</kbd> · <kbd>U</kbd></span></div>
+        <div><span>Map on/off · map range · HUD on/off</span><span><kbd>M</kbd> · <kbd>Shift</kbd>+<kbd>M</kbd> or click the map · <kbd>U</kbd></span></div>
         <div><span>Pause · menu · restart</span><span><kbd>P</kbd> · <kbd>Esc</kbd> · <kbd>Backspace</kbd></span></div>
         <div><span>Gamepad</span><span>L-stick fly · RT/LT throttle · LB/RB rudder · A brake · Y gear · X flaps · B camera</span></div>
+        <div><span>Joystick / yoke / pedals</span><span>Settings → Joystick: Detect each control</span></div>
+        <div><span>Frame-rate readout</span><span><kbd>`</kbd></span></div>
       </div>
       <p class="note" style="margin-top:14px"><b>First flight:</b> pick the Wabash Trainer at KLAF, hold <kbd>R</kbd> for full power, at 55 knots gently hold <kbd>S</kbd> to lift the nose, then let go. To land: line up with the runway, reduce power so the green VS number reads about −500, add flaps with <kbd>V</kbd>, and raise the nose just before touching down. Aim for a touchdown under 200 ft/min for a “Butter” landing!</p>
       <p class="note">Satellite imagery © Esri, Maxar, Earthstar Geographics. Terrain: AWS Open Data Terrain Tiles. Airports: OurAirports (public domain). Globe engine: CesiumJS (Apache-2.0). Wabash Flight is a fan-made project and is not affiliated with any flight-simulator company.</p>

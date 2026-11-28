@@ -1,0 +1,114 @@
+{
+ "nodes": {
+  "flapL": {
+   "axis": [
+    -0.37834,
+    0.08816,
+    -0.92146
+   ],
+   "sign": -1,
+   "max": 35,
+   "input": "flap"
+  },
+  "aileronL": {
+   "axis": [
+    -0.37857,
+    0.0921,
+    -0.92098
+   ],
+   "sign": -1,
+   "max": 20,
+   "input": "ail"
+  },
+  "elevatorL": {
+   "axis": [
+    -0.30183,
+    0.08478,
+    -0.94958
+   ],
+   "sign": 1,
+   "max": 25,
+   "input": "elev"
+  },
+  "flapR": {
+   "axis": [
+    -0.37834,
+    0.08816,
+    0.92146
+   ],
+   "sign": 1,
+   "max": 35,
+   "input": "flap"
+  },
+  "aileronR": {
+   "axis": [
+    -0.37857,
+    0.0921,
+    0.92098
+   ],
+   "sign": -1,
+   "max": 20,
+   "input": "ail"
+  },
+  "elevatorR": {
+   "axis": [
+    -0.30183,
+    0.08478,
+    0.94958
+   ],
+   "sign": -1,
+   "max": 25,
+   "input": "elev"
+  },
+  "rudder": {
+   "axis": [
+    -0.40069,
+    0.91621,
+    -0.0
+   ],
+   "sign": 1,
+   "max": 25,
+   "input": "rud"
+  },
+  "spoilerL0": {
+   "axis": [
+    -0.43618,
+    0.05773,
+    -0.89801
+   ],
+   "sign": 1,
+   "max": 50,
+   "input": "spoiler"
+  },
+  "spoilerR0": {
+   "axis": [
+    -0.43618,
+    0.05773,
+    0.89801
+   ],
+   "sign": -1,
+   "max": 50,
+   "input": "spoiler"
+  },
+  "spoilerL1": {
+   "axis": [
+    -0.41745,
+    0.07695,
+    -0.90544
+   ],
+   "sign": 1,
+   "max": 50,
+   "input": "spoiler"
+  },
+  "spoilerR1": {
+   "axis": [
+    -0.41745,
+    0.07695,
+    0.90544
+   ],
+   "sign": -1,
+   "max": 50,
+   "input": "spoiler"
+  }
+ }
+}

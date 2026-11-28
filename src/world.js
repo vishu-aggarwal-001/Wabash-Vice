@@ -109,10 +109,18 @@ export class World {
     let base = null;
     if (this.hasIon) {
       try { base = Cesium.ImageryLayer.fromProviderAsync(Cesium.IonImageryProvider.fromAssetId(2)); } catch (e) { console.warn(e); }
-      if (base) { const b0 = base; b0.errorEvent.addEventListener(() => { v.imageryLayers.remove(b0); v.imageryLayers.add(this._esri(), 0); }); }
+      if (base) {
+        const b0 = base;
+        // fall back to Esri if Bing can't be reached at all (ion quota used up) or its tiles keep failing
+        b0.errorEvent.addEventListener(() => this._useEsri(b0));
+        b0.readyEvent.addEventListener((prov) => {
+          let fails = 0; const t0 = performance.now();
+          prov.errorEvent.addEventListener(() => { if (++fails > 20 && performance.now() - t0 < 60000) this._useEsri(b0); });
+        });
+      }
     }
     if (!base) base = this._esri();
-    v.imageryLayers.add(base);
+    v.imageryLayers.add(base, 0);
     // terrain
     let terrainOk = false;
     if (this.hasIon) {
@@ -133,6 +141,12 @@ export class World {
     this.initClouds();
   }
 
+  _useEsri(layer) {
+    if (this._esriOn) return; this._esriOn = true;
+    const L = this.viewer.imageryLayers; if (L.contains(layer)) L.remove(layer);
+    L.add(this._esri(), 0);
+  }
+
   _esri() {
     return new Cesium.ImageryLayer(new Cesium.UrlTemplateImageryProvider({
       url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
@@ -145,6 +159,12 @@ export class World {
     if (on && !this.tileset && this.hasIon) {
       try {
         this.tileset = await Cesium.createGooglePhotorealistic3DTileset({ onlyUsingWithGoogleGeocoder: true });
+        // Google's 3D cities have daylight baked in: dim them with the sun so night looks like night
+        this.tileShader = new Cesium.CustomShader({
+          uniforms: { u_light: { type: Cesium.UniformType.FLOAT, value: 1.0 } },
+          fragmentShaderText: 'void fragmentMain(FragmentInput fsInput, inout czm_modelMaterial material) { material.diffuse *= u_light; }',
+        });
+        this.tileset.customShader = this.tileShader;
         this.tileset.maximumScreenSpaceError = this.settings.quality >= 3 ? 8 : 16;
         scene.primitives.add(this.tileset);
       } catch (e) { console.warn('3D tiles failed', e); this.tileset = null; return false; }
@@ -184,16 +204,60 @@ export class World {
     return (((d.getUTCHours() + d.getUTCMinutes() / 60 + lonDeg / 15) % 24) + 24) % 24;
   }
 
+  // daylight 0 (night) .. 1 (day) for the 3D cities
+  setDaylight(day) {
+    if (this.tileShader) this.tileShader.setUniform('u_light', 0.07 + 0.93 * Math.max(0, Math.min(1, day)));
+  }
+
   // ---------------------------------------------------------- ground height
+  // Height of the ground (WGS84 ellipsoid metres). With the 3D cities on, scene.sampleHeight reads the
+  // photorealistic tiles (buildings included); it renders a small depth pass, so it is rate-limited.
+  // If nothing loaded is under that point, the last background terrain probe is used.
   groundHeight(latDeg, lonDeg, fallback) {
     const scene = this.viewer.scene;
     const carto = Cesium.Cartographic.fromDegrees(lonDeg, latDeg);
-    if (this.tileset && this.tileset.show) {
-      const h = scene.sampleHeightSupported ? scene.sampleHeight(carto, this.excludeFromPick) : undefined;
-      if (h !== undefined) return h;
+    if (this.tileset && this.tileset.show && scene.sampleHeightSupported) {
+      const c = this._sh, now = performance.now();
+      if (c && now - c.t < 90 && Math.abs(c.lat - latDeg) < 1e-4 && Math.abs(c.lon - lonDeg) < 1e-4) return c.h;
+      let h;
+      try { h = scene.sampleHeight(carto, this.excludeFromPick); } catch { h = undefined; }
+      if (h !== undefined) { this._sh = { t: now, lat: latDeg, lon: lonDeg, h }; return h; }
     }
-    const h = scene.globe.getHeight(carto);
-    return h === undefined ? fallback : h;
+    const h = scene.globe.show ? scene.globe.getHeight(carto) : undefined;
+    if (h !== undefined) return h;
+    const p = this.probe;
+    if (p && Math.abs(p.lat - latDeg) < 0.006 && Math.abs(p.lon - lonDeg) < 0.006 / Math.max(0.2, Math.cos(latDeg * DEG))) return p.h;
+    return fallback;
+  }
+  // highest terrain (m, ellipsoid) at these [lat, lon] points, from coarse terrain tiles (resolves null if unknown)
+  async terrainMax(points, timeoutMs = 6000) {
+    const tp = this.viewer.scene.globe.terrainProvider;
+    if (!tp || tp instanceof Cesium.EllipsoidTerrainProvider) return null;
+    const pos = points.map(([la, lo]) => Cesium.Cartographic.fromDegrees(lo, la));
+    const job = Cesium.sampleTerrain(tp, 10, pos).then((r) => r.reduce((m, c) => (Number.isFinite(c.height) ? Math.max(m, c.height) : m), -1e9)).catch(() => null);
+    const res = await Promise.race([job, new Promise((ok) => setTimeout(() => ok(null), timeoutMs))]);
+    return res === -1e9 ? null : res;
+  }
+  // terrain heights (m, ellipsoid) at [lat, lon] points from coarse tiles; null if unavailable
+  async terrainHeights(points, timeoutMs = 6000) {
+    const tp = this.viewer.scene.globe.terrainProvider;
+    if (!tp || tp instanceof Cesium.EllipsoidTerrainProvider) return null;
+    const pos = points.map(([la, lo]) => Cesium.Cartographic.fromDegrees(lo, la));
+    const job = Cesium.sampleTerrain(tp, 11, pos).then((r) => r.map((c) => c.height)).catch(() => null);
+    return Promise.race([job, new Promise((ok) => setTimeout(() => ok(null), timeoutMs))]);
+  }
+  // background terrain probe (async, about once a second) so there is always real ground to hit,
+  // even where nothing has been drawn yet or the globe is hidden behind the 3D cities
+  probeTerrain(latDeg, lonDeg) {
+    if (this._probing) return;
+    const tp = this.viewer.scene.globe.terrainProvider;
+    if (!tp || tp instanceof Cesium.EllipsoidTerrainProvider) return;
+    this._probing = true;
+    const pos = [Cesium.Cartographic.fromDegrees(lonDeg, latDeg)];
+    const level = tp instanceof Cesium.CesiumTerrainProvider ? 12 : 11;
+    Cesium.sampleTerrain(tp, level, pos).then((r) => {
+      const h = r[0].height; if (Number.isFinite(h)) this.probe = { lat: latDeg, lon: lonDeg, h };
+    }).catch(() => {}).finally(() => { this._probing = false; });
   }
   tilesReady() {
     const s = this.viewer.scene;

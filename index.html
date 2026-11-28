@@ -4,80 +4,90 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Wabash Flight · a free flight simulator for the whole planet, in your browser</title>
-<meta name="description" content="Fly a trainer, an airliner or a fighter jet anywhere on Earth: real satellite imagery, real terrain, 9,800 real airports, autopilot with autoland, weather and time of day. Free, no install, works on phones too.">
+<meta name="description" content="Fly a trainer, an airliner or a fighter jet anywhere on Earth: real satellite imagery, real terrain, 9,800 real airports, autopilot with autoland, joystick support, weather and time of day. Free, no install.">
 <meta property="og:title" content="Wabash Flight">
 <meta property="og:description" content="Fly anywhere on Earth in your browser. Free, no install.">
+<meta property="og:image" content="assets/hero.jpg">
 <meta name="theme-color" content="#0a1020">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈️</text></svg>">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23e9d29a' d='M16 2l2 9 11 5v3l-11-2-1 7 4 3v2l-5-1-5 1v-2l4-3-1-7-11 2v-3l11-5z'/%3E%3C/svg%3E">
 <style>
-  :root { --gold: #cfb991; --gold2: #e9d29a; --ink: #eef3ff; --dim: #9aa8c2; }
+  :root { --gold: #cfb991; --ink: #eef2f8; --dim: #98a3b8; --line: rgba(255,255,255,0.1); --bg: #070b12; }
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ink); background: #050913; }
-  .hero { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; padding: 8vh 7vw; position: relative; overflow: hidden;
-    background: radial-gradient(1200px 600px at 75% 10%, rgba(255, 196, 120, 0.35), transparent 60%),
-                linear-gradient(180deg, #0c2a57 0%, #1f5fa8 45%, #7fb2e5 70%, #3d6b3a 70.2%, #2c4f2b 100%); }
-  .hero::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 60%, #050913 100%); pointer-events: none; }
-  .plane { position: absolute; right: 8vw; top: 22vh; font-size: min(22vw, 220px); transform: rotate(-12deg); filter: drop-shadow(0 30px 30px rgba(0,0,0,.35)); animation: bob 6s ease-in-out infinite; }
-  @keyframes bob { 50% { transform: rotate(-9deg) translateY(-18px); } }
-  .cloud { position: absolute; background: rgba(255,255,255,.85); border-radius: 50px; filter: blur(2px); animation: drift linear infinite; }
-  @keyframes drift { from { transform: translateX(110vw); } to { transform: translateX(-40vw); } }
-  h1 { font-size: clamp(44px, 8vw, 96px); margin: 0; letter-spacing: -0.04em; line-height: 0.95; position: relative; z-index: 1; text-shadow: 0 6px 30px rgba(0,0,0,.35); }
-  h1 span { color: var(--gold2); }
-  .tag { font-size: clamp(18px, 2.3vw, 26px); max-width: 640px; margin: 18px 0 30px; line-height: 1.35; position: relative; z-index: 1; text-shadow: 0 2px 12px rgba(0,0,0,.4); }
-  .cta { display: inline-flex; gap: 12px; align-items: center; position: relative; z-index: 1; flex-wrap: wrap; }
-  .play { background: linear-gradient(135deg, var(--gold2), #b8964f); color: #111; text-decoration: none; font-weight: 900; font-size: 22px; padding: 18px 38px; border-radius: 18px; box-shadow: 0 14px 40px rgba(207,185,145,.45); }
-  .play:hover { transform: translateY(-2px); }
-  .small { color: #e8eefc; font-size: 14px; opacity: .85; }
-  section { padding: 70px 7vw; max-width: 1200px; margin: 0 auto; }
-  h2 { font-size: clamp(28px, 4vw, 40px); margin: 0 0 24px; letter-spacing: -0.02em; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
-  .card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 18px; padding: 20px; }
-  .card b { display: block; font-size: 18px; margin: 6px 0; }
-  .card p { margin: 0; color: var(--dim); line-height: 1.45; font-size: 15px; }
-  .emoji { font-size: 30px; }
-  .planes .card { border-color: rgba(207,185,145,.35); }
-  footer { padding: 40px 7vw 60px; color: var(--dim); font-size: 13px; line-height: 1.6; text-align: center; }
-  footer a, section a { color: var(--gold2); }
+  body { margin: 0; font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ink); background: var(--bg); line-height: 1.5; }
+  a { color: var(--gold); }
+  .hero { min-height: 92vh; display: flex; flex-direction: column; justify-content: flex-end; padding: 0 6vw 9vh; position: relative;
+    background: linear-gradient(90deg, rgba(7,11,18,0.75) 0%, rgba(7,11,18,0.25) 45%, rgba(7,11,18,0) 70%), linear-gradient(180deg, rgba(7,11,18,0.05) 0%, rgba(7,11,18,0.1) 50%, rgba(7,11,18,0.9) 90%, var(--bg) 100%), url(assets/hero.jpg) 80% 40% / cover no-repeat; }
+  .eyebrow { font: 700 12px ui-monospace, Menlo, monospace; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold); }
+  h1 { font-size: clamp(44px, 7.5vw, 92px); margin: 6px 0 0; letter-spacing: -0.035em; line-height: 0.95; font-weight: 850; }
+  .tag { font-size: clamp(17px, 2vw, 21px); max-width: 640px; margin: 16px 0 28px; color: #d8dee9; }
+  .cta { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  .play { background: var(--gold); color: #111; text-decoration: none; font-weight: 800; font-size: 16px; letter-spacing: 0.08em; text-transform: uppercase; padding: 15px 34px; border-radius: 10px; }
+  .play:hover { filter: brightness(1.08); }
+  .facts { display: flex; gap: 22px; flex-wrap: wrap; font: 600 13px ui-monospace, Menlo, monospace; color: var(--dim); }
+  .facts b { color: var(--ink); }
+  section { padding: 64px 6vw; max-width: 1240px; margin: 0 auto; }
+  h2 { font-size: clamp(24px, 3vw, 34px); margin: 0 0 22px; letter-spacing: -0.02em; }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 26px 40px; }
+  .cols h3 { margin: 0 0 4px; font-size: 16px; }
+  .cols p { margin: 0; color: var(--dim); font-size: 15px; }
+  .planes { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+  .plane { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #0b111c; }
+  .plane img { display: block; width: 100%; aspect-ratio: 2 / 1; object-fit: cover; }
+  .plane div { padding: 14px 16px 16px; }
+  .plane b { font-size: 18px; } .plane p { margin: 6px 0 0; color: var(--dim); font-size: 14.5px; }
+  .plane code { display: block; margin-top: 10px; font: 600 12px ui-monospace, Menlo, monospace; color: var(--ink); opacity: 0.8; }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; } td:first-child { color: var(--dim); width: 42%; }
+  kbd { background: rgba(255,255,255,0.1); border-radius: 5px; padding: 1px 6px; font: 700 12px ui-monospace, Menlo, monospace; }
+  footer { padding: 40px 6vw 60px; color: var(--dim); font-size: 13px; text-align: center; border-top: 1px solid var(--line); }
 </style>
 </head>
 <body>
-<div class="hero">
-  <div class="cloud" style="top:14vh;width:180px;height:44px;animation-duration:70s"></div>
-  <div class="cloud" style="top:30vh;width:260px;height:60px;animation-duration:95s;animation-delay:-40s;opacity:.7"></div>
-  <div class="cloud" style="top:8vh;width:120px;height:30px;animation-duration:55s;animation-delay:-20s;opacity:.6"></div>
-  <div class="plane">✈️</div>
-  <h1>Wabash <span>Flight</span></h1>
-  <p class="tag">Take off from any of 9,800 real airports and fly anywhere on planet Earth: over Purdue, through the Alps, down the Grand Canyon, into Tokyo. Free, right in your browser.</p>
-  <div class="cta"><a class="play" href="play.html">▶ FLY NOW</a><span class="small">No download · works on computers, tablets &amp; phones · gamepad supported</span></div>
-</div>
+<header class="hero">
+  <div class="eyebrow">Free browser flight simulator</div>
+  <h1>Wabash Flight</h1>
+  <p class="tag">Take off from any of 9,800 real airports and fly anywhere on Earth over real satellite imagery, real terrain and 3D cities. No download.</p>
+  <div class="cta"><a class="play" href="play.html">Fly now</a>
+    <div class="facts"><span><b>3</b> aircraft</span><span><b>9,800</b> airports</span><span>keyboard · touch · gamepad · joystick</span></div></div>
+</header>
 
 <section>
-  <h2>What's inside</h2>
-  <div class="grid">
-    <div class="card"><span class="emoji">🌍</span><b>The whole planet</b><p>Real satellite imagery and real mountains and valleys everywhere on Earth, streamed as you fly.</p></div>
-    <div class="card"><span class="emoji">🛫</span><b>9,800 real airports</b><p>Every big and medium airport with its real runways. Start on the runway, on final approach, or already in the air.</p></div>
-    <div class="card"><span class="emoji">🧠</span><b>Real flight physics</b><p>A full 6-degree-of-freedom flight model: lift, drag, stalls, ground effect, crosswinds, turbulence and landing-gear physics.</p></div>
-    <div class="card"><span class="emoji">🤖</span><b>Autopilot + autoland</b><p>Heading, altitude, vertical speed, speed hold, direct-to navigation and an approach mode that lands the plane for you.</p></div>
-    <div class="card"><span class="emoji">🧭</span><b>Glass cockpit</b><p>Primary flight display, moving map with nearby airports, flight path marker and approach guidance diamonds.</p></div>
-    <div class="card"><span class="emoji">⛅</span><b>Weather &amp; time</b><p>Clouds, wind, turbulence, haze and any time of day: sunrise, sunset or night flying.</p></div>
-    <div class="card"><span class="emoji">🎥</span><b>Four cameras</b><p>Chase, cockpit, cinematic fly-by and free orbit. Drag to look around.</p></div>
-    <div class="card"><span class="emoji">🧈</span><b>Landing scores</b><p>Every touchdown is graded on vertical speed, centre line and attitude. Can you get the "Butter" S rank?</p></div>
+  <h2>What works</h2>
+  <div class="cols">
+    <div><h3>The whole planet</h3><p>Cesium World Terrain, satellite imagery and Google photorealistic 3D cities, streamed as you fly, with a free fallback if any of them is down.</p></div>
+    <div><h3>Real flight physics</h3><p>Six-degree-of-freedom model checked against the real Cessna 172, A320 and F-16: stall speeds, take-off runs, climb rates and top speeds.</p></div>
+    <div><h3>Autopilot and autoland</h3><p>Heading, altitude, vertical speed, speed and direct-to navigation. APP flies the approach, de-crabs in crosswinds, lands and brakes to a stop.</p></div>
+    <div><h3>Airports at night</h3><p>Runway edge, threshold, centre-line and approach lights, and a working PAPI that shows two white and two red on the glide path.</p></div>
+    <div><h3>Glass cockpit</h3><p>Primary flight display with flight-path marker, approach diamonds and radio altimeter; moving map with nearby airports. Altitudes are above sea level.</p></div>
+    <div><h3>Your controllers</h3><p>Keyboard, touch screen, gamepad, or joystick + throttle + rudder pedals at once. Move a control to bind it; setups are saved per device.</p></div>
+    <div><h3>Weather and time</h3><p>Clouds, wind, turbulence, haze and any time of day, with aircraft lights, strobes and a landing light after dark.</p></div>
+    <div><h3>Help when you want it</h3><p>Assisted mode keeps you out of stalls and lines you up in crosswinds. Switch to Realistic when you are ready.</p></div>
   </div>
 </section>
 
-<section class="planes">
-  <h2>Pick your plane</h2>
-  <div class="grid">
-    <div class="card"><b>Wabash Trainer</b><p>Single-prop, high wing. Slow and gentle: the perfect first flight out of Purdue Airport.</p></div>
-    <div class="card"><b>Hoosier 320</b><p>Twin-jet airliner with 150 seats. Fly across continents at 36,000 ft and autoland at the other end.</p></div>
-    <div class="card"><b>Boiler F-1</b><p>Supersonic fighter: afterburner, 9 G turns and contrails at altitude.</p></div>
+<section>
+  <h2>Aircraft</h2>
+  <div class="planes">
+    <div class="plane"><img src="assets/plane-trainer.jpg" alt="Wabash Trainer in flight"><div><b>Wabash Trainer</b><p>Single-engine, high-wing trainer. Slow, forgiving and the best way to learn.</p><code>stall 51 kt · cruise 110 kt · ≈ Cessna 172</code></div></div>
+    <div class="plane"><img src="assets/plane-airliner.jpg" alt="Hoosier 320 in flight"><div><b>Hoosier 320</b><p>Twin-jet airliner with spoilers, reversers, autothrottle and autoland.</p><code>Vref 135 kt · Mach 0.78 cruise · ≈ A320</code></div></div>
+    <div class="plane"><img src="assets/plane-fighter.jpg" alt="Boiler F-1 in flight"><div><b>Boiler F-1</b><p>Single-engine fighter: afterburner, 9 g, Mach 2 at high altitude.</p><code>Mach 2.07 at 40,000 ft · ≈ F-16</code></div></div>
   </div>
-  <p class="small" style="color:var(--dim);margin-top:18px">Want real 3D buildings? Paste a free Cesium ion token in Settings to switch on photorealistic 3D cities.</p>
+</section>
+
+<section>
+  <h2>First flight</h2>
+  <table>
+    <tr><td>Throttle up</td><td>Hold <kbd>R</kbd> or press <kbd>Home</kbd> (touch: slide the throttle up)</td></tr>
+    <tr><td>Lift off at the rotate speed</td><td>Gently hold <kbd>S</kbd>, then let go: assisted mode holds the climb</td></tr>
+    <tr><td>Fly</td><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows, <kbd>Q</kbd><kbd>E</kbd> rudder</td></tr>
+    <tr><td>Land by yourself or with the autopilot</td><td>Set a destination, then press <b>APP</b> on the autopilot panel</td></tr>
+    <tr><td>Everything else</td><td>Menu → Controls</td></tr>
+  </table>
 </section>
 
 <footer>
   Made by <a href="https://vishu-aggarwal-001.github.io/">Vishu Aggarwal</a> · <a href="https://github.com/vishu-aggarwal-001/Wabash-Vice">Source on GitHub</a><br>
-  Globe engine: CesiumJS (Apache-2.0) · Imagery © Esri, Maxar, Earthstar Geographics · Terrain: AWS Open Data Terrain Tiles · Airports: OurAirports (public domain)<br>
+  Globe engine: CesiumJS (Apache-2.0) · Imagery © Esri, Maxar, Earthstar Geographics, Bing, Google · Terrain: Cesium, AWS Open Data Terrain Tiles · Airports: OurAirports (public domain) · Geoid: EGM96 (NGA)<br>
   Wabash Flight is an independent fan project and is not affiliated with any flight-simulator company.
 </footer>
 </body>

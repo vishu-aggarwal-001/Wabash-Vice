@@ -1,15 +1,17 @@
 // Keyboard, mouse, gamepad and touch input -> stick / throttle / switches.
 import { clamp } from './math.js';
+import { Hardware } from './hardware.js';
 
 export class Controls {
   constructor(el, opts) {
-    this.el = el; this.opts = opts;   // opts.invertPitch, opts.onAction(name)
+    this.el = el; this.opts = opts;   // opts.onAction(name), opts.hwStore (saved controller setup)
+    this.hw = new Hardware(opts.hwStore || {}, (a) => this.opts.onAction(a));
+    this.hwIn = { devices: 0 };
     this.keys = new Set();
     this.stick = { x: 0, y: 0, rud: 0 };  // y > 0 = pull (nose up)
     this.throttle = 0; this.brake = 0;
     this.touch = { x: 0, y: 0, active: false };
     this.look = { yaw: 0, pitch: 0, dragging: false, zoom: 1 };
-    this.pad = null; this.padPrev = {};
     this._bind();
   }
 
@@ -18,7 +20,7 @@ export class Controls {
       KeyG: 'gear', KeyV: 'flapsDown', BracketRight: 'flapsDown', BracketLeft: 'flapsUp', Slash: 'spoilers',
       KeyB: 'parking', KeyC: 'camera', KeyZ: 'autopilot', KeyN: 'burner', KeyP: 'pause', Escape: 'menu', KeyH: 'help',
       KeyM: 'map', KeyU: 'hud', Digit1: 'cam1', Digit2: 'cam2', Digit3: 'cam3', Digit4: 'cam4', KeyX: 'reverse', Backspace: 'restart',
-      End: 'idle', Home: 'full',
+      End: 'idle', Home: 'full', Backquote: 'perf',
     };
     window.addEventListener('keydown', (e) => {
       if (e.target.closest && e.target.closest('input, select, textarea')) return;
@@ -27,6 +29,7 @@ export class Controls {
       this.keys.add(e.code);
       let a = actions[e.code];
       if (e.code === 'KeyV' && e.shiftKey) a = 'flapsUp';
+      if (e.code === 'KeyM' && e.shiftKey) a = 'mapRange';
       if (a) this.opts.onAction(a);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
@@ -45,7 +48,8 @@ export class Controls {
     c.addEventListener('pointerup', () => { this.look.dragging = false; });
     c.addEventListener('dblclick', () => { this.look.yaw = 0; this.look.pitch = 0; });
     c.addEventListener('wheel', (e) => { this.look.zoom = clamp(this.look.zoom * (e.deltaY > 0 ? 1.1 : 0.9), 0.3, 6); e.preventDefault(); }, { passive: false });
-    window.addEventListener('gamepadconnected', (e) => { this.pad = e.gamepad.index; this.opts.onAction('gamepad'); });
+    window.addEventListener('gamepadconnected', (e) => { this.opts.onAction('gamepad', e.gamepad); });
+    window.addEventListener('gamepaddisconnected', (e) => { this.opts.onAction('gamepadOff', e.gamepad); });
   }
 
   // touch joystick (from the on-screen UI)
@@ -71,22 +75,18 @@ export class Controls {
     this.trim = kp('KeyK', 'Numpad2') - kp('KeyI', 'Numpad8');
     // touch
     if (this.touch.active) { sx = this.touch.x; sy = invert ? -this.touch.y : this.touch.y; }
-    // gamepad
-    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-    const p = pads && (pads[this.pad ?? 0] || [...pads].find((x) => x));
-    if (p) {
-      const dz = (v) => (Math.abs(v) < 0.08 ? 0 : (v - Math.sign(v) * 0.08) / 0.92);
-      const ax = dz(p.axes[0] || 0), ay = dz(p.axes[1] || 0);
-      if (ax || ay) { sx = ax * Math.abs(ax) ** 0.5; sy = (invert ? -ay : ay) * Math.abs(ay) ** 0.5; }
-      const bt = (i) => (p.buttons[i] ? p.buttons[i].value : 0);
-      const rx = dz(p.axes[2] || 0), ry = dz(p.axes[3] || 0);
-      if (rx || ry) this.touchLook(rx * 8, ry * 8);
-      this.throttle = clamp(this.throttle + (bt(7) - bt(6)) * dt * 0.6, 0, 1);
-      if (bt(4) || bt(5)) sr = bt(5) - bt(4);
-      if (bt(0) > 0.5) this.brake = 1;
-      const edge = (i, name) => { const v = bt(i) > 0.5; if (v && !this.padPrev[i]) this.opts.onAction(name); this.padPrev[i] = v; };
-      edge(3, 'gear'); edge(2, 'flapsCycle'); edge(1, 'camera'); edge(9, 'menu'); edge(8, 'autopilot'); edge(12, 'trimDown'); edge(13, 'trimUp'); edge(10, 'burner');
-    }
+    // joysticks, yokes, throttles, pedals, gamepads: a control that is being moved overrides the keyboard
+    const h = this.hw.read(dt);
+    this.hwIn = h;
+    if (h.roll) sx = h.roll;
+    if (h.pitch) sy = invert ? -h.pitch : h.pitch;
+    if (h.rudder) sr = h.rudder;
+    if (h.throttleMoved && h.throttle !== null) this.throttle = h.throttle;
+    if (h.throttleDelta) this.throttle = clamp(this.throttle + h.throttleDelta, 0, 1);
+    this.brakeL = h.brakeL || 0; this.brakeR = h.brakeR || 0;
+    if (h.brakes) this.brake = 1;
+    if (h.trim) this.trim = clamp(this.trim + h.trim, -1, 1);
+    if (h.look) this.touchLook(h.look.x, h.look.y);
     this.stick = { x: clamp(sx, -1, 1), y: clamp(sy, -1, 1), rud: clamp(sr, -1, 1) };
     return this.stick;
   }
