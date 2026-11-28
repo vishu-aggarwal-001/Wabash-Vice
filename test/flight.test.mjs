@@ -95,6 +95,23 @@ for (const key of Object.keys(AIRCRAFT)) {
     check(ok, `autoland, ${label}`, td ? `${td.fpm.toFixed(0)} fpm, ${(-tdAlong).toFixed(0)} m past threshold, max ${maxXt.toFixed(1)} m off centre ${fm.crashReason}` : `no touchdown ${fm.crashReason}`);
   }
 
+  // unstable approach (far above the glide path, diving): the autopilot must go around, not crash
+  s = makeSim(key); fm = s.fm;
+  { const [la, lo] = destPoint(RWY.lat, RWY.lon, 270, 3000); fm.ctrl.flaps = d.approachFlaps; fm.ctrl.gearDown = true; fm.gearPos = 1;
+    fm.spawnAir(la, lo, 200 + 450, 90, d.vref + 10 * KT, -3); s.throttle = fm.throttleFor(d.vref, -3); fm.N = s.throttle;
+    s.ap.target = RWY; s.ap.engage(fm); s.ap.hdgMode = 'APP'; s.run(90); }
+  check(!fm.crashed && s.ap.goAround && !fm.onGround && fm.vs > 0, 'APP far too high close in: goes around', `${s.ap.msg.slice(0, 30)}… alt ${((fm.h - 200) / FT).toFixed(0)} ft`);
+
+  // autoland on a sloped runway: the trainer on Lukla's 12% climb, the jets on a 2% slope
+  const slope = d.engine === 'prop' ? 0.12 : 0.02;
+  s = makeSim(key, { slope }); fm = s.fm;
+  { const dist = d.engine === 'prop' ? 5500 : 9000, [la, lo] = destPoint(RWY.lat, RWY.lon, 270, dist); fm.ctrl.flaps = d.approachFlaps; fm.ctrl.gearDown = true; fm.gearPos = 1;
+    const aim = 200 + slope * 300; fm.spawnAir(la, lo, aim + fm.restHeight + Math.tan(3 * DEG) * (dist + 300), 90, d.vref + 10 * KT, -3);
+    s.throttle = fm.throttleFor(d.vref + 10 * KT, -3); fm.N = s.throttle;
+    s.ap.target = { ...RWY, aimElevM: aim }; s.ap.engage(fm); s.ap.hdgMode = 'APP'; let td = null;
+    s.run(300, () => { if (fm.touchdown && !td) td = fm.touchdown; if (td && fm.groundSpeed < 1) return false; });
+    check(td && !fm.crashed && td.fpm > -700, `autoland on a ${Math.round(slope * 100)}% up-sloping runway`, td ? `${td.fpm.toFixed(0)} ft/min ${fm.crashReason}` : `no touchdown ${fm.crashReason}`); }
+
   // crosswind takeoff hands-off stays on the runway
   s = makeSim(key, { wind: windOf(180, 15) }); fm = s.fm; s.groundStart(90); s.run(2); s.throttle = 1; let dev = 0;
   s.run(80, () => { if (fm.onGround) dev = Math.max(dev, Math.abs(xtOf(fm))); if (fm.out.ias >= d.vr) s.stick.y = fm.hpr.pitch < d.rotatePitch ? 0.6 : 0; if (!fm.onGround && s.agl() > 20) return false; });

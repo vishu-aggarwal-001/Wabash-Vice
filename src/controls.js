@@ -29,6 +29,7 @@ export class Controls {
       this.keys.add(e.code);
       let a = actions[e.code];
       if (e.code === 'KeyV' && e.shiftKey) a = 'flapsUp';
+      if (e.code === 'KeyM' && e.shiftKey) a = 'mapRange';
       if (a) this.opts.onAction(a);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));

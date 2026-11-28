@@ -158,3 +158,33 @@ Cesium's world, which the governor and quality settings control. The ` readout l
 
 **Critic:** "The models are still code-built and simple. Calling it MSFS-class is still false."
 **Defense (Held, unchanged):** agreed. No 3D cockpit, no detailed aircraft. That is the biggest remaining gap.
+
+---
+
+# Final pass (Nov 27 2026, late)
+
+| Flaw | Fix |
+|---|---|
+| Cockpit view was the outside world with a floating display | Windshield frame, glareshield and an instrument panel: flight display, moving map, engine gauges (RPM or N1 per engine, afterburner/reverse), throttle, flaps, three gear lights, trim, spoilers, brakes |
+| Moving map stuck at 20 NM | Click/tap the map or Shift+M: 5–160 NM |
+| Landing gear popped in and out | Slides into the wells as it moves |
+| Planes were lit by the sun from below the horizon at night | Model light follows daylight |
+| Up to 2,500 lights at O'Hare | Capped at 1,600; centre-line/approach lights only at the nearest airport |
+| Mountain airports: approach start inside terrain; autopilot would follow the glide path into it; forced landings when unstable | Start point clears the terrain (or starts above it with a warning); approach terrain floor away from the runway; dives capped at 7°; automatic go-around (to 2,000 ft, go-around flaps) when far off the glide path, diving or off the centre line below 250 m |
+| Sloped runways (Lukla 12%) were treated as flat, the nose gear dug in | Ground slope measured under the aircraft (over its own size, smoothed, dead band) and applied per wheel; flare follows rising ground; glide path aims at the runway height 300 m in |
+| On the runway, terrain tiles refining underneath could drop the ground by metres and slam the aircraft down (crashed at Innsbruck) | Ground under the wheels can only change as fast as a real runway slope |
+| Speed protection switched on/off, so a too-steep autopilot climb porpoised | Smooth limit |
+| AP panel steps were odd numbers in metric units | 100 m / 2.5 m/s steps |
+| Clearing the destination left the autopilot in NAV/APP with nothing to fly to | Falls back to heading mode |
+
+Tests added: go-around when unstable, autolands on a 12% (trainer) and 2% (jets) up-slope. `npm test`: 485 maths, 9 controller layouts + 8 hat values, 74 flight checks. In the browser: Innsbruck 26 lands; Innsbruck 08 (no straight-in) goes around safely; Lukla lands.
+
+## Duel, rounds 10–12 (critic simulated by Claude)
+**Critic:** "Your slope fix made things worse: noisy terrain kicked the airliner's nose gear."
+**Defense (Revised):** correct, the first version did (seen at Innsbruck). Replaced with a slope measured over the aircraft's size with a dead band and slow smoothing, plus a limit on how fast the ground may move under the wheels; Innsbruck then landed cleanly.
+
+**Critic:** "A go-around is an admission the autoland can't do mountain airports."
+**Defense (Held):** it is what a real autopilot does. Straight-in 3° approaches do not exist at places like Innsbruck 08; landing from an unstable approach is the wrong answer.
+
+**Critic:** "Is anything left?"
+**Defense:** everything found has been fixed and tested. What cannot be verified from here: frame rate on his own phone/tablet/computer, real joystick hardware, and browsers other than Chrome (Safari does not see most joysticks). The planes are still simple code-built models; that is a limit of how they are made, not a bug.

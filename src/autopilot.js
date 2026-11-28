@@ -53,11 +53,14 @@ export class Autopilot {
         wantHdg = t.hdg + clamp(xtk * 0.06 + this.xI, -35, 35); useTrack = true;
         if (along < 0) wantHdg = t.hdg;
         // glideslope: 3 degrees to the aiming point 300 m past the threshold (crosses the threshold at 50 ft)
-        const gsAlt = t.elevM + Math.tan(3 * DEG) * Math.max(along + 300, 0);
+        // (referenced to the runway height at the aiming point, so sloped runways work)
+        const gsAlt = (t.aimElevM ?? t.elevM) + Math.tan(3 * DEG) * Math.max(along + 300, 0);
         info = { d: dist, xtk, gsErr: fm.h - fm.restHeight - gsAlt };
         const fa = d.flareAlt || 14;
         const aglG = agl - fm.restHeight; // height of the wheels, not the centre of gravity
         info.aglG = aglG;
+        // not stable on the approach (far too high, or diving) close to the ground: go around, never force a landing
+        if (aglG < 250 && aglG > fa && (info.gsErr > 60 || fm.vs < -9.5 || Math.abs(xtk) > 90)) return this._goAround(fm, t);
         if (aglG < fa) flare = true;
         if (aglG < Math.min(fa * 0.6, 9)) retard = true;
       }
@@ -99,12 +102,25 @@ export class Autopilot {
     // speed protection: never climb the aircraft into a stall
     const Vi = fm.out.ias || V; // indicated airspeed: speed bugs, Vref and stall speeds are all IAS
     const vmin = d.vref * 1.05;
-    if (Vi < vmin * 1.15 && !info) wantVs = Math.min(wantVs, Math.max(-4, (Vi - vmin * 1.15) * 0.4));
+    // (a smooth limit: the slower you are, the less climb is allowed; no on/off switching that would porpoise)
+    if (!info) wantVs = Math.min(wantVs, Math.max(-4, (Vi - vmin * 1.12) * 1.2));
     if (info) {
       wantVs = -Math.tan(3 * DEG) * fm.groundSpeed - clamp(info.gsErr * 0.1 * this.gk, -5, 5);
       // flare: exponential sink-rate law, continuous with the 3 degree glide at flare height,
       // aiming for about 80 ft/min at touchdown
-      if (flare) { const fa = d.flareAlt || 14, tau = fa / Math.max(1, Math.tan(3 * DEG) * fm.groundSpeed); wantVs = -Math.max(0.4, info.aglG / tau); }
+      if (flare) {
+        const fa = d.flareAlt || 14, tau = fa / Math.max(1, Math.tan(3 * DEG) * fm.groundSpeed);
+        // relative to the ground: on an up-sloping runway the ground rises to meet you
+        const trk = (useTrack ? track : o.heading) * DEG, g = fm.groundGrad || [0, 0];
+        const rise = fm.groundSpeed * (g[0] * Math.sin(trk) + g[1] * Math.cos(trk));
+        wantVs = rise - Math.max(0.4, info.aglG / tau);
+      }
+    }
+    // on an approach the glide path is trusted only near the runway: further out, stay 500 ft above the ground,
+    // and never dive at more than 7 degrees to catch the glide path
+    if (info) {
+      if (info.d > 3500 && agl < 500 * FT) { const floorVs = (500 * FT - agl) * 0.08; if (wantVs < floorVs) { wantVs = floorVs; this.terrain = true; } }
+      wantVs = Math.max(wantVs, -Math.tan(7 * DEG) * Math.max(fm.groundSpeed, 1));
     }
     const gammaCmd = Math.asin(clamp(wantVs / V, -0.35, 0.35));
     const gamma = Math.asin(clamp(fm.vs / V, -1, 1));
@@ -140,6 +156,17 @@ export class Autopilot {
     this.lastElev = elev;
     this.info = info; this.dbg = { wantHdg, hdgErr, wantBank, ail, track };
     return { elev, ail, rud, throttle: thr };
+  }
+
+  // go-around: climb straight ahead to 2,000 ft above the runway and hand back to heading/altitude modes
+  _goAround(fm, t) {
+    this.hdgMode = 'HDG'; this.hdg = Math.round(t.hdg); this.vMode = 'VS'; this.vs = (fm.def.engine === 'prop' ? 700 : 1500) * FT / 60;
+    this.alt = Math.round(((t.elevM - (fm.geoidN || 0)) / FT + 2000) / 100) * 100 * FT;
+    this.athr = true; this.spd = Math.max(this.spd, fm.def.vref * 1.3);
+    fm.ctrl.flaps = Math.min(fm.ctrl.flaps, fm.def.takeoffFlaps ?? 1); // go-around flaps
+    this.msg = 'Go-around: approach not stable. Climbing to 2,000 ft above the runway';
+    this.goAround = true;
+    return { elev: this.lastElev ?? 0, ail: 0, rud: 0, throttle: 1, goAround: true };
   }
 
   // after an autoland: keep the wings level into the wind, steer down the centre line, brakes,

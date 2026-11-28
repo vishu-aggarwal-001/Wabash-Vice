@@ -34,7 +34,7 @@ let paused = true, started = false, camMode = 0; // 0 chase 1 cockpit 2 flyby 3 
 let groundFilt = 0, spawnInfo = null, dest = null, lastT = performance.now();
 let flyby = null, camHeading = 0, camRange = 1, showHUD = true, showND = true;
 let crashFx = [], contrail = null, toastTimer = 0, landingTimer = 0, lastTouch = null, prevOnGround = true;
-let simTime = 0, autobrake = false, lastApMsg = '';
+let simTime = 0, autobrake = false, lastApMsg = '', gradT = 0;
 const CAMS = ['Chase', 'Cockpit', 'Fly-by', 'Orbit'];
 
 const tip = (keys, touch) => (touchUI ? touch : keys); // control hints for keyboard vs touch players
@@ -113,7 +113,7 @@ async function startFlightInner() {
   setDestination(S.dest ? findAirport(S.dest) : null, true);
 
   // where?
-  let lat, lon, hdg = 0, mode = S.startMode, elevGuess = 0, ap0 = null, rwy = null;
+  let lat, lon, hdg = 0, mode = S.startMode, elevGuess = 0, ap0 = null, rwy = null, spawnWarn = '', approachFloor = -1e9;
   if (mode === 'place') {
     if (!S.place) { mode = 'runway'; } else { lat = S.place.lat; lon = S.place.lon; hdg = 0; }
   }
@@ -127,9 +127,24 @@ async function startFlightInner() {
       const len = distM(rwy.lat, rwy.lon, rwy.far.lat, rwy.far.lon);
       [lat, lon] = destPoint(rwy.lat, rwy.lon, hdg, Math.min(70, len * 0.05));
     } else if (mode === 'approach') {
-      const dist = def.engine === 'prop' ? 5500 : 12000;
-      [lat, lon] = destPoint(rwy.lat, rwy.lon, hdg + 180, dist);
       setDestination(ap0, true, rwy); // the approach is to this runway
+      // start where the 3 degree glide path is clear of terrain all the way in (mountain airports: closer in)
+      let dist = def.engine === 'prop' ? 5500 : 12000;
+      const steps = []; for (let d = 500; d <= dist; d += 500) steps.push(d);
+      const hs = await world.terrainHeights(steps.map((d) => destPoint(rwy.lat, rwy.lon, hdg + 180, d)));
+      if (hs) {
+        const glide = (d) => elevGuess + Math.tan(3 * DEG) * (d + 300);
+        const bad = steps.findIndex((d, i) => Number.isFinite(hs[i]) && hs[i] + 90 > glide(d));
+        if (bad >= 0 && bad > 0 && steps[bad - 1] >= 4000) {
+          dist = steps[bad - 1]; // the straight-in path is clear from here in
+          spawnWarn = `High terrain further out: starting ${(dist / 1852).toFixed(1)} NM from the runway.`;
+        } else if (bad >= 0) {
+          // no straight-in approach here (valley or mountain airport): start above the high ground on the centre line
+          approachFloor = Math.max(...hs.filter(Number.isFinite)) + 200;
+          spawnWarn = 'No straight-in approach here: you start above the mountains. Descend once the runway is clear ahead.';
+        }
+      }
+      [lat, lon] = destPoint(rwy.lat, rwy.lon, hdg + 180, dist);
     } else { // cruise: 20 km out from the airport, flying toward it
       [lat, lon] = destPoint(rwy.lat, rwy.lon, hdg + 180, 25000);
     }
@@ -166,9 +181,9 @@ async function startFlightInner() {
     const spd = def.vref + 10 * KT;
     // on the 3 degree glide path to the runway (its elevation, not the ground under us)
     const rwyH = dest && dest.icao === ap0.icao ? dest.elevM : elevGuess;
-    fm.spawnAir(lat, lon, Math.max(rwyH + fm.restHeight + Math.tan(3 * DEG) * (dist + 300), h + 150), hdg, spd, -3);
-    c.throttle = fm.throttleFor(spd, -3); controls.throttle = c.throttle; fm.N = c.throttle;
-    toast(`Final approach to ${ap0.icao} runway ${rwy.ident}. Follow the pink diamonds, or press APP on the autopilot.`, 6000);
+    fm.spawnAir(lat, lon, Math.max(rwyH + fm.restHeight + Math.tan(3 * DEG) * (dist + 300), h + 150, approachFloor), hdg, spd, approachFloor > -1e8 ? 0 : -3);
+    c.throttle = fm.throttleFor(spd, approachFloor > -1e8 ? 0 : -3); controls.throttle = c.throttle; fm.N = c.throttle;
+    toast(spawnWarn || `Final approach to ${ap0.icao} runway ${rwy.ident}. Follow the pink diamonds, or press APP on the autopilot.`, 6000);
   } else {
     const sc = def.spawnCruise;
     c.flaps = 0; c.gearDown = false;
@@ -237,11 +252,22 @@ function tick() {
     world.probeTerrain(fm.latDeg, fm.lonDeg);
     lights.updateDaylight(Cesium.JulianDate.toDate(viewer.clock.currentTime), fm.latDeg, fm.lonDeg);
     world.setDaylight(1 - lights.night);
+    // the sun lights the plane only by day (otherwise it is lit from below the horizon at night)
+    const day = 1 - lights.night, k = 0.12 + 0.88 * day;
+    if (plane && plane._day !== k) {
+      plane._day = k; plane.lightColor = new Cesium.Cartesian3(k * 2, k * 2, k * 2);
+      if (plane.imageBasedLighting) plane.imageBasedLighting.imageBasedLightingFactor = new Cesium.Cartesian2(k, k);
+    }
     lights.refinePapi((la, lo) => world.groundHeight(la, lo, undefined));
     // once the runway's scenery has loaded, use its real height for the glide path (field elevation is only a guess)
     if (dest && !dest.measured && distM(fm.latDeg, fm.lonDeg, dest.lat, dest.lon) < 9000) {
       const th = world.groundHeight(dest.lat, dest.lon, undefined);
-      if (th !== undefined && Math.abs(th - dest.elevM) < 60) { dest.elevM = th; dest.measured = true; }
+      if (th !== undefined && Math.abs(th - dest.elevM) < 60) {
+        dest.elevM = th; dest.measured = true;
+        // and at the aiming point 300 m in (sloped runways climb or drop from the threshold)
+        const aim = destPoint(dest.lat, dest.lon, dest.hdg, 300), ah = world.groundHeight(aim[0], aim[1], undefined);
+        if (ah !== undefined && Math.abs(ah - th) < 60) dest.aimElevM = ah;
+      }
     }
   }
   sound.update({
@@ -292,8 +318,24 @@ function simUpdate(dt) {
     c.brakeL = controls.brakeL || 0; c.brakeR = controls.brakeR || 0;
     // terrain under us
     const raw = world.groundHeight(fm.latDeg, fm.lonDeg, groundFilt);
-    groundFilt = fm.onGround ? smooth(groundFilt, raw, 1.5, dt) : (fm.h - raw < 60 ? smooth(groundFilt, raw, 8, dt) : raw);
+    // On the wheels the ground may only change as fast as a real runway slope would (3% at your speed, plus a
+    // little): terrain tiles refining under you can jump by metres, which must not launch or drop the aircraft.
+    if (fm.onGround) { const rate = 0.6 + fm.groundSpeed * 0.03; groundFilt += clamp(raw - groundFilt, -rate * dt, rate * dt); }
+    else groundFilt = fm.h - raw < 60 ? smooth(groundFilt, raw, 8, dt) : raw;
     fm.groundH = groundFilt;
+    // ground slope near the ground (a few runways slope a lot: Lukla climbs 12%). Measured over the aircraft's
+    // own size, with a dead band and heavy smoothing: terrain tiles are noisy by a metre or two, and a jittery
+    // slope under a 40 m airliner would kick the nose gear.
+    gradT -= dt;
+    if (gradT <= 0 && fm.h - raw < 120) {
+      gradT = 0.25;
+      const d = Math.max(20, def.b), dLat = d / 111320, dLon = d / (111320 * Math.max(0.2, Math.cos(fm.lat)));
+      const hE = world.groundHeight(fm.latDeg, fm.lonDeg + dLon, raw), hW = world.groundHeight(fm.latDeg, fm.lonDeg - dLon, raw);
+      const hN = world.groundHeight(fm.latDeg + dLat, fm.lonDeg, raw), hS = world.groundHeight(fm.latDeg - dLat, fm.lonDeg, raw);
+      const band = (g) => Math.sign(g) * Math.max(0, Math.abs(g) - 0.025);
+      const gE = band(clamp((hE - hW) / (2 * d), -0.25, 0.25)), gN = band(clamp((hN - hS) / (2 * d), -0.25, 0.25));
+      fm.groundGrad = [smooth(fm.groundGrad[0], gE, 1, 0.25), smooth(fm.groundGrad[1], gN, 1, 0.25)];
+    } else if (fm.h - raw >= 120) fm.groundGrad = [0, 0];
     fm.wind = windVec();
     fm.geoidN = geoidHeight(fm.latDeg, fm.lonDeg);
     fm.step(dt);
@@ -314,7 +356,7 @@ function governor(dt) {
   if (gov.step <= 2) v.resolutionScale = Math.max(0.5, v.resolutionScale * 0.8);
   else if (gov.step === 3) { v.shadows = false; sc.globe.shadows = Cesium.ShadowMode.DISABLED; v.scene.highDynamicRange = false; }
   else { sc.globe.maximumScreenSpaceError *= 1.5; if (world.tileset) world.tileset.maximumScreenSpaceError *= 1.5; }
-  toast('Lowered the graphics a little to keep it smooth', 2500);
+  if (!$('#toast').classList.contains('show')) toast('Lowered the graphics a little to keep it smooth', 2500); // never hide a more important message
 }
 
 const perf = { n: 0, sim: 0, cam: 0, hud: 0, frame: 0, show: false, last: null };
@@ -456,7 +498,12 @@ function updatePlane(dt) {
     }
   }
   const gear = plane.getNode && plane.getNode('gear');
-  if (gear) gear.show = fm.gearPos > 0.5;
+  if (gear) {
+    // gear retracts upward into the wells (smooth) and is hidden once stowed
+    gear.show = fm.gearPos > 0.03;
+    const lift = (1 - fm.gearPos) * (fm.restHeight * 0.8);
+    if (gear._lift !== lift) { gear._lift = lift; gear.matrix = Cesium.Matrix4.multiply(gear.originalMatrix, Cesium.Matrix4.fromTranslation(new Cesium.Cartesian3(0, lift, 0)), new Cesium.Matrix4()); }
+  }
   const burner = plane.getNode && plane.getNode('burner');
   if (burner) burner.show = fm.ctrl.burner && fm.N > 0.5 && !fm.crashed;
   for (const c of contrail || []) {
@@ -473,7 +520,7 @@ function updateCamera(dt) {
     const eyeEnu = qrot(fm.q, def.eye);
     const enu = Cesium.Transforms.eastNorthUpToFixedFrame(pos);
     let q = qmul(fm.q, qaxis([0, 0, 1], -look.yaw * DEG));
-    q = qmul(q, qaxis([0, 1, 0], -(look.pitch - 4) * DEG));
+    q = qmul(q, qaxis([0, 1, 0], -(look.pitch - (touchUI ? 4 : 8)) * DEG)); // look a little down so the runway shows over the panel
     const f = qrot(q, [1, 0, 0]), u = qrot(q, [0, 0, 1]);
     const toW = (v) => Cesium.Matrix4.multiplyByPointAsVector(enu, new Cesium.Cartesian3(v[0], v[1], v[2]), new Cesium.Cartesian3());
     const eye = Cesium.Matrix4.multiplyByPoint(enu, new Cesium.Cartesian3(...eyeEnu), new Cesium.Cartesian3());
@@ -537,6 +584,10 @@ function updateHUD(dt) {
     app: dest && (ap.hdgMode === 'APP' || distM(fm.latDeg, fm.lonDeg, dest.lat, dest.lon) < 25000) ? approachInfo() : null,
     unitsM, assist: S.assist === 1, lat: fm.latDeg, lon: fm.lonDeg, t: simTime, dest,
     gsKt: fm.groundSpeed / KT, tasKt: V / KT, windFrom, windKt,
+    eng: { type: def.engine, engines: def.engines || 1, rpm: 700 + fm.N * 1800 * Math.min(1, 0.85 + 0.15 * (V / Math.max(def.cruise, 1))), n1: 21 + 79 * fm.N,
+      burner: fm.ctrl.burner && fm.N > 0.5, reverse: fm.ctrl.reverse && fm.onGround },
+    thr: fm.ctrl.throttle, flapsDeg: def.flaps[fm.ctrl.flaps], flapsMoving: Math.abs(fm.flapPos - (def.flaps.length > 1 ? fm.ctrl.flaps / (def.flaps.length - 1) : 0)) > 0.01,
+    retractable: def.retractable, gearPos: fm.gearPos, trim: fm.ctrl.trim, spoilers: fm.spoilerPos > 0.05, parking: fm.ctrl.parking, braking: fm.ctrl.brake > 0.1,
   });
   statusT -= dt;
   if (statusT > 0) return;
@@ -599,6 +650,7 @@ function onAction(a, pad) {
     case 'menu': showMenu($('#menu').classList.contains('hidden')); break;
     case 'help': showMenu(true, 'help'); break;
     case 'map': showND = !showND; break;
+    case 'mapRange': toast(`Map range ${hud.cycleRange()} NM`, 900); break;
     case 'hud': showHUD = !showHUD; break;
     case 'idle': controls.throttle = 0; break;
     case 'full': controls.throttle = 1; break;
@@ -626,7 +678,7 @@ function setupAPPanel() {
     const act = b.dataset.ap;
     const fire = () => {
       if (!fm || !started) return;
-      const step = 1;
+      const metric = S.units === 'm', altStep = metric ? 100 : 500 * FT, vsStep = metric ? 2.5 : 500 * FT / 60;
       if (!ap.on && act !== 'ATHR') {
         if (fm.onGround) { toast('Take off first, then use the autopilot'); return; }
         ap.engage(fm);
@@ -634,11 +686,11 @@ function setupAPPanel() {
       switch (act) {
         case 'hdg-': ap.hdg = wrap360(ap.hdg - 5); ap.hdgMode = 'HDG'; break;
         case 'hdg+': ap.hdg = wrap360(ap.hdg + 5); ap.hdgMode = 'HDG'; break;
-        case 'alt-': ap.alt = Math.max(0, ap.alt - 500 * FT * step); ap.vMode = 'VS'; ap.vs = -Math.abs(ap.vs || 1000 * FT / 60); break;
-        case 'alt+': ap.alt += 500 * FT * step; ap.vMode = 'VS'; ap.vs = Math.abs(ap.vs || 1500 * FT / 60); break;
+        case 'alt-': ap.alt = Math.max(0, Math.round((ap.alt - altStep) / altStep) * altStep); ap.vMode = 'VS'; ap.vs = -Math.abs(ap.vs || 1000 * FT / 60); break;
+        case 'alt+': ap.alt = Math.round((ap.alt + altStep) / altStep) * altStep; ap.vMode = 'VS'; ap.vs = Math.abs(ap.vs || 1500 * FT / 60); break;
         case 'vs-': case 'vs+': {
           if (ap.vMode !== 'VS') ap.vs = 0;
-          ap.vMode = 'VS'; ap.vs += (act === 'vs+' ? 500 : -500) * FT / 60;
+          ap.vMode = 'VS'; ap.vs += (act === 'vs+' ? 1 : -1) * vsStep;
           // the selected altitude must lie in the direction we are climbing/descending, else move it 1,000 ft that way
           const hMsl = fm.h - (fm.geoidN || 0), dir = Math.sign(ap.vs);
           if (dir && Math.sign(ap.alt - hMsl) !== dir) ap.alt = Math.max(0, (Math.round(hMsl / FT / 100) * 100 + dir * 1000) * FT);
@@ -709,6 +761,8 @@ function setupTouch() {
     b.addEventListener('pointerdown', () => controls.keys.add(v > 0 ? 'KeyE' : 'KeyQ'));
     for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => controls.keys.delete(v > 0 ? 'KeyE' : 'KeyQ'));
   }
+  // tap or click the moving map to change its range
+  viewer.canvas.addEventListener('pointerdown', (e) => { if (started && hud.hitND(e.clientX, e.clientY)) { e.stopImmediatePropagation(); onAction('mapRange'); } }, true);
   // one-finger drag on the sky looks around
   let lid = null, lx = 0, ly = 0;
   viewer.canvas.addEventListener('pointerdown', (e) => { if (e.pointerType !== 'touch') return; lid = e.pointerId; lx = e.clientX; ly = e.clientY; });
@@ -796,7 +850,11 @@ function buildMenu() {
       dr.appendChild(b);
     }
   };
-  $('#destClear').onclick = () => { S.dest = null; dest = null; ap.target = null; save(); summary(); };
+  $('#destClear').onclick = () => {
+    S.dest = null; dest = null; ap.target = null;
+    if (['NAV', 'APP'].includes(ap.hdgMode)) { ap.hdgMode = 'HDG'; if (fm) ap.hdg = Math.round(fm.hpr.heading); } // nothing left to navigate to
+    save(); summary();
+  };
   // place search (OpenStreetMap Nominatim)
   const doPlace = async () => {
     const pq = $('#placeSearch').value.trim(), pr = $('#placeResults');
@@ -922,4 +980,4 @@ function summary() {
 }
 
 boot().catch((e) => { console.error(e); loading(true, 'Something went wrong: ' + e.message); });
-window.__sim = { simUpdate: (dt) => simUpdate(dt), get fm() { return fm; }, get lights() { return lights; }, get paused() { return paused; }, get perf() { return perf.last; }, get started() { return started; }, get ap() { return ap; }, get world() { return world; }, get controls() { return controls; }, onAction, startFlight, S, setCam };
+window.__sim = { simUpdate: (dt) => simUpdate(dt), get fm() { return fm; }, get hud() { return hud; }, get lights() { return lights; }, get paused() { return paused; }, get perf() { return perf.last; }, get started() { return started; }, get ap() { return ap; }, get world() { return world; }, get controls() { return controls; }, onAction, startFlight, S, setCam };

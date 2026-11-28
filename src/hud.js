@@ -21,6 +21,7 @@ export class HUD {
   draw(s) {
     const g = this.g, W = this.W, H = this.H;
     g.clearRect(0, 0, W, H);
+    this.ndRect = null;
     if (!s || !s.show) return;
     const mobile = Math.min(W, H) < 560;
     const big = s.cockpit;
@@ -31,6 +32,7 @@ export class HUD {
       if (s.showND) { const nd = Math.min(H * 0.27, W * 0.2, 280); this.nd(W - nd - 14, 62, nd, s); }
       return;
     }
+    if (big && !s.touch) { this.cockpitPanel(s); return; }
     let size = big ? Math.min(W * 0.5, H * 0.52, 520) : Math.min(W * 0.36, H * 0.4, 360);
     if (mobile) size = Math.min(H * (big ? 0.58 : 0.46), W * 0.38);
     const pfdX = big ? W / 2 - size / 2 - (s.showND ? size * 0.45 : 0) : 14 + (mobile ? 6 : 0);
@@ -186,8 +188,12 @@ export class HUD {
   }
 
   // -------------------------------------------------------------- navigation display (heading-up moving map)
+  cycleRange() { const R = [5, 10, 20, 40, 80, 160]; this.ndRange = R[(R.indexOf(this.ndRange) + 1) % R.length]; return this.ndRange; }
+  hitND(px, py) { const r = this.ndRect; return !!r && px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h; }
+
   nd(x, y, S, s) {
     const g = this.g, cx = x + S / 2, cy = y + S * 0.58, R = S * 0.44, range = this.ndRange * 1852;
+    this.ndRect = { x, y, w: S, h: S };
     g.save(); g.fillStyle = C.panel; this.rr(x - 6, y - 6, S + 12, S + 12, 14); g.fill();
     g.beginPath(); g.arc(cx, cy, R, 0, 7); g.fillStyle = 'rgba(0,0,0,0.55)'; g.fill();
     g.save(); g.beginPath(); g.arc(cx, cy, R, 0, 7); g.clip();
@@ -254,7 +260,69 @@ export class HUD {
     g.restore();
   }
 
-  hudSymbology(s) { /* cockpit view uses the big PFD */ }
+  hudSymbology(s) { /* cockpit view uses the panel */ }
+
+  // -------------------------------------------------------------- cockpit view: windshield frame + instrument panel
+  cockpitPanel(s) {
+    const g = this.g, W = this.W, H = this.H;
+    const ph = Math.round(Math.min(H * 0.38, W * 0.3)), top = H - ph;
+    this.panelTop = top;
+    // windshield posts and the glareshield
+    g.save();
+    g.fillStyle = '#15181d';
+    g.beginPath(); g.moveTo(0, 0); g.lineTo(W * 0.06, 0); g.lineTo(W * 0.11, top - 18); g.lineTo(0, top); g.fill();
+    g.beginPath(); g.moveTo(W, 0); g.lineTo(W * 0.94, 0); g.lineTo(W * 0.89, top - 18); g.lineTo(W, top); g.fill();
+    g.fillRect(0, 0, W, Math.max(6, H * 0.012));
+    let gr = g.createLinearGradient(0, top - 26, 0, top + 10); gr.addColorStop(0, '#22262d'); gr.addColorStop(1, '#0d0f12');
+    g.fillStyle = gr; g.beginPath(); g.moveTo(0, top + 6); g.quadraticCurveTo(W / 2, top - 34, W, top + 6); g.lineTo(W, H); g.lineTo(0, H); g.fill();
+    // panel face
+    gr = g.createLinearGradient(0, top, 0, H); gr.addColorStop(0, '#2a2e35'); gr.addColorStop(1, '#1a1d22');
+    g.fillStyle = gr; g.fillRect(0, top + 8, W, ph);
+    g.restore();
+    // displays
+    const S = Math.min(ph - 22, W * 0.25);
+    const pfdX = W * 0.5 - S * 1.62, ndX = pfdX + S + 16, sysX = ndX + S * 0.85 + 22, y = top + 14;
+    this.pfd(pfdX, y, S, s);
+    if (s.showND) this.nd(ndX, y + S * 0.075, S * 0.85, s);
+    this.systems(sysX, y, Math.min(S * 0.9, W - sysX - 14), S, s);
+  }
+
+  // engines, flaps, gear, trim, brakes, autopilot status (the right side of the panel)
+  systems(x, y, w, h, s) {
+    const g = this.g, e = s.eng;
+    if (!e || w < 80) return;
+    g.save();
+    g.fillStyle = C.panel; this.rr(x - 6, y - 6, w + 12, h + 12, 12); g.fill();
+    const n = e.engines, gw = Math.min(w / n, h * 0.5) - 6;
+    for (let i = 0; i < n; i++) {
+      const cx = x + (w / n) * (i + 0.5), cy = y + gw * 0.55, r = gw * 0.42;
+      const frac = e.type === 'prop' ? (e.rpm - 500) / 2300 : (e.n1 - 0) / 110;
+      g.strokeStyle = 'rgba(255,255,255,0.25)'; g.lineWidth = r * 0.16; g.beginPath(); g.arc(cx, cy, r, Math.PI * 0.75, Math.PI * 2.25); g.stroke();
+      g.strokeStyle = e.burner ? C.amb : e.reverse ? C.cy : C.grn; g.beginPath(); g.arc(cx, cy, r, Math.PI * 0.75, Math.PI * (0.75 + 1.5 * clamp(frac, 0, 1))); g.stroke();
+      g.fillStyle = C.w; g.font = `700 ${Math.round(r * 0.42)}px ${MONO}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(e.type === 'prop' ? Math.round(e.rpm) : e.n1.toFixed(1), cx, cy);
+      g.font = `600 ${Math.round(r * 0.26)}px ${FONT}`; g.fillStyle = 'rgba(255,255,255,0.7)';
+      g.fillText(e.type === 'prop' ? 'RPM' : (e.burner ? 'N1 A/B' : e.reverse ? 'N1 REV' : 'N1 %'), cx, cy + r * 0.62);
+    }
+    // rows of status
+    let ry = y + gw + 10;
+    const lh = Math.max(14, h * 0.085);
+    g.font = `700 ${Math.round(lh * 0.62)}px ${MONO}`; g.textBaseline = 'middle';
+    const row = (label, val, col) => { g.textAlign = 'left'; g.fillStyle = 'rgba(255,255,255,0.6)'; g.fillText(label, x + 2, ry); g.textAlign = 'right'; g.fillStyle = col || C.w; g.fillText(val, x + w - 2, ry); ry += lh; };
+    row('THR', `${Math.round(s.thr * 100)}%`);
+    row('FLAPS', `${s.flapsDeg}°`, s.flapsMoving ? C.amb : C.w);
+    if (s.retractable) {
+      const gp = s.gearPos;
+      // three gear lights: green = down and locked, red = moving, dark = up
+      g.textAlign = 'left'; g.fillStyle = 'rgba(255,255,255,0.6)'; g.fillText('GEAR', x + 2, ry);
+      for (let k = 0; k < 3; k++) { g.fillStyle = gp > 0.99 ? C.grn : gp > 0.01 ? C.red : '#333'; g.beginPath(); g.arc(x + w - 8 - k * lh * 0.95, ry, lh * 0.32, 0, 7); g.fill(); }
+      ry += lh;
+    } else row('GEAR', 'FIXED');
+    row('TRIM', `${s.trim > 0 ? 'UP ' : s.trim < 0 ? 'DN ' : ''}${Math.round(Math.abs(s.trim) * 100)}`);
+    if (s.spoilers) row('SPOILERS', 'EXT', C.amb);
+    if (s.parking) row('PARK BRK', 'SET', C.red); else if (s.braking) row('BRAKES', 'ON', C.amb);
+    g.restore();
+  }
 
   diamond(x, y, r, col = C.mag) { const g = this.g; g.fillStyle = col; g.beginPath(); g.moveTo(x, y - r); g.lineTo(x + r * 0.7, y); g.lineTo(x, y + r); g.lineTo(x - r * 0.7, y); g.fill(); }
   rr(x, y, w, h, r) { const g = this.g; g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }

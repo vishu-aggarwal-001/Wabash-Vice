@@ -63,6 +63,7 @@ export class FlightModel {
     this.onGround = false; this.wasOnGround = false;
     this.touchdown = null;      // filled on touchdown for the landing rating
     this.groundH = 0;           // terrain height under the aircraft (set by the game each frame)
+    this.groundGrad = [0, 0];   // ground slope (rise per metre east, north), set by the game near the ground
     this.wind = [0, 0, 0]; this.turbulence = 0; this.t = 0;
     this.out = {};
     this.reset(0, 0, 0, 0);
@@ -222,7 +223,8 @@ export class FlightModel {
     for (const p of d.body) points.push({ p, gear: false });
     for (const pt of points) {
       const off = qrot(this.q, pt.p);
-      const pen = this.groundH - (this.h + off[2]);
+      // ground under this wheel/point: a plane through the ground height and its slope (sloped runways)
+      const pen = this.groundH + this.groundGrad[0] * off[0] + this.groundGrad[1] * off[1] - (this.h + off[2]);
       if (pen <= 0) continue;
       const vp = add(this.vel, qrot(this.q, cross(this.w, pt.p)));
       if (!pt.gear) {

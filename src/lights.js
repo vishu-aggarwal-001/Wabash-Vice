@@ -97,8 +97,10 @@ export class Lights {
     this.center = [lat, lon];
     const A = this.airport; A.removeAll(); this.papi = [];
     this.white = C(1, 1, 1); this.red = C(1, 0.12, 0.08);
-    const near = nearestAirports(lat, lon, 4, 22000).filter(({ a }) => a.runways.some((r) => r.paved));
+    const near = nearestAirports(lat, lon, 3, 20000).filter(({ a }) => a.runways.some((r) => r.paved));
+    const MAX = 1600; // keep busy airports (8 runways at O'Hare) light enough for phones
     const add = (la, lo, color, size, hAbove = 0.5, isPapi = false) => {
+      if (!isPapi && A.length >= MAX) return null;
       const b = A.add({ position: Cesium.Cartesian3.fromDegrees(lo, la, hAbove), heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
         image: this.img, color, width: size, height: size, scaleByDistance: new Cesium.NearFarScalar(300, 1.0, 15000, 0.35),
         translucencyByDistance: isPapi ? undefined : new Cesium.NearFarScalar(500, 1.0, 25000, 0.15) });
@@ -118,7 +120,7 @@ export class Lights {
           for (const s of [-1, 1]) { const p = destPoint(c[0], c[1], hdg + 90 * s, halfW); add(p[0], p[1], EDGE, 11); }
         }
         // centre line (wide runways at big airports)
-        if (a.size === 3 && (r.widthFt || 0) >= 140) for (let x = 30; x < len - 30; x += 60) { const p = destPoint(e0.lat, e0.lon, hdg, x); add(p[0], p[1], CL, 8, 0.2); }
+        if (a === near[0].a && a.size === 3 && (r.widthFt || 0) >= 140) for (let x = 30; x < len - 30; x += 60) { const p = destPoint(e0.lat, e0.lon, hdg, x); add(p[0], p[1], CL, 8, 0.2); }
         for (const [th, dir] of [[e0, hdg], [e1, hdg + 180]]) {
           // threshold bar (green) and runway-end bar (red) across the runway
           for (let k = -4; k <= 4; k++) {

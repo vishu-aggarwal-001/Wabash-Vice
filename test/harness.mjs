@@ -24,6 +24,10 @@ export function makeSim(key, opts = {}) {
     c.elev = clamp(elev, -1, 1); c.ail = clamp(ail, -1, 1); c.rud = clamp(rud, -1, 1);
     c.throttle = sim.throttle; c.brake = Math.max(sim.brake, sim.apBrake || 0);
     if (opts.wind) fm.wind = opts.wind;
+    if (opts.slope) { // ground rising eastward from lon -86 at opts.slope (rise per metre), like a sloped runway
+      const east = (fm.lonDeg + 86) * 111320 * Math.cos(fm.lat);
+      fm.groundH = (opts.ground ?? GROUND) + Math.max(0, east) * opts.slope; fm.groundGrad = [east > 0 ? opts.slope : 0, 0];
+    }
     fm.step(dt); sim.t += dt;
   };
   sim.run = (secs, each) => { const n = Math.round(secs * 60); for (let i = 0; i < n; i++) { if (each && each(sim) === false) return; sim.step(); if (fm.crashed) return; } };

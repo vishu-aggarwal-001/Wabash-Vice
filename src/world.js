@@ -238,6 +238,14 @@ export class World {
     const res = await Promise.race([job, new Promise((ok) => setTimeout(() => ok(null), timeoutMs))]);
     return res === -1e9 ? null : res;
   }
+  // terrain heights (m, ellipsoid) at [lat, lon] points from coarse tiles; null if unavailable
+  async terrainHeights(points, timeoutMs = 6000) {
+    const tp = this.viewer.scene.globe.terrainProvider;
+    if (!tp || tp instanceof Cesium.EllipsoidTerrainProvider) return null;
+    const pos = points.map(([la, lo]) => Cesium.Cartographic.fromDegrees(lo, la));
+    const job = Cesium.sampleTerrain(tp, 11, pos).then((r) => r.map((c) => c.height)).catch(() => null);
+    return Promise.race([job, new Promise((ok) => setTimeout(() => ok(null), timeoutMs))]);
+  }
   // background terrain probe (async, about once a second) so there is always real ground to hit,
   // even where nothing has been drawn yet or the globe is hidden behind the 3D cities
   probeTerrain(latDeg, lonDeg) {
