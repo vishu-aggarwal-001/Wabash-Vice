@@ -50,6 +50,7 @@
     <button data-act="spoilers">SPLR</button><button data-act="burner" id="tBurner">A/B</button>
   </div>
   <div id="thr"><span>0%</span><i></i></div>
+  <div id="ctouch"><button data-act="vehicle" class="sm">EXIT</button><button data-act="camera" class="sm">CAM</button><button data-car="hb">HAND<br>BRAKE</button><button data-car="brake">BRAKE</button><button data-car="gas" class="gas">GAS</button></div>
 </div>
 
 <!-- ======================== MAIN MENU ======================== -->
@@ -69,8 +70,12 @@
       <div class="row" style="margin-top:16px">
         <label>Start</label>
         <div class="seg" id="startMode">
-          <button data-v="runway">On the runway</button><button data-v="approach">Landing approach</button><button data-v="cruise">In the air</button><button data-v="place">Anywhere (search a place)</button>
+          <button data-v="runway">On the runway</button><button data-v="approach">Landing approach</button><button data-v="cruise">In the air</button><button data-v="place">Anywhere (search a place)</button><button data-v="drive">Drive a car</button>
         </div>
+      </div>
+      <div id="carPick" class="hidden">
+        <p class="note" style="margin:4px 0 8px">Drive anywhere on Earth. Start beside your aircraft at the airport below (press <kbd>Enter</kbd> next to it to fly), or search a place to start in a city. Get out of any stopped aircraft with <kbd>Enter</kbd> too.</p>
+        <div class="grid3" id="cars"></div>
       </div>
       <div id="airportPick">
         <div class="row"><label>Airport</label><input type="search" id="apSearch" class="grow" placeholder="Search 9,800 airports: KLAF, Heathrow, Tokyo, Lukla…" autocomplete="off"></div>
@@ -146,6 +151,10 @@
         <div><span>Gamepad</span><span>L-stick fly · RT/LT throttle · LB/RB rudder · A brake · Y gear · X flaps · B camera</span></div>
         <div><span>Joystick / yoke / pedals</span><span>Settings → Joystick: Detect each control</span></div>
         <div><span>Frame-rate readout</span><span><kbd>`</kbd></span></div>
+        <div><span><b>Driving:</b> get out of a stopped aircraft / back in</span><span><kbd>Enter</kbd></span></div>
+        <div><span>Gas · brake &amp; reverse · steer · handbrake</span><span><kbd>W</kbd> · <kbd>S</kbd> · <kbd>A</kbd><kbd>D</kbd> · <kbd>Space</kbd></span></div>
+        <div><span>Driving camera: chase / driver / far</span><span><kbd>C</kbd> · <kbd>1</kbd><kbd>2</kbd><kbd>4</kbd> · drag to look</span></div>
+        <div><span>Gamepad driving</span><span>L-stick steer · RT gas · LT brake · A handbrake</span></div>
       </div>
       <p class="note" style="margin-top:14px"><b>First flight:</b> pick the Wabash Trainer at KLAF, hold <kbd>R</kbd> for full power, at 55 knots gently hold <kbd>S</kbd> to lift the nose, then let go. To land: line up with the runway, reduce power so the green VS number reads about −500, add flaps with <kbd>V</kbd>, and raise the nose just before touching down. Aim for a touchdown under 200 ft/min for a “Butter” landing!</p>
       <p class="note">Satellite imagery © Esri, Maxar, Earthstar Geographics. Terrain: AWS Open Data Terrain Tiles. Airports: OurAirports (public domain). Globe engine: CesiumJS (Apache-2.0). Wabash Flight is a fan-made project and is not affiliated with any flight-simulator company.</p>

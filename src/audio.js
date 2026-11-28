@@ -49,6 +49,21 @@ export class Sound {
     const set = (p, v) => p.setTargetAtTime(v, t, k);
     const mute = s.paused || !this.enabled ? 0 : 1;
     const inside = s.inside ? 0.55 : 1;
+    if (this.type === 'car') {
+      // car engine: firing frequency from the rpm (4-stroke V8: rpm/60 * 4), growl from a square wave, tyre squeal
+      const f = (s.rpm / 60) * 2;
+      set(this.engOsc.frequency, f); set(this.engOsc2.frequency, f / 2);
+      set(this.engFilter.frequency, 250 + s.rpm * 0.25 + s.load * 900);
+      set(this.engGain.gain, (0.07 + 0.1 * s.load + 0.06 * (s.rpm / 8000)) * mute * inside);
+      set(this.roarGain.gain, Math.min(0.25, s.screech * 0.6) * mute); set(this.roarFilter.frequency, 1500); this.roarFilter.Q.value = 6;
+      set(this.whineGain.gain, 0);
+      set(this.windFilter.frequency, 200 + s.V * 15);
+      set(this.windGain.gain, Math.min(0.25, (s.V / 70) ** 2 * 0.2) * mute * inside);
+      set(this.rumbleGain.gain, Math.min(0.35, s.V / 60) * mute * inside);
+      set(this.warnGain.gain, 0);
+      return;
+    }
+    this.roarFilter.Q.value = 0.7;
     if (this.type === 'prop') {
       const rpm = 700 + s.N * 1800;
       set(this.engOsc.frequency, (rpm / 60) * 2); set(this.engOsc2.frequency, (rpm / 60) * 1);

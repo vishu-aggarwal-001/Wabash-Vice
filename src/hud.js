@@ -46,6 +46,81 @@ export class HUD {
     if (big) this.hudSymbology(s);
   }
 
+  // -------------------------------------------------------------- driving: speedometer + radar
+  drawCar(s) {
+    const g = this.g, W = this.W, H = this.H;
+    g.clearRect(0, 0, W, H);
+    this.ndRect = null;
+    if (!s || !s.show) return;
+    const size = Math.min(W * 0.26, H * 0.36, 260);
+    const pad = s.touch ? 12 : 22;
+    // radar (heading up): your plane, destination, north
+    const rx = s.touch ? W - size * 0.8 - pad : pad, ry = s.touch ? 64 : H - size - pad, rs = s.touch ? size * 0.8 : size;
+    const cx = rx + rs / 2, cy = ry + rs / 2, R = rs / 2 - 4, range = s.radarRange;
+    g.save();
+    g.beginPath(); g.arc(cx, cy, R + 4, 0, 7); g.fillStyle = C.panel; g.fill();
+    g.beginPath(); g.arc(cx, cy, R, 0, 7); g.fillStyle = 'rgba(30,44,36,0.85)'; g.fill();
+    g.save(); g.beginPath(); g.arc(cx, cy, R, 0, 7); g.clip();
+    g.strokeStyle = 'rgba(255,255,255,0.12)'; g.lineWidth = 1;
+    for (const f of [0.33, 0.66]) { g.beginPath(); g.arc(cx, cy, R * f, 0, 7); g.stroke(); }
+    const toXY = (lat, lon) => {
+      const d = distM(s.lat, s.lon, lat, lon), b = (bearingDeg(s.lat, s.lon, lat, lon) - s.heading) * DEG;
+      const k = Math.min(d / range, 0.93);
+      return [cx + Math.sin(b) * k * R, cy - Math.cos(b) * k * R, d];
+    };
+    if (s.plane) {
+      const [px, py, d] = toXY(s.plane.lat, s.plane.lon);
+      g.save(); g.translate(px, py); g.rotate((s.plane.hdg - s.heading) * DEG);
+      g.fillStyle = '#7fd8ff'; g.beginPath(); g.moveTo(0, -9); g.lineTo(2, -2); g.lineTo(9, 2); g.lineTo(2, 2); g.lineTo(1.5, 7); g.lineTo(4, 9); g.lineTo(-4, 9); g.lineTo(-1.5, 7); g.lineTo(-2, 2); g.lineTo(-9, 2); g.lineTo(-2, -2); g.closePath(); g.fill();
+      g.restore();
+      if (d > range * 0.9) { g.fillStyle = '#7fd8ff'; g.font = `700 ${Math.round(rs * 0.065)}px ${MONO}`; g.textAlign = 'center'; g.fillText(d > 1000 ? (d / 1000).toFixed(1) + ' km' : Math.round(d) + ' m', px, py + 20); }
+    }
+    if (s.dest) { const [px, py] = toXY(s.dest.lat, s.dest.lon); this.diamond(px, py, 7, C.mag); }
+    g.restore();
+    // north
+    const na = -s.heading * DEG; g.fillStyle = C.w; g.font = `800 ${Math.round(rs * 0.08)}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText('N', cx + Math.sin(na) * (R - 12), cy - Math.cos(na) * (R - 12));
+    // you
+    g.fillStyle = '#ffd23f'; g.beginPath(); g.moveTo(cx, cy - 9); g.lineTo(cx - 7, cy + 7); g.lineTo(cx, cy + 3); g.lineTo(cx + 7, cy + 7); g.fill();
+    g.restore();
+    // speedometer
+    const sx = W - size - pad, sy = H - size - pad, scx = sx + size / 2, scy = sy + size / 2, SR = size / 2 - 6;
+    g.save();
+    g.beginPath(); g.arc(scx, scy, size / 2, 0, 7); g.fillStyle = C.panel; g.fill();
+    const a0 = 0.75 * Math.PI, a1 = 2.25 * Math.PI, top = s.vmaxShown;
+    const ang = (v) => a0 + (a1 - a0) * Math.min(1, Math.max(0, v / top));
+    // rpm arc (inner)
+    g.lineWidth = size * 0.035; g.lineCap = 'round';
+    g.strokeStyle = 'rgba(255,255,255,0.1)'; g.beginPath(); g.arc(scx, scy, SR * 0.72, a0, a1); g.stroke();
+    const rf = Math.min(1, s.rpm / s.redline);
+    g.strokeStyle = rf > 0.9 ? C.red : rf > 0.75 ? C.amb : C.cy; g.beginPath(); g.arc(scx, scy, SR * 0.72, a0, a0 + (a1 - a0) * rf); g.stroke();
+    // speed ticks
+    g.lineCap = 'butt';
+    const stepT = top > 260 ? 40 : 20;
+    g.font = `700 ${Math.round(size * 0.065)}px ${MONO}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    for (let v = 0; v <= top + 0.1; v += stepT / 2) {
+      const a = ang(v), big = v % stepT === 0;
+      g.strokeStyle = C.w; g.lineWidth = big ? 2.5 : 1.2;
+      g.beginPath(); g.moveTo(scx + Math.cos(a) * SR, scy + Math.sin(a) * SR); g.lineTo(scx + Math.cos(a) * (SR - (big ? 12 : 6)), scy + Math.sin(a) * (SR - (big ? 12 : 6))); g.stroke();
+      if (big) { g.fillStyle = 'rgba(255,255,255,0.75)'; g.fillText(String(v), scx + Math.cos(a) * (SR - 26), scy + Math.sin(a) * (SR - 26)); }
+    }
+    // needle
+    const na2 = ang(s.speed);
+    g.strokeStyle = '#ff5a3c'; g.lineWidth = 3.5; g.beginPath(); g.moveTo(scx - Math.cos(na2) * 10, scy - Math.sin(na2) * 10); g.lineTo(scx + Math.cos(na2) * (SR - 6), scy + Math.sin(na2) * (SR - 6)); g.stroke();
+    g.fillStyle = '#222'; g.beginPath(); g.arc(scx, scy, 7, 0, 7); g.fill();
+    // digital speed, unit, gear
+    g.fillStyle = C.w; g.font = `800 ${Math.round(size * 0.17)}px ${MONO}`; g.fillText(String(Math.round(s.speed)), scx, scy + size * 0.2);
+    g.fillStyle = C.dim || 'rgba(255,255,255,0.6)'; g.font = `700 ${Math.round(size * 0.06)}px ${FONT}`; g.fillText(s.unit, scx, scy + size * 0.32);
+    g.fillStyle = s.gear === 'R' ? C.amb : C.cy; g.font = `800 ${Math.round(size * 0.1)}px ${MONO}`; g.fillText(s.gear, scx, scy - size * 0.17);
+    // damage
+    if (s.damage > 0.02) {
+      const bw = size * 0.5, bx = scx - bw / 2, by = sy + size * 0.06;
+      g.fillStyle = 'rgba(255,255,255,0.12)'; g.fillRect(bx, by, bw, 5);
+      g.fillStyle = s.damage > 0.6 ? C.red : C.amb; g.fillRect(bx, by, bw * s.damage, 5);
+    }
+    g.restore();
+  }
+
   // -------------------------------------------------------------- primary flight display
   pfd(x, y, S, s) {
     const g = this.g;

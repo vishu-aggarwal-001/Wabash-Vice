@@ -153,3 +153,15 @@ input[type=file] { color: var(--dim); font: inherit; font-size: 13px; }
 #fitPanel button.span2 { grid-column: span 2; }
 #fitPanel button.on { border-color: var(--good); color: var(--good); }
 #fitPanel .wide { grid-column: span 5; background: var(--acc); color: #111; border: 0; }
+
+/* ---------- driving: touch pedals */
+#ctouch { position: absolute; right: 4vw; bottom: 8vh; display: none; grid-template-columns: 64px 64px 84px; grid-template-rows: 44px 70px; gap: 8px; }
+body.driving #ctouch { display: grid; }
+body.driving #thr, body.driving #tbtns, body.driving #rud { display: none; }
+#ctouch button { border-radius: 14px; background: rgba(10,16,28,0.62); border: 1px solid rgba(255,255,255,0.25); font: 800 12px Inter, sans-serif; touch-action: none; }
+#ctouch button.sm { grid-row: 1; }
+#ctouch button[data-car] { grid-row: 2; }
+#ctouch button.gas { background: rgba(60,240,122,0.18); border-color: rgba(60,240,122,0.6); font-size: 15px; }
+#ctouch button[data-car="brake"] { background: rgba(255,75,75,0.16); border-color: rgba(255,75,75,0.55); }
+#ctouch button.on { filter: brightness(1.8); }
+#cars .card img { aspect-ratio: 16 / 7; }

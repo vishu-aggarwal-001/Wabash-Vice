@@ -1,0 +1,23 @@
+<!doctype html>
+<!-- dev tool: preview a model, e.g. tools/preview.html?m=models/car-sports.glb&d=9 (also used to make the menu thumbnails) -->
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cesium@1.147.0/Build/Cesium/Widgets/widgets.css">
+<script src="https://cdn.jsdelivr.net/npm/cesium@1.147.0/Build/Cesium/Cesium.js"></script>
+<style>html,body,#v{margin:0;width:100%;height:100%;overflow:hidden;background:#000}</style></head>
+<body><div id="v"></div><script>
+const q = new URLSearchParams(location.search), url = '../' + (q.get('m') || 'models/car-sports.glb'), dist = +(q.get('d') || 9), yaw = +(q.get('yaw') || 35), pitch = +(q.get('p') || -14), sc = +(q.get('s') || 1);
+const v = new Cesium.Viewer('v', { baseLayer: false, baseLayerPicker: false, geocoder: false, homeButton: false, sceneModePicker: false, navigationHelpButton: false, animation: false, timeline: false, fullscreenButton: false, infoBox: false, selectionIndicator: false, requestRenderMode: false, shadows: true });
+v.scene.globe.baseColor = Cesium.Color.fromCssColorString(q.get('g') || '#5d6b55');
+v.scene.skyAtmosphere.show = true; v.scene.globe.enableLighting = true; v.shadowMap.softShadows = true; v.shadowMap.size = 2048;
+v.clock.currentTime = Cesium.JulianDate.fromIso8601('2026-06-21T16:30:00Z');
+const lon = -86.93, lat = 40.41, pos = Cesium.Cartesian3.fromDegrees(lon, lat, 0);
+const hpr = new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(+(q.get('h') || 0)), 0, 0);
+const mm = Cesium.Transforms.headingPitchRollToFixedFrame(pos, hpr, Cesium.Ellipsoid.WGS84, (o, r, e, res) => Cesium.Transforms.eastNorthUpToFixedFrame(o, e, res));
+Cesium.Model.fromGltfAsync({ url, modelMatrix: mm, forwardAxis: Cesium.Axis.X, scale: sc, shadows: Cesium.ShadowMode.ENABLED }).then((m) => {
+  v.scene.primitives.add(m);
+  m.readyEvent.addEventListener(() => {
+    v.camera.lookAt(Cesium.Cartesian3.fromDegrees(lon, lat, +(q.get('z') || 0.8)), new Cesium.HeadingPitchRange(Cesium.Math.toRadians(yaw + 90), Cesium.Math.toRadians(pitch), dist));
+    setTimeout(() => (window.READY = true), 1500);
+  });
+});
+</script></body></html>

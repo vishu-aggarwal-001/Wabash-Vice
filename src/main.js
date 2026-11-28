@@ -1,6 +1,6 @@
 // Wabash Flight: game loop, cameras, menus, touch UI.
 /* global Cesium */
-import { DEG, KT, FT, clamp, smooth, wrap360, wrap180, qrot, qToMat3, qmul, qaxis, destPoint, distM, bearingDeg, atmosphere } from './math.js';
+import { DEG, KT, FT, clamp, smooth, wrap360, wrap180, qrot, qToMat3, qmul, qaxis, qFromHPR, destPoint, distM, bearingDeg, atmosphere } from './math.js';
 import { AIRCRAFT } from './aircraft.js';
 import { FlightModel, stallSpeed } from './physics.js';
 import { World } from './world.js';
@@ -12,6 +12,7 @@ import { Sound } from './audio.js';
 import { loadAirports, searchAirports, runwayEnds, findAirport, bestRunwayEnd, nearestAirports } from './airports.js';
 import { loadGeoid, geoidHeight } from './geoid.js';
 import { Lights } from './lights.js';
+import { CARS, Car } from './car.js';
 import { customModel, glbInfo, autoFit, fitMatrix, animNodes, spinSetup, noseDirGltf, saveMeta, saveUpload, removeUpload, uploadedKeys, repoManifest } from './custom-models.js';
 
 const $ = (s) => document.querySelector(s);
@@ -144,7 +145,8 @@ async function startFlight() {
 async function startFlightInner() {
   started = false; // stop the previous flight from moving the camera while the new scenery loads
   showMenu(false);
-  sound.start(AIRCRAFT[S.aircraft].engine);
+  if (drv) { drv.model.show = false; drv = null; }
+  sound.start(S.startMode === 'drive' ? 'car' : AIRCRAFT[S.aircraft].engine);
   loading(true, 'Loading scenery…');
   paused = true;
   const def = AIRCRAFT[S.aircraft];
@@ -160,6 +162,8 @@ async function startFlightInner() {
 
   // where?
   let lat, lon, hdg = 0, mode = S.startMode, elevGuess = 0, ap0 = null, rwy = null, spawnWarn = '', approachFloor = -1e9;
+  const driving = mode === 'drive';
+  if (driving) mode = S.driveAt === 'place' && S.place ? 'place' : 'runway';
   if (mode === 'place') {
     if (!S.place) { mode = 'runway'; } else { lat = S.place.lat; lon = S.place.lon; hdg = 0; }
   }
@@ -217,7 +221,11 @@ async function startFlightInner() {
   fm.groundH = groundFilt = h;
   const c = fm.ctrl;
   c.gearDown = true; c.parking = false; c.burner = false; c.spoilers = 0; c.trim = 0; c.reverse = false;
-  if (mode === 'runway') {
+  if (driving) {
+    // park the aircraft at the runway start (or nowhere, for a place) and get in the car
+    c.flaps = 0; c.throttle = 0; c.parking = true;
+    fm.reset(lat, lon, h + fm.restHeight, hdg, 0, 0);
+  } else if (mode === 'runway') {
     c.flaps = def.takeoffFlaps ?? 1; c.throttle = 0;
     fm.reset(lat, lon, h + fm.restHeight, hdg, 0, 0);
     toast(`${ap0.icao} runway ${rwy.ident}: ${tip('full throttle (hold R or press Home)', 'slide the throttle all the way up')}, then at ${Math.round(def.vr / KT)} kt ${tip('gently hold S', 'gently pull the stick down')} to lift off`, 6000);
@@ -244,7 +252,7 @@ async function startFlightInner() {
     fm.geoidN = geoidHeight(lat, lon); ap.engage(fm); ap.alt = Math.round((alt - fm.geoidN) / FT / 100) * 100 * FT; ap.spd = sc.spd * Math.sqrt(atmosphere(alt).sigma); ap.vMode = 'ALT';
     toast(`Autopilot is holding altitude. ${tip('Press Z', 'Move the stick')} to take control.`, 5000);
   }
-  if (mode === 'place') toast(`Flying over ${S.place.name.split(',')[0]}. Autopilot on: ${tip('press Z', 'move the stick')} to take over.`, 5000);
+  if (mode === 'place' && !driving) toast(`Flying over ${S.place.name.split(',')[0]}. Autopilot on: ${tip('press Z', 'move the stick')} to take over.`, 5000);
   fm.gearPos = c.gearDown ? 1 : 0;
   fm.flapPos = def.flaps.length > 1 ? c.flaps / (def.flaps.length - 1) : 0;
   controls.throttle = c.throttle;
@@ -254,9 +262,255 @@ async function startFlightInner() {
   setupContrail();
   world.updateClouds(lat, lon, h, S.clouds, S.cloudBase, true);
   if (!S.realTime) world.setTime(S.hour, lon);
+  if (driving) {
+    const atPlace = mode === 'place';
+    const side = atPlace ? [lat, lon] : destPoint(lat, lon, hdg - 90, def.b / 2 + 5);
+    await enterCar(S.car || 'sports', side[0], side[1], hdg, atPlace);
+    toast(atPlace ? `Driving in ${S.place.name.split(',')[0]}. ${tip('W/S gas and brake, A/D steer, Space handbrake', 'GAS and BRAKE buttons, stick steers')}.` : `${tip('W/S gas and brake, A/D steer, Space handbrake', 'GAS and BRAKE buttons, stick steers')}. Drive back to your ${def.name} and press ${tip('Enter', 'EXIT')} to fly.`, 6500);
+  }
   started = true; paused = false; lastT = performance.now();
   loading(false);
   updateTouchVisibility();
+}
+
+// ------------------------------------------------------------------ driving (GTA-style, anywhere on Earth)
+let drv = null; // { key, car, model, noPlane, camH, gq } while driving
+async function getCarModel(key) {
+  const mk = 'car-' + key;
+  let cm = null;
+  try { cm = await customModel(mk); } catch { /* none */ }
+  const ck = cm ? `${mk}:${cm.source}:${cm.meta.uploaded || cm.meta.file || ''}` : mk;
+  if (models[ck]) { cm?.revoke(); return models[ck]; }
+  const def = { ...CARS[key], gear: [[0, 0, 0]] };
+  let m = null;
+  if (cm) {
+    try {
+      const buf = await (await fetch(cm.url)).arrayBuffer(), info = glbInfo(buf);
+      const fit = cm.meta.fit || autoFit(info, def);
+      m = await Cesium.Model.fromGltfAsync({ url: cm.url, forwardAxis: Cesium.Axis.X, shadows: Cesium.ShadowMode.ENABLED, minimumPixelSize: 16, backFaceCulling: true });
+      m.custom = { key: mk, ck, info, meta: cm.meta, fit, source: cm.source };
+      setCustomFit(m, fit);
+    } catch (e) { console.error(e); toast('Your car model could not be loaded: using the built-in one.', 5000); m = null; }
+  }
+  if (!m) m = await Cesium.Model.fromGltfAsync({ url: CARS[key].model, forwardAxis: Cesium.Axis.X, shadows: Cesium.ShadowMode.ENABLED, minimumPixelSize: 16, backFaceCulling: false });
+  m.show = false;
+  viewer.scene.primitives.add(m);
+  world.excludeFromPick.push(m);
+  models[ck] = m;
+  await new Promise((res) => { if (m.ready) res(); else m.readyEvent.addEventListener(res); });
+  return m;
+}
+// ground for the car's wheels. With the 3D cities: a ray straight down from a little above the car (finds the
+// road surface under bridges and trees, not the tree tops); one centre ray per frame plus one wheel per frame.
+// Without them: the terrain under each wheel.
+function carSurface(lat, lon, fromH) {
+  const scene = viewer.scene;
+  if (world.tileset && world.tileset.show) {
+    const o = Cesium.Cartesian3.fromDegrees(lon, lat, fromH);
+    const n = Cesium.Ellipsoid.WGS84.geodeticSurfaceNormal(o, new Cesium.Cartesian3());
+    let r; try { r = scene.pickFromRay(new Cesium.Ray(o, Cesium.Cartesian3.negate(n, n)), world.excludeFromPick); } catch { r = undefined; }
+    return r && r.position ? Cesium.Cartographic.fromCartesian(r.position).height : undefined;
+  }
+  const h = scene.globe.show ? scene.globe.getHeight(Cesium.Cartographic.fromDegrees(lon, lat)) : undefined;
+  if (h !== undefined) return h;
+  const p = world.probe;
+  return p && Math.abs(p.lat - lat) < 0.01 && Math.abs(p.lon - lon) < 0.01 ? p.h : undefined;
+}
+function carGround(lat, lon, fromH, slot) {
+  const g = drv.gq, c = drv.car;
+  const tiles = world.tileset && world.tileset.show;
+  if (!tiles) return slot < 4 ? carSurface(lat, lon, fromH) : undefined;
+  if (slot >= 4) return undefined; // walls come from the wall ray
+  if (g.frame !== drv.frame) {
+    g.frame = drv.frame;
+    const hc = carSurface(c.latDeg, c.lonDeg, c.h + 2.5);
+    if (hc !== undefined && Math.abs(hc - (g.hc ?? hc)) < 6) g.hc = hc;
+    else if (hc !== undefined && g.miss++ > 20) { g.hc = hc; g.miss = 0; }
+    g.next = (g.next + 1) % 4; g.did = false;
+  }
+  if (g.hc === undefined) return undefined;
+  if (slot === g.next && !g.did) {
+    g.did = true;
+    const hw = carSurface(lat, lon, fromH);
+    if (hw !== undefined && Math.abs(hw - g.hc) < 1.5) g.rel[slot] = hw - g.hc;
+  }
+  return g.hc + g.rel[slot];
+}
+// a wall, building, tree or parked vehicle in the way (3D cities only): distance along the ray, or null
+function carWall(lat, lon, h, bearing, len) {
+  if (!(world.tileset && world.tileset.show) || drv.frame % 3) return null;
+  const o = Cesium.Cartesian3.fromDegrees(lon, lat, h);
+  const enu = Cesium.Transforms.eastNorthUpToFixedFrame(o);
+  const d = Cesium.Matrix4.multiplyByPointAsVector(enu, new Cesium.Cartesian3(Math.sin(bearing * DEG), Math.cos(bearing * DEG), 0), new Cesium.Cartesian3());
+  let r; try { r = viewer.scene.pickFromRay(new Cesium.Ray(o, Cesium.Cartesian3.normalize(d, d)), world.excludeFromPick); } catch { r = undefined; }
+  if (!r || !r.position) return null;
+  const dist = Cesium.Cartesian3.distance(o, r.position);
+  return dist <= len ? dist : null;
+}
+async function enterCar(key, lat, lon, hdg, noPlane) {
+  key = CARS[key] ? key : 'sports';
+  const model = await getCarModel(key);
+  let h = carSurface(lat, lon, (fm ? fm.h : 0) + 20);
+  if (h === undefined) h = world.groundHeight(lat, lon, groundFilt);
+  drv = { key, car: new Car(CARS[key], lat, lon, h, hdg), model, noPlane: !!noPlane, camH: hdg, frame: 0, gq: { frame: -1, hc: h, rel: [0, 0, 0, 0], next: 0, miss: 0 }, lastImpactT: -9 };
+  drv.car.wheelH = [h, h, h, h];
+  model.show = true;
+  sound.start('car');
+  if (fm) { fm.ctrl.parking = true; fm.ctrl.throttle = 0; controls.throttle = 0; fm.N = 0; ap.disengage(); }
+  camMode = 0; controls.look.yaw = 0; controls.look.pitch = 0; controls.look.zoom = 1;
+  $('#fitPanel').classList.add('hidden'); $('#ap').classList.add('hidden');
+  updateTouchVisibility();
+}
+function exitCar() {
+  if (!drv) return;
+  drv.model.show = false; drv = null;
+  sound.start(fm.def.engine);
+  camHeading = fm.hpr.heading; camMode = 0;
+  updateTouchVisibility();
+  toast('Back in the aircraft. Parking brake is on (B to release).', 3500);
+}
+// Enter key: get out of a stopped aircraft into a car, or back into the aircraft when the car is beside it
+function vehicleAction() {
+  if (drv) {
+    const c = drv.car, d = distM(c.latDeg, c.lonDeg, fm.latDeg, fm.lonDeg);
+    if (drv.noPlane) { toast('No aircraft here. Pick “On the runway” in the menu to start with one.', 3000); return; }
+    if (d > Math.max(30, fm.def.b)) { toast(`Drive back to your aircraft to get in (${Math.round(d)} m away).`, 2500); return; }
+    if (c.speed > 3) { toast('Stop the car first.', 1500); return; }
+    exitCar(); return;
+  }
+  if (fm.crashed) { toast('Restart first (Backspace).', 2000); return; }
+  if (!fm.onGround || fm.groundSpeed > 1.5) { toast('Land and stop the aircraft to get out.', 2500); return; }
+  const side = destPoint(fm.latDeg, fm.lonDeg, fm.hpr.heading - 90, fm.def.b / 2 + 4);
+  enterCar(S.car || 'sports', side[0], side[1], fm.hpr.heading, false).then(() => toast(`Driving the ${CARS[drv.key].name}. W/S gas and brake, A/D steer, Space handbrake, Enter by the aircraft to fly again.`, 6000));
+}
+function carInput(dt) {
+  const k = controls.keys, kp = (a, b) => (k.has(a) || k.has(b) ? 1 : 0);
+  let thr = kp('KeyW', 'ArrowUp'), brk = kp('KeyS', 'ArrowDown'), st = kp('KeyD', 'ArrowRight') - kp('KeyA', 'ArrowLeft');
+  let hb = k.has('Space');
+  // keyboard steering eases in and out (like holding a wheel), faster back to centre
+  const ks = drv.kSteer || 0;
+  drv.kSteer = st !== 0 ? ks + clamp(st - ks, -dt * 3.2, dt * 3.2) : ks + clamp(-ks, -dt * 6, dt * 6);
+  let steer = drv.kSteer;
+  // gamepads (standard layout): left stick steers, RT gas, LT brake/reverse, A or RB handbrake
+  for (const p of navigator.getGamepads ? navigator.getGamepads() : []) {
+    if (!p || p.mapping !== 'standard') continue;
+    const ax = p.axes[0] || 0; if (Math.abs(ax) > 0.12) steer = ax;
+    thr = Math.max(thr, p.buttons[7]?.value || 0); brk = Math.max(brk, p.buttons[6]?.value || 0);
+    if (p.buttons[0]?.pressed || p.buttons[5]?.pressed) hb = true;
+  }
+  // joysticks and wheels set up in Settings: roll axis steers, pitch forward = gas, back = brake
+  const h = controls.hw.read(dt, true);
+  if (h.roll) steer = h.roll;
+  if (h.pitch) { if (h.pitch < -0.1) thr = Math.max(thr, -h.pitch); if (h.pitch > 0.1) brk = Math.max(brk, h.pitch); }
+  if (h.brakes) hb = true;
+  // touch: stick steers; GAS / BRAKE / HANDBRAKE buttons
+  if (controls.touch.active) steer = controls.touch.x;
+  if (touchCar.gas) thr = 1; if (touchCar.brake) brk = 1; if (touchCar.hb) hb = true;
+  return { throttle: clamp(thr, 0, 1), brake: clamp(brk, 0, 1), steer: clamp(steer, -1, 1), handbrake: hb };
+}
+const touchCar = { gas: false, brake: false, hb: false };
+function driveUpdate(dt) {
+  if (paused) return;
+  simTime += dt;
+  drv.frame++;
+  const inp = carInput(dt);
+  drv.inp = inp;
+  drv.car.step(dt, inp, carGround, carWall);
+  const c = drv.car;
+  if (c.impact > 4 && c.t - drv.lastImpactT > 0.4) { drv.lastImpactT = c.t; sound.thump(Math.min(1.2, c.impact / 20)); drv.shake = Math.min(1, c.impact / 25); }
+}
+function carMatrix() {
+  const c = drv.car;
+  const pos = Cesium.Cartesian3.fromDegrees(c.lonDeg, c.latDeg, c.h);
+  const enu = Cesium.Transforms.eastNorthUpToFixedFrame(pos);
+  const rot = Cesium.Matrix3.fromArray(qToMat3(qFromHPR(c.headingDeg, c.bodyPitch / DEG, c.bodyRoll / DEG)), 0, new Cesium.Matrix3());
+  return Cesium.Matrix4.multiplyByMatrix3(enu, rot, new Cesium.Matrix4());
+}
+function updateCar() {
+  const m = carMatrix(), c = drv.car, md = drv.model;
+  md.modelMatrix = md.custom ? Cesium.Matrix4.multiply(m, md.custom.M, new Cesium.Matrix4()) : m;
+  md.show = true; // the driver camera sits on the bonnet, so the car stays visible
+  if (md.custom) return;
+  // wheels: spin with the speed, the front ones steer
+  for (const [nm, front] of [['wheelFL', 1], ['wheelFR', 1], ['wheelRL', 0], ['wheelRR', 0]]) {
+    const n = md.getNode(nm); if (!n) continue;
+    const q = Cesium.Quaternion.multiply(Cesium.Quaternion.fromAxisAngle(Cesium.Cartesian3.UNIT_Y, front ? c.delta : 0), Cesium.Quaternion.fromAxisAngle(Cesium.Cartesian3.UNIT_Z, -c.spin), new Cesium.Quaternion());
+    n.matrix = Cesium.Matrix4.multiply(n.originalMatrix, Cesium.Matrix4.fromRotationTranslation(Cesium.Matrix3.fromQuaternion(q)), new Cesium.Matrix4());
+  }
+}
+function carCamera(dt) {
+  const c = drv.car, cam = viewer.camera, look = controls.look, def = c.def;
+  const pos = Cesium.Cartesian3.fromDegrees(c.lonDeg, c.latDeg, c.h);
+  if (camMode === 1) {
+    // driver's seat / bonnet view
+    const q = qmul(qFromHPR(c.headingDeg, c.bodyPitch / DEG, c.bodyRoll / DEG), qaxis([0, 0, 1], -look.yaw * DEG));
+    const q2 = qmul(q, qaxis([0, 1, 0], -(look.pitch - 3) * DEG));
+    const enu = Cesium.Transforms.eastNorthUpToFixedFrame(pos);
+    const eyeEnu = qrot(qFromHPR(c.headingDeg, c.bodyPitch / DEG, c.bodyRoll / DEG), def.eye);
+    const toW = (v) => Cesium.Matrix4.multiplyByPointAsVector(enu, new Cesium.Cartesian3(v[0], v[1], v[2]), new Cesium.Cartesian3());
+    const eye = Cesium.Matrix4.multiplyByPoint(enu, new Cesium.Cartesian3(...eyeEnu), new Cesium.Cartesian3());
+    cam.lookAtTransform(Cesium.Matrix4.IDENTITY);
+    cam.setView({ destination: eye, orientation: { direction: Cesium.Cartesian3.normalize(toW(qrot(q2, [1, 0, 0])), new Cesium.Cartesian3()), up: Cesium.Cartesian3.normalize(toW(qrot(q2, [0, 0, 1])), new Cesium.Cartesian3()) } });
+    cam.frustum.fov = (72 + Math.min(14, c.speed * 0.2)) * DEG;
+    return;
+  }
+  // chase: swings round behind the direction of travel, lags a little, pulls back and widens with speed
+  const s = Math.sin(c.psi), co = Math.cos(c.psi);
+  const vE = c.vx * s - c.vy * co, vN = c.vx * co + c.vy * s;
+  const travel = c.speed > 4 && c.vx > 0 ? Math.atan2(vE, vN) / DEG : c.headingDeg;
+  const want = c.vx < -1 ? c.headingDeg : travel;
+  drv.camH = wrap360(drv.camH + wrap180(want - drv.camH) * (1 - Math.exp(-(c.airborne ? 1.5 : 3.5) * dt)));
+  if (controls.look.dragging) drv.lookT = 0; else { drv.lookT = (drv.lookT || 0) + dt; if (drv.lookT > 1.5) { look.yaw *= 1 - Math.min(1, dt * 3); look.pitch *= 1 - Math.min(1, dt * 3); } }
+  const far = camMode === 3 ? 2.2 : 1;
+  const range = (def.length * 1.25 + 2.2 + Math.min(4, c.speed * 0.06)) * look.zoom * far;
+  let pitch = -11 - (camMode === 3 ? 8 : 0) + look.pitch;
+  const target = Cesium.Cartesian3.fromDegrees(c.lonDeg, c.latDeg, c.h + 1.25);
+  const enu = Cesium.Transforms.eastNorthUpToFixedFrame(target);
+  if (drv.shake > 0) { drv.shake = Math.max(0, drv.shake - dt * 2); pitch += (Math.random() - 0.5) * drv.shake * 4; }
+  cam.lookAtTransform(enu, new Cesium.HeadingPitchRange((drv.camH + look.yaw) * DEG, pitch * DEG, range));
+  cam.frustum.fov = (60 + Math.min(18, c.speed * 0.25)) * DEG;
+}
+function carHUD() {
+  const c = drv.car, unitsM = S.units === 'm';
+  const k = unitsM ? 3.6 : 2.23694;
+  const nearPlane = !drv.noPlane && distM(c.latDeg, c.lonDeg, fm.latDeg, fm.lonDeg) < Math.max(30, fm.def.b);
+  hud.drawCar({
+    show: showHUD && !paused, touch: touchUI, speed: Math.abs(c.vx) * k, unit: unitsM ? 'km/h' : 'mph', vmaxShown: Math.ceil((c.def.vmax * k * 1.05) / 20) * 20,
+    gear: c.reverse ? 'R' : c.speed < 0.5 && !c.reverse ? 'N' : String(c.gear), rpm: c.rpm, redline: c.def.redline, damage: c.damage,
+    heading: c.headingDeg, lat: c.latDeg, lon: c.lonDeg, radarRange: 250 + Math.min(600, c.speed * 12),
+    plane: drv.noPlane ? null : { lat: fm.latDeg, lon: fm.lonDeg, hdg: fm.hpr.heading }, dest,
+  });
+  if ((drv.chipT = (drv.chipT || 0) - 1) > 0) return;
+  drv.chipT = 8;
+  $('#status').innerHTML = [
+    `<span class="chip"><b>${c.def.name}</b></span>`,
+    c.airborne ? '<span class="chip warn">AIRBORNE</span>' : '',
+    c.damage > 0.05 ? `<span class="chip ${c.damage > 0.6 ? 'bad' : 'warn'}">DAMAGE ${Math.round(c.damage * 100)}%</span>` : '',
+    nearPlane ? `<span class="chip on">${touchUI ? 'EXIT' : 'ENTER'}: fly the ${fm.def.name}</span>` : '',
+    `<span class="chip">${['Chase', 'Driver', 'Chase', 'Far chase'][camMode]}</span>`,
+    paused ? '<span class="chip bad">PAUSED</span>' : '',
+  ].join('');
+}
+function driveTick(dt, now) {
+  driveUpdate(dt);
+  updatePlane(0);
+  if (plane) plane.show = !drv.noPlane && !fm.crashed;
+  updateCar();
+  carCamera(dt);
+  carHUD();
+  const c = drv.car;
+  lights.updateAirports(c.latDeg, c.lonDeg, now, c.h, c.latDeg, c.lonDeg);
+  if (Math.floor(now / 1000) !== Math.floor((now - dt * 1000) / 1000)) {
+    world.updateClouds(c.latDeg, c.lonDeg, c.h, S.clouds, S.cloudBase, false);
+    world.probeTerrain(c.latDeg, c.lonDeg);
+    lights.updateDaylight(Cesium.JulianDate.toDate(viewer.clock.currentTime), c.latDeg, c.lonDeg);
+    world.setDaylight(1 - lights.night);
+    const day = 1 - lights.night, k = 0.12 + 0.88 * day, md = drv.model;
+    if (md._day !== k) { md._day = k; md.lightColor = new Cesium.Cartesian3(k * 2, k * 2, k * 2); }
+  }
+  const P = perf; P.n++; P.frame += dt * 1000;
+  if (P.n >= 30) { P.last = { fps: 1000 / (P.frame / P.n), sim: 0, cam: 0, hud: 0 }; P.n = P.sim = P.cam = P.hud = P.frame = 0; if (P.show) $('#perf').textContent = `${P.last.fps.toFixed(0)} fps (driving)`; }
+  sound.update({ rpm: c.rpm, load: drv.inp ? Math.max(drv.inp.throttle, c.reverse ? drv.inp.brake : 0) : 0, screech: c.airborne ? 0 : Math.min(1, Math.max(0, c.slip - 0.08) * 3), V: c.speed, paused: paused, inside: camMode === 1 });
 }
 
 function runwayUnder(lat, lon, hdg) {
@@ -294,6 +548,7 @@ function tick() {
   lastT = now;
   if (!started || !fm) return;
   if (!paused) governor(dt);
+  if (drv) { driveTick(dt, now); return; }
   const t0 = performance.now();
   simUpdate(dt);
   const t1 = performance.now();
@@ -700,6 +955,16 @@ function onAction(a, pad) {
     hwUI.dirty = true; return;
   }
   if (!fm || !started) { if (a === 'menu') showMenu(true); return; }
+  if (a === 'vehicle') { vehicleAction(); return; }
+  if (drv) {
+    // while driving only these do something
+    switch (a) {
+      case 'camera': setCam(camMode === 0 ? 1 : camMode === 1 ? 3 : 0); return;
+      case 'cam1': setCam(0); return; case 'cam2': setCam(1); return; case 'cam4': setCam(3); return;
+      case 'menu': case 'pause': case 'hud': case 'perf': case 'restart': case 'map': break;
+      default: return;
+    }
+  }
   const c = fm.ctrl, def = fm.def, nF = def.flaps.length - 1;
   switch (a) {
     case 'gear':
@@ -735,7 +1000,7 @@ function onAction(a, pad) {
     case 'perf': perf.show = !perf.show; $('#perf').classList.toggle('hidden', !perf.show); break;
   }
 }
-function setCam(m) { camMode = m; controls.look.yaw = 0; controls.look.pitch = 0; controls.look.zoom = 1; flyby = null; toast(`Camera: ${CAMS[m]}`, 900); }
+function setCam(m) { camMode = m; controls.look.yaw = 0; controls.look.pitch = 0; controls.look.zoom = 1; flyby = null; toast(`Camera: ${drv ? ['Chase', 'Driver', 'Chase', 'Far chase'][m] : CAMS[m]}`, 900); }
 function toggleAP() {
   if (ap.on) { ap.disengage(); toast('Autopilot off'); }
   else if (fm.onGround) toast('Take off first, then engage the autopilot');
@@ -804,6 +1069,7 @@ function updateTouchVisibility() {
   touchUI = S.touchMode === 'on' || (S.touchMode === 'auto' && isTouch);
   $('#touch').classList.toggle('hidden', !touchUI || !started);
   document.body.classList.toggle('touchui', touchUI);
+  document.body.classList.toggle('driving', !!drv);
   $('#tBurner').classList.toggle('hidden', !(fm && fm.def.afterburner));
 }
 function setupTouch() {
@@ -826,7 +1092,12 @@ function setupTouch() {
   thr.addEventListener('pointerdown', (e) => { tid = e.pointerId; thr.setPointerCapture(tid); setT(e); });
   thr.addEventListener('pointermove', (e) => { if (e.pointerId === tid) setT(e); });
   thr.addEventListener('pointerup', () => { tid = null; });
-  for (const b of $$('#tbtns [data-act]')) b.addEventListener('click', () => onAction(b.dataset.act));
+  for (const b of $$('#tbtns [data-act], #ctouch [data-act]')) b.addEventListener('click', () => onAction(b.dataset.act));
+  for (const b of $$('#ctouch [data-car]')) {
+    const k = b.dataset.car;
+    b.addEventListener('pointerdown', (e) => { touchCar[k] = true; b.classList.add('on'); b.setPointerCapture?.(e.pointerId); });
+    for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(ev, () => { touchCar[k] = false; b.classList.remove('on'); });
+  }
   const brake = $('#tbtns [data-hold=brake]');
   brake.addEventListener('pointerdown', () => { touchBrake = true; brake.classList.add('on'); });
   for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) brake.addEventListener(ev, () => { touchBrake = false; brake.classList.remove('on'); });
@@ -880,21 +1151,23 @@ function applyWeather() {
 // ------------------------------------------------------------------ your own 3D models
 async function refreshModelBadges() {
   const up = new Set(await uploadedKeys()), repo = await repoManifest(), credits = [];
-  for (const c of $$('#planes .card')) {
-    const k = c.dataset.k, cm = up.has(k) ? (await customModel(k)) : null, meta = cm ? cm.meta : repo[k];
+  for (const c of $$('#planes .card, #cars .card')) {
+    const k = (c.closest('#cars') ? 'car-' : '') + c.dataset.k, cm = up.has(k) ? (await customModel(k)) : null, meta = cm ? cm.meta : repo[k];
     cm?.revoke();
     const own = !!(cm || (repo[k] && repo[k].file));
     c.querySelector('.mdl').classList.toggle('own', own);
     c.querySelector('.mdl').textContent = own ? '3D model ✓' : '3D model';
     c.querySelector('.credit').textContent = own && meta ? `Model: ${meta.name || 'custom'}${meta.author ? ' by ' + meta.author : ''}${meta.license ? ' (' + meta.license + ')' : ''}` : '';
-    if (own && meta && (meta.author || meta.name)) credits.push(`${AIRCRAFT[k].name}: “${meta.name || 'model'}”${meta.author ? ' by ' + meta.author : ''}${meta.license ? ', ' + meta.license : ''}${meta.link ? ' — ' + meta.link : ''}`);
+    if (own && meta && (meta.author || meta.name)) credits.push(`${vehDef(k).name}: “${meta.name || 'model'}”${meta.author ? ' by ' + meta.author : ''}${meta.license ? ', ' + meta.license : ''}${meta.link ? ' — ' + meta.link : ''}`);
   }
   $('#modelCredits').textContent = credits.length ? '3D aircraft models: ' + credits.join(' · ') : '';
 }
 let mdKey = null;
+// an aircraft type or a car ('car-sports'): name and the shape the auto-fit needs
+function vehDef(k) { return k.startsWith('car-') ? { ...CARS[k.slice(4)], gear: [[0, 0, 0]] } : AIRCRAFT[k]; }
 async function openModelDlg(k) {
   mdKey = k;
-  const d = AIRCRAFT[k];
+  const d = vehDef(k);
   $('#mdTitle').textContent = `Your 3D model: ${d.name}`;
   $('#mdFile').value = '';
   const cm = await customModel(k); cm?.revoke();
@@ -920,7 +1193,7 @@ function setupModelDlg() {
     try {
       if (f) {
         st.textContent = 'Reading the model…';
-        const buf = await f.arrayBuffer(), info = glbInfo(buf), fit = autoFit(info, AIRCRAFT[k]);
+        const buf = await f.arrayBuffer(), info = glbInfo(buf), fit = autoFit(info, vehDef(k));
         await saveUpload(k, new Blob([buf], { type: 'model/gltf-binary' }), { ...credit, fileName: f.name, tris: info.tris, uploaded: Date.now(), fit });
         dropModels(k);
         st.textContent = `Saved. ${Math.round(info.tris).toLocaleString()} triangles · facing ${fit.how}.${info.compressed ? ' (compressed model: if it faces the wrong way, fix it in the air with Adjust model.)' : ''}`;
@@ -969,7 +1242,7 @@ function nudgeFit(a) {
     eyeU: () => { eye[2] += 0.05; f.eye = eye; }, eyeD: () => { eye[2] -= 0.05; f.eye = eye; }, eyeF: () => { eye[0] += 0.1; f.eye = eye; }, eyeB: () => { eye[0] -= 0.1; f.eye = eye; },
     eyeL: () => { eye[1] += 0.05; f.eye = eye; }, eyeR: () => { eye[1] -= 0.05; f.eye = eye; },
   };
-  if (a === 'auto') { const nf = autoFit(c.info, fm.def); nf.interior = f.interior; nf.eye = f.eye; setCustomFit(plane, nf); }
+  if (a === 'auto') { const nf = autoFit(c.info, c.key.startsWith('car-') ? vehDef(c.key) : fm.def); nf.interior = f.interior; nf.eye = f.eye; setCustomFit(plane, nf); }
   else { ops[a]?.(); f.yaw = ((f.yaw % 360) + 540) % 360 - 180; setCustomFit(plane, f); }
   paintFit();
   clearTimeout(fitSaveT); fitSaveT = setTimeout(saveFit, 800);
@@ -1003,8 +1276,26 @@ function buildMenu() {
   }
   paintPlanes();
   refreshModelBadges();
-  seg('#startMode', 'startMode', () => { $('#airportPick').classList.toggle('hidden', S.startMode === 'place'); $('#placePick').classList.toggle('hidden', S.startMode !== 'place'); summary(); }, false);
-  $('#airportPick').classList.toggle('hidden', S.startMode === 'place'); $('#placePick').classList.toggle('hidden', S.startMode !== 'place');
+  const pickVis = () => {
+    const m = S.startMode;
+    $('#airportPick').classList.toggle('hidden', m === 'place');
+    $('#placePick').classList.toggle('hidden', m !== 'place' && m !== 'drive');
+    $('#carPick').classList.toggle('hidden', m !== 'drive');
+  };
+  seg('#startMode', 'startMode', () => { pickVis(); summary(); }, false);
+  pickVis();
+  // cars
+  const cl = $('#cars');
+  const paintCars = () => { for (const c of cl.children) c.classList.toggle('sel', c.dataset.k === (S.car || 'sports')); summary(); };
+  for (const [k, d] of Object.entries(CARS)) {
+    const b = document.createElement('div'); b.className = 'card'; b.dataset.k = k; b.tabIndex = 0; b.setAttribute('role', 'button');
+    b.innerHTML = `<img src="assets/car-${k}.jpg" alt="" loading="lazy" onerror="this.remove()"><button class="mdl" title="Use your own 3D model (.glb) for this car">3D model</button><span class="tag">${d.type}</span><h3>${d.name}</h3><p>${d.blurb}</p><p class="spec">${Math.round(d.power / 745.7)} hp · top ${Math.round(d.vmax * 3.6)} km/h (${Math.round(d.vmax * 2.237)} mph)</p><p class="credit"></p>`;
+    b.onclick = () => { S.car = k; save(); paintCars(); };
+    b.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); b.onclick(); } };
+    b.querySelector('.mdl').onclick = (e) => { e.stopPropagation(); openModelDlg('car-' + k); };
+    cl.appendChild(b);
+  }
+  paintCars();
   // airport search
   const results = $('#apResults'), q = $('#apSearch');
   const renderAp = () => {
@@ -1014,7 +1305,7 @@ function buildMenu() {
     for (const a of list) {
       const b = document.createElement('button'); b.classList.toggle('sel', a.icao === S.airport);
       b.innerHTML = `<code>${a.icao}</code><b>${a.name}</b><span>${a.city || ''} ${a.country}${a.iata ? ' · ' + a.iata : ''}</span>`;
-      b.onclick = () => { S.airport = a.icao; S.runway = 0; save(); q.value = ''; renderAp(); fillRunways(); summary(); };
+      b.onclick = () => { S.airport = a.icao; S.runway = 0; S.driveAt = 'airport'; save(); q.value = ''; renderAp(); fillRunways(); summary(); };
       results.appendChild(b);
     }
   };
@@ -1056,7 +1347,7 @@ function buildMenu() {
       for (const p of list) {
         const b = document.createElement('button');
         b.innerHTML = `<code>PLACE</code><b>${p.display_name.split(',').slice(0, 2).join(',')}</b><span>${p.type}</span>`;
-        b.onclick = () => { S.place = { name: p.display_name, lat: +p.lat, lon: +p.lon }; save(); for (const x of pr.children) x.classList.remove('sel'); b.classList.add('sel'); summary(); };
+        b.onclick = () => { S.place = { name: p.display_name, lat: +p.lat, lon: +p.lon }; S.driveAt = 'place'; save(); for (const x of pr.children) x.classList.remove('sel'); b.classList.add('sel'); summary(); };
         pr.appendChild(b);
       }
     } catch { pr.innerHTML = '<span class="note">Place search is unavailable right now.</span>'; }
@@ -1164,10 +1455,15 @@ function setupHardwareUI() {
 function summary() {
   const d = AIRCRAFT[S.aircraft], a = findAirport(S.airport);
   let where = '';
+  if (S.startMode === 'drive') {
+    const c = CARS[S.car || 'sports'];
+    $('#flySummary').textContent = S.driveAt === 'place' && S.place ? `${c.name}, driving in ${S.place.name.split(',')[0]}` : `${c.name} beside your ${d.name} at ${a ? a.icao : 'the airport'}`;
+    return;
+  }
   if (S.startMode === 'place') where = S.place ? `over ${S.place.name.split(',')[0]}` : 'pick a place';
   else if (a) { const e = runwayEnds(a)[S.runway]; where = `${S.startMode === 'approach' ? 'landing at' : S.startMode === 'cruise' ? 'flying near' : 'from'} ${a.icao} ${e ? 'runway ' + e.ident : ''}`; }
   $('#flySummary').textContent = `${d.name}, ${where}${S.dest ? ` → ${S.dest}` : ''}`;
 }
 
 boot().catch((e) => { console.error(e); loading(true, 'Something went wrong: ' + e.message); });
-window.__sim = { simUpdate: (dt) => simUpdate(dt), get fm() { return fm; }, get hud() { return hud; }, get lights() { return lights; }, get paused() { return paused; }, get perf() { return perf.last; }, get started() { return started; }, get ap() { return ap; }, get assist() { return assist; }, get plane() { return plane; }, get world() { return world; }, get controls() { return controls; }, onAction, startFlight, S, setCam };
+window.__sim = { simUpdate: (dt) => simUpdate(dt), get fm() { return fm; }, get hud() { return hud; }, get lights() { return lights; }, get paused() { return paused; }, get perf() { return perf.last; }, get started() { return started; }, get ap() { return ap; }, get assist() { return assist; }, get drv() { return drv; }, driveUpdate: (dt) => driveUpdate(dt), vehicleAction: () => vehicleAction(), get plane() { return plane; }, get world() { return world; }, get controls() { return controls; }, onAction, startFlight, S, setCam };
