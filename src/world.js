@@ -159,6 +159,12 @@ export class World {
     if (on && !this.tileset && this.hasIon) {
       try {
         this.tileset = await Cesium.createGooglePhotorealistic3DTileset({ onlyUsingWithGoogleGeocoder: true });
+        // Google's 3D cities have daylight baked in: dim them with the sun so night looks like night
+        this.tileShader = new Cesium.CustomShader({
+          uniforms: { u_light: { type: Cesium.UniformType.FLOAT, value: 1.0 } },
+          fragmentShaderText: 'void fragmentMain(FragmentInput fsInput, inout czm_modelMaterial material) { material.diffuse *= u_light; }',
+        });
+        this.tileset.customShader = this.tileShader;
         this.tileset.maximumScreenSpaceError = this.settings.quality >= 3 ? 8 : 16;
         scene.primitives.add(this.tileset);
       } catch (e) { console.warn('3D tiles failed', e); this.tileset = null; return false; }
@@ -196,6 +202,11 @@ export class World {
   localSolarHour(lonDeg) {
     const d = Cesium.JulianDate.toDate(this.viewer.clock.currentTime);
     return (((d.getUTCHours() + d.getUTCMinutes() / 60 + lonDeg / 15) % 24) + 24) % 24;
+  }
+
+  // daylight 0 (night) .. 1 (day) for the 3D cities
+  setDaylight(day) {
+    if (this.tileShader) this.tileShader.setUniform('u_light', 0.07 + 0.93 * Math.max(0, Math.min(1, day)));
   }
 
   // ---------------------------------------------------------- ground height

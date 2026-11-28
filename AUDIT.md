@@ -133,3 +133,28 @@ Cesium's world, which the governor and quality settings control. The ` readout l
 
 **Critic:** "Nothing changes for him until the pull request is merged."
 **Defense (Held):** correct, and stated plainly to him.
+
+---
+
+# Third pass: what you see (Nov 27 2026, night)
+
+| Flaw | Fix |
+|---|---|
+| Planes were single frozen shapes: no moving parts except the propeller | Rebuilt models with hinged ailerons, elevators, rudder, flaps, spoilers (airliner) and flaperons/stabilators (fighter) that follow the controls |
+| No aircraft lights; flying at night you were invisible | Red/green navigation lights, white tail light, double-flash strobes, red beacon, landing light with the gear down |
+| Airports were dark at night, nothing to aim at | Runway edge, threshold/end, centre-line and approach lights for airports within 22 km |
+| No visual glide-slope aid | PAPI at each runway end: four units on the left ~300 m past the threshold, aimed 3.50/3.17/2.83/2.50° (nearest the runway highest). Tested in the page: on the 3° path it shows 2 red + 2 white, low it shows 3–4 red |
+| Google 3D cities stayed in full daylight at night | Dimmed with the sun's elevation |
+| Paused jets piled their contrail into a white blob; airliner contrail came from one point | Two thin engine contrails, stop while paused |
+| Shadow side of the planes rendered nearly black | Soft ambient fill in the paint; matte paint, metal wings |
+| Emoji icons, gold gradients and an emoji-plane landing page read as AI-generated | Plain flight-sim UI: no emoji, SVG icons, real in-game pictures of each aircraft, landing page built from an in-game screenshot over Purdue |
+
+## Duel, rounds 7–9 (critic simulated by Claude)
+**Critic:** "Moving control surfaces are cosmetic. You said he wants it to work, not to look like a showpiece."
+**Defense (Held):** they are wired to the actual control commands, so they show what the flight model is being told (useful to see the autopilot and assist working). The lights and PAPI are functional: PAPI tells you if you are high or low on approach, like the real thing.
+
+**Critic:** "2,500 airport lights at Chicago is a performance risk on a phone."
+**Defense (Revised):** measured by the frame-time readout only in software rendering here; billboards are cheap on GPUs but clamping each to the ground costs CPU when terrain loads. Mitigation: only airports within 22 km, rebuilt when you move 6 km. Unverified on his phone.
+
+**Critic:** "The models are still code-built and simple. Calling it MSFS-class is still false."
+**Defense (Held, unchanged):** agreed. No 3D cockpit, no detailed aircraft. That is the biggest remaining gap.

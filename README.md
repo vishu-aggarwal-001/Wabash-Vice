@@ -1,6 +1,6 @@
-# ✈️ Wabash Flight
+# Wabash Flight
 
-### ▶ [Fly it in your browser](https://vishu-aggarwal-001.github.io/Wabash-Vice/)
+### [Fly it in your browser](https://vishu-aggarwal-001.github.io/Wabash-Vice/)
 
 **A free flight simulator for the whole planet.** Take off from any of 9,800 real airports and fly anywhere on Earth, with real satellite imagery and real terrain, right in a web browser. It works on computers, tablets and phones, with keyboard, touch or a gamepad.
 
@@ -10,19 +10,21 @@
 
 ## Features
 
-- 🌍 **The whole Earth**: Cesium World Terrain, Bing satellite imagery and Google photorealistic 3D cities, streamed as you fly. If any of those can't be reached it falls back to Esri imagery and open terrain tiles, so it always works.
-- 🛫 **9,800 real airports** with their real runways (from OurAirports). Start on a runway, on final approach, cruising in the air, or above any place you search for.
-- 🧠 **6-degree-of-freedom flight physics**: lift curves that round off into a real stall, ground effect, prop wash, transonic wave drag, jet thrust that changes with altitude and speed, wind and turbulence, and spring-damper landing gear with brakes, grippy tyres and nose-wheel steering. Tested against real numbers (see *Tested* below).
-- ✈️ **Three original aircraft**: the *Wabash Trainer* (single prop), the *Hoosier 320* (twin-jet airliner) and the *Boiler F-1* (supersonic fighter with afterburner).
-- 🤖 **Autopilot**: HDG, ALT, V/S, speed hold (indicated airspeed), NAV direct-to, and **APP** that flies the approach, de-crabs in a crosswind, **autolands** and steers the rollout with brakes, spoilers and reversers.
-- 🛟 **Assisted mode** (default): auto-trim, auto-rudder, bank hold, crosswind de-crab, hands-off straight takeoff rolls, and tail-strike, stall, pitch and G protection. Switch to *Realistic* in Settings.
-- 📏 **Real altimeter**: altitudes are above sea level (EGM96 geoid), so field elevations and the autopilot match real charts.
-- 🧭 **Glass cockpit**: PFD with flight-path marker, speed/altitude tapes, approach diamonds, and a moving map with nearby airports.
-- ⛅ **Weather & time**: clouds, wind, turbulence, haze and any time of day.
-- 🎥 **Cameras**: chase, cockpit, cinematic fly-by and free orbit.
-- 🧈 **Landing scores**: every touchdown is graded (S = "Butter!").
-- 🔊 Synthesised engine, wind, stall-horn and touchdown sounds (no audio files).
-- 🏙️ **Your own Cesium ion token** (optional): paste a free [Cesium ion](https://ion.cesium.com/signup) token in *Settings* to use your own quota instead of the built-in one.
+- **The whole Earth**: Cesium World Terrain, Bing satellite imagery and Google photorealistic 3D cities, streamed as you fly. If any of those can't be reached it falls back to Esri imagery and open terrain tiles, so it always works.
+- **9,800 real airports** with their real runways (from OurAirports). Start on a runway, on final approach, cruising in the air, or above any place you search for.
+- **6-degree-of-freedom flight physics**: lift curves that round off into a real stall, ground effect, prop wash, transonic wave drag, jet thrust that changes with altitude and speed, wind and turbulence, and spring-damper landing gear with brakes, grippy tyres and nose-wheel steering. Tested against real numbers (see *Tested* below).
+- **Three original aircraft**: the *Wabash Trainer* (single prop), the *Hoosier 320* (twin-jet airliner) and the *Boiler F-1* (supersonic fighter with afterburner).
+- **Autopilot**: HDG, ALT, V/S, speed hold (indicated airspeed), NAV direct-to, and **APP** that flies the approach, de-crabs in a crosswind, **autolands** and steers the rollout with brakes, spoilers and reversers.
+- **Assisted mode** (default): auto-trim, auto-rudder, bank hold, crosswind de-crab, hands-off straight takeoff rolls, and tail-strike, stall, pitch and G protection. Switch to *Realistic* in Settings.
+- **Real altimeter**: altitudes are above sea level (EGM96 geoid), so field elevations and the autopilot match real charts.
+- **Lights**: runway edge, threshold, centre-line and approach lights, a working **PAPI** glide-slope indicator, and aircraft navigation lights, strobes, beacon and landing light.
+- **Moving parts**: ailerons, elevators, rudder, flaps and spoilers move with the controls.
+- **Glass cockpit**: PFD with flight-path marker, speed/altitude tapes, approach diamonds, and a moving map with nearby airports.
+- **Weather & time**: clouds, wind, turbulence, haze and any time of day.
+- **Cameras**: chase, cockpit, cinematic fly-by and free orbit.
+- **Landing scores**: every touchdown is graded (S = "Butter!").
+- Synthesised engine, wind, stall-horn and touchdown sounds (no audio files).
+- **Your own Cesium ion token** (optional): paste a free [Cesium ion](https://ion.cesium.com/signup) token in *Settings* to use your own quota instead of the built-in one.
 
 ## Controls
 

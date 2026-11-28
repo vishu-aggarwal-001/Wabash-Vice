@@ -11,6 +11,7 @@ import { Autopilot, FlightAssist } from './autopilot.js';
 import { Sound } from './audio.js';
 import { loadAirports, searchAirports, runwayEnds, findAirport, bestRunwayEnd } from './airports.js';
 import { loadGeoid, geoidHeight } from './geoid.js';
+import { Lights } from './lights.js';
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -27,7 +28,7 @@ try { S = { ...DEFAULTS, quality: isTouch ? 1 : 2, photoreal: isTouch ? 0 : 1, .
 const save = () => { try { localStorage.setItem('wabashFlight', JSON.stringify(S)); } catch { /* private mode */ } };
 
 // ------------------------------------------------------------------ globals
-let world, viewer, hud, controls, sound, ap, assist;
+let world, viewer, hud, controls, sound, ap, assist, lights;
 let fm = null, plane = null, planeKey = null, models = {};
 let paused = true, started = false, camMode = 0; // 0 chase 1 cockpit 2 flyby 3 orbit
 let groundFilt = 0, spawnInfo = null, dest = null, lastT = performance.now();
@@ -54,6 +55,7 @@ async function boot() {
   window.addEventListener('resize', () => hud.resize());
   sound = new Sound(); sound.setVolume(S.volume);
   ap = new Autopilot(); assist = new FlightAssist();
+  lights = new Lights(viewer.scene); world.excludeFromPick.push(lights.plane, lights.airport);
   S.hw = S.hw && typeof S.hw === 'object' ? S.hw : {};
   controls = new Controls(viewer.canvas, { onAction, hwStore: S.hw });
   applyWeather();
@@ -76,6 +78,8 @@ async function getModel(key) {
     minimumPixelSize: 24, maximumScale: 400, backFaceCulling: false,
   });
   m.show = false;
+  // hinged control surfaces (made by tools/build_models.py): node -> hinge axis, direction, travel and input
+  try { const r = await fetch(AIRCRAFT[key].model.replace('.glb', '.anim.json')); m.anim = r.ok ? (await r.json()).nodes : {}; } catch { m.anim = {}; }
   viewer.scene.primitives.add(m);
   world.excludeFromPick.push(m);
   models[key] = m;
@@ -101,6 +105,7 @@ async function startFlightInner() {
   for (const k in models) models[k].show = false;
   plane = await getModel(S.aircraft);
   planeKey = S.aircraft;
+  lights.setAircraft(def);
   fm = new FlightModel(def);
   ap.disengage(); ap.msg = ''; lastApMsg = ''; autobrake = false; ap.landed = false; assist = new FlightAssist();
   controls.throttle = 0; crashFx.forEach((p) => viewer.scene.primitives.remove(p)); crashFx = [];
@@ -222,6 +227,7 @@ function tick() {
   updateCamera(dt);
   const t2 = performance.now();
   updateHUD(dt);
+  lights.updateAirports(fm.latDeg, fm.lonDeg, now, fm.h, fm.latDeg, fm.lonDeg);
   const t3 = performance.now();
   // frame-time readout (press the ` key): sim, model+camera, instruments, and the whole frame
   const P = perf; P.n++; P.sim += t1 - t0; P.cam += t2 - t1; P.hud += t3 - t2; P.frame += dt * 1000;
@@ -229,6 +235,9 @@ function tick() {
   if (Math.floor(now / 1000) !== Math.floor((now - dt * 1000) / 1000)) {
     world.updateClouds(fm.latDeg, fm.lonDeg, groundFilt, S.clouds, S.cloudBase, false);
     world.probeTerrain(fm.latDeg, fm.lonDeg);
+    lights.updateDaylight(Cesium.JulianDate.toDate(viewer.clock.currentTime), fm.latDeg, fm.lonDeg);
+    world.setDaylight(1 - lights.night);
+    lights.refinePapi((la, lo) => world.groundHeight(la, lo, undefined));
     // once the runway's scenery has loaded, use its real height for the glide path (field elevation is only a guess)
     if (dest && !dest.measured && distM(fm.latDeg, fm.lonDeg, dest.lat, dest.lon) < 9000) {
       const th = world.groundHeight(dest.lat, dest.lon, undefined);
@@ -343,7 +352,7 @@ function events(dt) {
 function showLanding(td) {
   const fpm = Math.abs(td.fpm);
   let grade, word;
-  if (fpm < 120) { grade = 'S'; word = 'BUTTER! 🧈'; }
+  if (fpm < 120) { grade = 'S'; word = 'Butter!'; }
   else if (fpm < 240) { grade = 'A'; word = 'Smooth landing'; }
   else if (fpm < 420) { grade = 'B'; word = 'Good landing'; }
   else if (fpm < 650) { grade = 'C'; word = 'Firm landing'; }
@@ -385,7 +394,7 @@ function crashEffects() {
     imageSize: new Cesium.Cartesian2(10, 10), emissionRate: 25, emitter: new Cesium.ConeEmitter(20 * DEG), modelMatrix: mm, lifetime: 60,
   });
   crashFx = [viewer.scene.primitives.add(fire), viewer.scene.primitives.add(smoke)];
-  $('#landing').innerHTML = `<div class="grade" style="color:var(--bad)">💥</div><h2>Crashed</h2><p class="note">${fm.crashReason}</p>
+  $('#landing').innerHTML = `<div class="grade" style="color:var(--bad)">CRASH</div><h2>${fm.crashReason}</h2>
     <div style="display:flex;gap:8px;justify-content:center;margin-top:10px"><button class="big" id="retry">Try again</button><button class="ghost" id="crashMenu">Menu</button></div>`;
   $('#landing').classList.remove('hidden');
   clearTimeout(landingTimer);
@@ -393,14 +402,21 @@ function crashEffects() {
   $('#crashMenu').onclick = () => showMenu(true);
 }
 function setupContrail() {
-  if (contrail) { viewer.scene.primitives.remove(contrail); contrail = null; }
-  if (fm.def.engine !== 'jet') return;
-  contrail = viewer.scene.primitives.add(new Cesium.ParticleSystem({
-    image: particleImage('rgba(255,255,255,0.9)', 'rgba(255,255,255,0)'), startColor: Cesium.Color.WHITE.withAlpha(0.6), endColor: Cesium.Color.WHITE.withAlpha(0),
-    startScale: 1, endScale: 8, minimumParticleLife: 8, maximumParticleLife: 14, speed: 0.5, imageSize: new Cesium.Cartesian2(5, 5),
-    emissionRate: 0, emitter: new Cesium.CircleEmitter(0.5), sizeInMeters: true, modelMatrix: Cesium.Matrix4.IDENTITY.clone(),
-    emitterModelMatrix: Cesium.Matrix4.fromTranslation(new Cesium.Cartesian3(Math.min(...fm.def.body.map((p) => p[0])), 0, 0)),
-  }));
+  // thin trails from each engine (they appear behind the aircraft, like real condensation trails)
+  for (const c of contrail || []) viewer.scene.primitives.remove(c);
+  contrail = [];
+  const d = fm.def;
+  if (d.engine !== 'jet') return;
+  const tailX = Math.min(...d.body.map((p) => p[0]));
+  const spots = d.engines === 2 ? [[2.0, 5.75, -1.7], [2.0, -5.75, -1.7]] : [[tailX - 1, 0, 0.1]];
+  for (const sp of spots) {
+    contrail.push(viewer.scene.primitives.add(new Cesium.ParticleSystem({
+      image: particleImage('rgba(255,255,255,0.9)', 'rgba(255,255,255,0)'), startColor: Cesium.Color.WHITE.withAlpha(0.32), endColor: Cesium.Color.WHITE.withAlpha(0),
+      startScale: 0.6, endScale: 5, minimumParticleLife: 10, maximumParticleLife: 16, speed: 0.2, imageSize: new Cesium.Cartesian2(2.5, 2.5),
+      emissionRate: 0, emitter: new Cesium.CircleEmitter(0.2), sizeInMeters: true, modelMatrix: Cesium.Matrix4.IDENTITY.clone(),
+      emitterModelMatrix: Cesium.Matrix4.fromTranslation(new Cesium.Cartesian3(sp[0] - 40, sp[1], sp[2])), // body frame (x fwd, y left, z up)
+    })));
+  }
 }
 
 // ------------------------------------------------------------------ aircraft model + camera
@@ -416,6 +432,7 @@ function updatePlane(dt) {
   if (!plane) return;
   const m = planeMatrix();
   plane.modelMatrix = m;
+  lights.updateAircraft(fm, null, m, simTime, true);
   plane.show = camMode !== 1 && !fm.crashed;
   // propeller
   const prop = plane.getNode && plane.getNode('prop');
@@ -423,13 +440,28 @@ function updatePlane(dt) {
     propAngle += (8 + fm.N * 40) * dt * (fm.crashed ? 0 : 1);
     prop.matrix = Cesium.Matrix4.multiply(prop.originalMatrix, Cesium.Matrix4.fromRotationTranslation(Cesium.Matrix3.fromRotationX(propAngle)), new Cesium.Matrix4());
   }
+  // control surfaces follow the controls: ailerons, elevators, rudder, flaps, spoilers
+  if (plane.anim) {
+    const c = fm.ctrl, ail = c.ail, elev = clamp(c.elev + c.trim, -1, 1), rud = c.rud, flap = fm.flapPos, spl = fm.spoilerPos;
+    for (const [name, a] of Object.entries(plane.anim)) {
+      const node = plane.getNode(name);
+      if (!node) continue;
+      const inp = { ail, elev, rud, flap, spoiler: spl, flaperonL: ail + flap * (a.flapMax || 0) / a.max, flaperonR: -ail + flap * (a.flapMax || 0) / a.max }[a.input] || 0;
+      const ang = a.sign * a.max * DEG * clamp(inp, -1.5, 1.5);
+      if (!a._ax) a._ax = new Cesium.Cartesian3(...a.axis);
+      if (a._last !== undefined && Math.abs(a._last - ang) < 1e-4) continue;
+      a._last = ang;
+      const rot = Cesium.Matrix3.fromQuaternion(Cesium.Quaternion.fromAxisAngle(a._ax, ang));
+      node.matrix = Cesium.Matrix4.multiply(node.originalMatrix, Cesium.Matrix4.fromRotationTranslation(rot), new Cesium.Matrix4());
+    }
+  }
   const gear = plane.getNode && plane.getNode('gear');
   if (gear) gear.show = fm.gearPos > 0.5;
   const burner = plane.getNode && plane.getNode('burner');
   if (burner) burner.show = fm.ctrl.burner && fm.N > 0.5 && !fm.crashed;
-  if (contrail) {
-    contrail.modelMatrix = m;
-    contrail.emissionRate = fm.h > 7800 && !fm.crashed ? 80 : 0;
+  for (const c of contrail || []) {
+    c.modelMatrix = m;
+    c.emissionRate = fm.h > 7800 && !fm.crashed && !paused && camMode !== 1 ? 90 : 0;
   }
 }
 
@@ -540,7 +572,7 @@ function approachInfo() {
 function onAction(a, pad) {
   if (a === 'gamepad' || a === 'gamepadOff') {
     const name = pad ? pad.id.replace(/\(.*?\)/g, '').replace(/[0-9a-f]{4}-[0-9a-f]{4}-/i, '').trim().slice(0, 40) : 'Controller';
-    toast(a === 'gamepad' ? `🕹️ ${name || 'Controller'} connected (set it up in Settings)` : `🕹️ ${name || 'Controller'} disconnected`, 3000);
+    toast(a === 'gamepad' ? `${name || 'Controller'} connected (set it up in Settings)` : `${name || 'Controller'} disconnected`, 3000);
     hwUI.dirty = true; return;
   }
   if (!fm || !started) { if (a === 'menu') showMenu(true); return; }
@@ -555,7 +587,7 @@ function onAction(a, pad) {
     case 'flapsCycle': c.flaps = c.flaps >= nF ? 0 : c.flaps + 1; toast(`Flaps ${def.flaps[c.flaps]}°`, 1000); break;
     case 'spoilers': if (!def.spoilerCD) { toast('No spoilers on this plane'); break; } c.spoilers = c.spoilers ? 0 : 1; break;
     case 'parking': c.parking = !c.parking; toast(c.parking ? 'Parking brake set' : 'Parking brake released', 1200); break;
-    case 'burner': if (!def.afterburner) { toast('Only the fighter has an afterburner'); break; } c.burner = !c.burner; toast(c.burner ? 'Afterburner ON 🔥' : 'Afterburner off', 1200); break;
+    case 'burner': if (!def.afterburner) { toast('Only the fighter has an afterburner'); break; } c.burner = !c.burner; toast(c.burner ? 'Afterburner ON' : 'Afterburner off', 1200); break;
     case 'reverse':
       if (!def.reverse) { toast('No reverse thrust on this plane'); break; }
       if (!fm.onGround && !c.reverse) { toast('Reverse thrust works on the ground only'); break; }
@@ -723,7 +755,7 @@ function buildMenu() {
   const paintPlanes = () => { for (const c of pl.children) c.classList.toggle('sel', c.dataset.k === S.aircraft); summary(); };
   for (const [k, d] of Object.entries(AIRCRAFT)) {
     const b = document.createElement('button'); b.className = 'card'; b.dataset.k = k;
-    b.innerHTML = `<span class="tag">${d.type}</span><h3>${d.name}</h3><p>${d.blurb}</p><p>Cruise ${Math.round(d.cruise / KT)} kt · takeoff ${Math.round(d.vr / KT)} kt</p>`;
+    b.innerHTML = `<img src="assets/plane-${k}.jpg" alt="" loading="lazy"><span class="tag">${d.type}</span><h3>${d.name}</h3><p>${d.blurb}</p><p class="spec">Cruise ${Math.round(d.cruise / KT)} kt · rotate ${Math.round(d.vr / KT)} kt · stall ${Math.round(stallSpeed(d, 0) / KT)} kt</p>`;
     b.onclick = () => { S.aircraft = k; save(); paintPlanes(); };
     pl.appendChild(b);
   }
@@ -776,7 +808,7 @@ function buildMenu() {
       pr.innerHTML = list.length ? '' : '<span class="note">Nothing found.</span>';
       for (const p of list) {
         const b = document.createElement('button');
-        b.innerHTML = `<code>📍</code><b>${p.display_name.split(',').slice(0, 2).join(',')}</b><span>${p.type}</span>`;
+        b.innerHTML = `<code>PLACE</code><b>${p.display_name.split(',').slice(0, 2).join(',')}</b><span>${p.type}</span>`;
         b.onclick = () => { S.place = { name: p.display_name, lat: +p.lat, lon: +p.lon }; save(); for (const x of pr.children) x.classList.remove('sel'); b.classList.add('sel'); summary(); };
         pr.appendChild(b);
       }
@@ -890,4 +922,4 @@ function summary() {
 }
 
 boot().catch((e) => { console.error(e); loading(true, 'Something went wrong: ' + e.message); });
-window.__sim = { simUpdate: (dt) => simUpdate(dt), get fm() { return fm; }, get paused() { return paused; }, get perf() { return perf.last; }, get started() { return started; }, get ap() { return ap; }, get world() { return world; }, get controls() { return controls; }, onAction, startFlight, S, setCam };
+window.__sim = { simUpdate: (dt) => simUpdate(dt), get fm() { return fm; }, get lights() { return lights; }, get paused() { return paused; }, get perf() { return perf.last; }, get started() { return started; }, get ap() { return ap; }, get world() { return world; }, get controls() { return controls; }, onAction, startFlight, S, setCam };
