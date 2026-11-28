@@ -6,6 +6,7 @@ import { FlightModel, stallSpeed } from './physics.js';
 import { World } from './world.js';
 import { HUD } from './hud.js';
 import { Controls } from './controls.js';
+import { AXIS_FNS, BUTTON_FNS, devKey, defaultBindings } from './hardware.js';
 import { Autopilot, FlightAssist } from './autopilot.js';
 import { Sound } from './audio.js';
 import { loadAirports, searchAirports, runwayEnds, findAirport, bestRunwayEnd } from './airports.js';
@@ -42,6 +43,7 @@ function loading(on, txt) { $('#loading').classList.toggle('hidden', !on); if (t
 // ------------------------------------------------------------------ boot
 async function boot() {
   if (!window.Cesium) { document.body.innerHTML = '<p style="padding:30px;font:16px sans-serif;color:#fff">Could not load the 3D globe engine (CesiumJS). Check your internet connection and reload.</p>'; return; }
+  scratchM3 = new Cesium.Matrix3(); scratchM4 = new Cesium.Matrix4(); scratchPos = new Cesium.Cartesian3();
   loading(true, 'Loading the planet…');
   world = new World('globe', S);
   viewer = world.viewer;
@@ -52,7 +54,8 @@ async function boot() {
   window.addEventListener('resize', () => hud.resize());
   sound = new Sound(); sound.setVolume(S.volume);
   ap = new Autopilot(); assist = new FlightAssist();
-  controls = new Controls(viewer.canvas, { onAction });
+  S.hw = S.hw && typeof S.hw === 'object' ? S.hw : {};
+  controls = new Controls(viewer.canvas, { onAction, hwStore: S.hw });
   applyWeather();
   buildMenu();
   setupTouch(); updateTouchVisibility();
@@ -212,10 +215,17 @@ function tick() {
   lastT = now;
   if (!started || !fm) return;
   if (!paused) governor(dt);
+  const t0 = performance.now();
   simUpdate(dt);
+  const t1 = performance.now();
   updatePlane(dt);
   updateCamera(dt);
+  const t2 = performance.now();
   updateHUD(dt);
+  const t3 = performance.now();
+  // frame-time readout (press the ` key): sim, model+camera, instruments, and the whole frame
+  const P = perf; P.n++; P.sim += t1 - t0; P.cam += t2 - t1; P.hud += t3 - t2; P.frame += dt * 1000;
+  if (P.n >= 30) { P.last = { fps: 1000 / (P.frame / P.n), sim: P.sim / P.n, cam: P.cam / P.n, hud: P.hud / P.n }; P.n = P.sim = P.cam = P.hud = P.frame = 0; if (P.show) $('#perf').textContent = `${P.last.fps.toFixed(0)} fps · sim ${P.last.sim.toFixed(2)} ms · camera ${P.last.cam.toFixed(2)} ms · instruments ${P.last.hud.toFixed(2)} ms`; }
   if (Math.floor(now / 1000) !== Math.floor((now - dt * 1000) / 1000)) {
     world.updateClouds(fm.latDeg, fm.lonDeg, groundFilt, S.clouds, S.cloudBase, false);
     world.probeTerrain(fm.latDeg, fm.lonDeg);
@@ -235,6 +245,8 @@ function simUpdate(dt) {
   const def = fm.def;
   // input
   const stick = controls.update(dt, S.invert === 1);
+  // moving a real throttle lever takes the throttle back from the autothrottle
+  if (controls.hwIn.throttleMoved && ap.on && ap.athr) { ap.athr = false; toast('Autothrottle off: you moved the throttle', 2500); }
   if (!paused && !fm.crashed) {
     simTime += dt;
     const c = fm.ctrl;
@@ -268,6 +280,7 @@ function simUpdate(dt) {
     if (autobrake && !ap.rollout && (fm.groundSpeed < 2 || controls.throttle > 0.3 || !fm.onGround)) autobrake = false;
     if (!ap.rollout && ap.landed && c.spoilers && fm.groundSpeed < 2) c.spoilers = 0;
     c.brake = Math.max(controls.brake, touchBrake ? 1 : 0, autobrake ? 0.6 : 0);
+    c.brakeL = controls.brakeL || 0; c.brakeR = controls.brakeR || 0;
     // terrain under us
     const raw = world.groundHeight(fm.latDeg, fm.lonDeg, groundFilt);
     groundFilt = fm.onGround ? smooth(groundFilt, raw, 1.5, dt) : (fm.h - raw < 60 ? smooth(groundFilt, raw, 8, dt) : raw);
@@ -295,6 +308,7 @@ function governor(dt) {
   toast('Lowered the graphics a little to keep it smooth', 2500);
 }
 
+const perf = { n: 0, sim: 0, cam: 0, hud: 0, frame: 0, show: false, last: null };
 let warnText = '';
 function events(dt) {
   const def = fm.def, o = fm.out;
@@ -390,7 +404,7 @@ function setupContrail() {
 }
 
 // ------------------------------------------------------------------ aircraft model + camera
-const scratchM3 = new Cesium.Matrix3(), scratchM4 = new Cesium.Matrix4(), scratchPos = new Cesium.Cartesian3();
+let scratchM3, scratchM4, scratchPos; // created in boot(), once Cesium has loaded
 let propAngle = 0;
 function planeMatrix() {
   const pos = Cesium.Cartesian3.fromRadians(fm.lon, fm.lat, fm.h, undefined, scratchPos);
@@ -489,7 +503,7 @@ function updateHUD(dt) {
     apOn: ap.on, athr: ap.on && ap.athr, apLat: ap.hdgMode, apVert: ap.hdgMode === 'APP' ? 'G/S' : ap.vMode,
     spdBug: ap.on ? (ap.spd / KT) * (unitsM ? 1.852 : 1) : null, altBug: ap.on ? (unitsM ? ap.alt : ap.alt / FT) : null, hdgBug: ap.on && ap.hdgMode === 'HDG' ? ap.hdg : null,
     app: dest && (ap.hdgMode === 'APP' || distM(fm.latDeg, fm.lonDeg, dest.lat, dest.lon) < 25000) ? approachInfo() : null,
-    assist: S.assist === 1, lat: fm.latDeg, lon: fm.lonDeg, t: simTime, dest,
+    unitsM, assist: S.assist === 1, lat: fm.latDeg, lon: fm.lonDeg, t: simTime, dest,
     gsKt: fm.groundSpeed / KT, tasKt: V / KT, windFrom, windKt,
   });
   statusT -= dt;
@@ -523,7 +537,12 @@ function approachInfo() {
 }
 
 // ------------------------------------------------------------------ actions
-function onAction(a) {
+function onAction(a, pad) {
+  if (a === 'gamepad' || a === 'gamepadOff') {
+    const name = pad ? pad.id.replace(/\(.*?\)/g, '').replace(/[0-9a-f]{4}-[0-9a-f]{4}-/i, '').trim().slice(0, 40) : 'Controller';
+    toast(a === 'gamepad' ? `🕹️ ${name || 'Controller'} connected (set it up in Settings)` : `🕹️ ${name || 'Controller'} disconnected`, 3000);
+    hwUI.dirty = true; return;
+  }
   if (!fm || !started) { if (a === 'menu') showMenu(true); return; }
   const c = fm.ctrl, def = fm.def, nF = def.flaps.length - 1;
   switch (a) {
@@ -554,7 +573,8 @@ function onAction(a) {
     case 'restart': startFlight(); break;
     case 'trimUp': c.trim = clamp(c.trim + 0.03, -0.6, 0.6); break;
     case 'trimDown': c.trim = clamp(c.trim - 0.03, -0.6, 0.6); break;
-    case 'gamepad': toast('🎮 Gamepad connected', 2000); break;
+    case 'gamepad': break;
+    case 'perf': perf.show = !perf.show; $('#perf').classList.toggle('hidden', !perf.show); break;
   }
 }
 function setCam(m) { camMode = m; controls.look.yaw = 0; controls.look.pitch = 0; controls.look.zoom = 1; flyby = null; toast(`Camera: ${CAMS[m]}`, 900); }
@@ -669,7 +689,7 @@ function showMenu(on, tab) {
   $('#menu').classList.toggle('hidden', !on);
   $('#menu').classList.toggle('see', started);
   $('#resume').classList.toggle('hidden', !started);
-  if (on) { paused = true; if (tab) selectTab(tab); }
+  if (on) { paused = true; if (tab) selectTab(tab); requestAnimationFrame(hardwareUILoop); }
   else if (started) { paused = false; lastT = performance.now(); }
   $('#touch').classList.toggle('hidden', on || !touchUI || !started);
 }
@@ -775,6 +795,7 @@ function buildMenu() {
   seg('#turb', 'turb', applyWeather);
   slider('#haze', 'haze', () => '', applyWeather);
   // settings
+  setupHardwareUI();
   seg('#quality', 'quality', () => { S.autoQuality = false; save(); gov.step = 0; world.applyQuality(S.quality); });
   seg('#assist', 'assist'); seg('#invert', 'invert'); seg('#units', 'units');
   seg('#touchMode', 'touchMode', updateTouchVisibility, false);
@@ -787,6 +808,79 @@ function buildMenu() {
   });
   summary();
 }
+// ------------------------------------------------------------------ controller setup (Settings tab)
+const hwUI = { dirty: true, learning: null };
+function hwLabel(id) { return id.replace(/\(.*?\)/g, '').replace(/^[0-9a-f]{4}-[0-9a-f]{4}-/i, '').trim().slice(0, 48) || 'Controller'; }
+function buildHardwareUI() {
+  const hw = controls.hw, st = hw.store, pads = hw.pads();
+  const devs = $('#hwDevices'), ax = $('#hwAxes'), bt = $('#hwButtons');
+  const where = (fn, kind) => {
+    for (const p of pads) { const b = hw.bindingsFor(p), x = kind === 'axis' ? b.axes[fn] : b.buttons[fn]; if (x != null) return { p, x }; }
+    return null;
+  };
+  devs.innerHTML = pads.length ? pads.map((p, n) => `<div class="hwdev"><b>${hwLabel(p.id)}</b> <span class="note">${p.mapping === 'standard' ? 'gamepad' : 'flight controller'} · ${p.axes.length} axes · ${p.buttons.length} buttons</span>
+    <div class="hwraw">${p.axes.map((v, i) => `<span title="axis ${i}"><i data-dev="${n}" data-ax="${i}"></i><em>${i}</em></span>`).join('')}</div></div>`).join('')
+    : '<p class="note">No controller found yet. Plug it in and <b>press any button on it</b> (browsers only show controllers after a button press). Safari on Mac does not see most joysticks: use Chrome or Edge.</p>';
+  ax.innerHTML = AXIS_FNS.map((f) => {
+    const w = where(f.k, 'axis');
+    const txt = w ? `${hwLabel(w.p.id)} · axis ${w.x.a}${w.x.inv ? ' (reversed)' : ''}` : 'not set';
+    return `<div class="hwrow"><span class="lbl">${f.label}</span><span class="bind">${txt}</span><span class="bar"><i data-fn="${f.k}"></i></span>
+      <button class="ghost sm" data-learn="${f.k}">Detect</button><button class="ghost sm" data-inv="${f.k}" ${w ? '' : 'disabled'}>Reverse</button><button class="ghost sm" data-clear="${f.k}" ${w ? '' : 'disabled'}>Clear</button></div>`;
+  }).join('');
+  bt.innerHTML = BUTTON_FNS.map(([k, label]) => {
+    const w = where(k, 'button');
+    return `<div class="hwrow"><span class="lbl">${label}</span><span class="bind">${w ? `${hwLabel(w.p.id)} · button ${w.x}` : 'not set'}</span><span></span>
+      <button class="ghost sm" data-learnb="${k}">Detect</button><span></span><button class="ghost sm" data-clearb="${k}" ${w ? '' : 'disabled'}>Clear</button></div>`;
+  }).join('');
+  const stopLearn = () => { hwUI.learning = null; $('#hwPrompt').textContent = ''; };
+  for (const b of ax.querySelectorAll('[data-learn]')) b.onclick = () => {
+    const f = AXIS_FNS.find((x) => x.k === b.dataset.learn);
+    hwUI.learning = f.k; $('#hwPrompt').textContent = `Now ${f.how}… (10 s)`;
+    hw.startLearn('axis', f.k, (r) => { stopLearn(); $('#hwPrompt').textContent = r ? `${f.label}: axis ${r.a} ✓` : 'Nothing moved. Try again.'; save(); hwUI.dirty = true; });
+  };
+  for (const b of bt.querySelectorAll('[data-learnb]')) b.onclick = () => {
+    const k = b.dataset.learnb, label = BUTTON_FNS.find((x) => x[0] === k)[1];
+    hwUI.learning = k; $('#hwPrompt').textContent = `Now press the button for “${label}”… (10 s)`;
+    hw.startLearn('button', k, (r) => { stopLearn(); $('#hwPrompt').textContent = r ? `${label}: button ${r.i} ✓` : 'No button pressed. Try again.'; save(); hwUI.dirty = true; });
+  };
+  for (const b of ax.querySelectorAll('[data-inv]')) b.onclick = () => { const w = where(b.dataset.inv, 'axis'); if (w) { w.x.inv = !w.x.inv; save(); hwUI.dirty = true; } };
+  for (const b of ax.querySelectorAll('[data-clear]')) b.onclick = () => { for (const v of Object.values(st.bindings)) delete v.axes[b.dataset.clear]; save(); hwUI.dirty = true; };
+  for (const b of bt.querySelectorAll('[data-clearb]')) b.onclick = () => { for (const v of Object.values(st.bindings)) delete v.buttons[b.dataset.clearb]; save(); hwUI.dirty = true; };
+  hwUI.count = pads.length; hwUI.dirty = false;
+}
+function hardwareUILoop() {
+  if ($('#menu').classList.contains('hidden') || $('[data-page="settings"]').classList.contains('hidden')) return;
+  requestAnimationFrame(hardwareUILoop);
+  const hw = controls.hw;
+  const live = hw.read(0, true); // read without firing buttons while you are in the menu
+  const pads = hw.last.pads;
+  if (hwUI.dirty || pads.length !== hwUI.count) buildHardwareUI();
+  for (const i of document.querySelectorAll('.hwraw i')) {
+    const p = pads[+i.dataset.dev], v = p ? p.axes[+i.dataset.ax] : 0;
+    i.style.height = `${Math.round((Math.abs(v) > 1.01 ? 0 : (v + 1) / 2) * 100)}%`;
+  }
+  for (const i of document.querySelectorAll('.hwrow i[data-fn]')) {
+    const f = i.dataset.fn, v = live[f];
+    const c = AXIS_FNS.find((x) => x.k === f).centred;
+    i.style.left = c ? `${50 + Math.min(0, (v || 0)) * 50}%` : '0';
+    i.style.width = c ? `${Math.abs(v || 0) * 50}%` : `${(v || 0) * 100}%`;
+  }
+}
+function setupHardwareUI() {
+  const st = controls.hw.store;
+  const dz = $('#hwDz'), cv = $('#hwCurve');
+  dz.value = st.deadzone; cv.value = st.curve;
+  const show = () => { $('#hwDzTxt').textContent = `${Math.round(st.deadzone * 100)}%`; $('#hwCurveTxt').textContent = st.curve < 0.05 ? 'linear' : `${Math.round(st.curve * 100)}%`; };
+  dz.oninput = () => { st.deadzone = +dz.value; show(); save(); };
+  cv.oninput = () => { st.curve = +cv.value; show(); save(); };
+  show();
+  $('#hwHat').onclick = () => { st.hatLook = !st.hatLook; $('#hwHat').textContent = st.hatLook ? 'Hat switch looks around: ON' : 'Hat switch looks around: OFF'; save(); };
+  $('#hwHat').textContent = st.hatLook ? 'Hat switch looks around: ON' : 'Hat switch looks around: OFF';
+  $('#hwReset').onclick = () => { st.bindings = {}; save(); hwUI.dirty = true; toast('Controller setup reset to defaults'); };
+  const tabBtn = $('#tabs [data-tab="settings"]'), prev = tabBtn.onclick;
+  tabBtn.onclick = () => { prev && prev(); hwUI.dirty = true; requestAnimationFrame(hardwareUILoop); };
+}
+
 function summary() {
   const d = AIRCRAFT[S.aircraft], a = findAirport(S.airport);
   let where = '';
@@ -796,4 +890,4 @@ function summary() {
 }
 
 boot().catch((e) => { console.error(e); loading(true, 'Something went wrong: ' + e.message); });
-window.__sim = { simUpdate: (dt) => simUpdate(dt), get fm() { return fm; }, get ap() { return ap; }, get world() { return world; }, get controls() { return controls; }, onAction, startFlight, S, setCam };
+window.__sim = { simUpdate: (dt) => simUpdate(dt), get fm() { return fm; }, get paused() { return paused; }, get perf() { return perf.last; }, get started() { return started; }, get ap() { return ap; }, get world() { return world; }, get controls() { return controls; }, onAction, startFlight, S, setCam };

@@ -103,12 +103,12 @@ export class HUD {
     // altitude tape
     this.tape(ax + aw + S * 0.02, ay, S * 0.19, ah, s.altFt, 100, 5, (v) => Math.round(v), s, 'alt');
     // vertical speed
-    const vx = x + S - 4, vsP = clamp(s.vsFpm / 4000, -1, 1);
+    const vx = x + S - 4, vsP = clamp(s.vsFpm / (s.unitsM ? 20 : 4000), -1, 1); // 4,000 ft/min or 20 m/s full scale
     g.strokeStyle = 'rgba(255,255,255,0.4)'; g.lineWidth = 1; g.beginPath(); g.moveTo(vx, ay + 10); g.lineTo(vx, ay + ah - 10); g.stroke();
-    g.strokeStyle = s.vsFpm < -2000 && s.agl < 600 ? C.red : C.grn; g.lineWidth = 3;
+    g.strokeStyle = s.vsFpm < (s.unitsM ? -10 : -2000) && s.agl < 600 ? C.red : C.grn; g.lineWidth = 3;
     g.beginPath(); g.moveTo(vx - 10, cy); g.lineTo(vx, cy - Math.sign(vsP) * Math.sqrt(Math.abs(vsP)) * ah * 0.45); g.stroke();
     g.font = `700 ${Math.round(S * 0.034)}px ${MONO}`; g.textAlign = 'right'; g.fillStyle = C.grn;
-    if (Math.abs(s.vsFpm) > 50) g.fillText((s.vsFpm > 0 ? '+' : '') + Math.round(s.vsFpm / 10) * 10, vx - 4, s.vsFpm > 0 ? ay + 4 : ay + ah - 4);
+    if (Math.abs(s.vsFpm) > (s.unitsM ? 0.25 : 50)) g.fillText((s.vsFpm > 0 ? '+' : '') + (s.unitsM ? s.vsFpm.toFixed(1) : Math.round(s.vsFpm / 10) * 10), vx - 4, s.vsFpm > 0 ? ay + 4 : ay + ah - 4);
     // radio altimeter (height above the ground) below 2,500 ft
     if (s.airborne && s.agl < 2500) {
       g.font = `700 ${Math.round(S * 0.04)}px ${MONO}`; g.textAlign = 'center'; g.textBaseline = 'bottom';

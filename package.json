@@ -8,7 +8,7 @@
     "check": "node --check server.js && for f in src/*.js; do node --check $f || exit 1; done && npm test",
     "airports": "python3 tools/build_airports.py airports.csv runways.csv data/airports.json",
     "models": "python3 tools/build_models.py models",
-    "test": "node test/math.test.mjs && node test/flight.test.mjs"
+    "test": "node test/math.test.mjs && node test/hardware.test.mjs && node test/flight.test.mjs"
   },
   "keywords": [
     "flight-simulator",

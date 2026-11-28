@@ -9,6 +9,13 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cesium@1.147.0/Build/Cesium/Widgets/widgets.css">
 <link rel="stylesheet" href="src/style.css">
 <script src="https://cdn.jsdelivr.net/npm/cesium@1.147.0/Build/Cesium/Cesium.js"></script>
+<script>
+  // if jsDelivr is blocked or down (some school and office networks), load the same Cesium build from unpkg
+  if (!window.Cesium) {
+    window.CESIUM_BASE_URL = 'https://unpkg.com/cesium@1.147.0/Build/Cesium/';
+    document.write('<link rel="stylesheet" href="https://unpkg.com/cesium@1.147.0/Build/Cesium/Widgets/widgets.css"><script src="https://unpkg.com/cesium@1.147.0/Build/Cesium/Cesium.js"><\/script>');
+  }
+</script>
 </head>
 <body>
 <div id="globe"></div>
@@ -21,6 +28,7 @@
   <button class="iconbtn" id="btnMenu" title="Menu (Esc)">☰</button>
 </div>
 <div id="warn"></div>
+<div id="perf" class="hidden"></div>
 <div id="toast"></div>
 <div id="landing" class="hidden"></div>
 
@@ -98,6 +106,16 @@
       <div class="row"><label>Sound</label><input type="range" id="volume" min="0" max="1" step="0.05"></div>
       <div class="row"><label>Units</label><div class="seg" id="units"><button data-v="ft">Feet &amp; knots</button><button data-v="m">Metres &amp; km/h</button></div></div>
       <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+      <h3 style="margin:0 0 6px">🕹️ Joystick, yoke, throttle, pedals &amp; gamepad</h3>
+      <p class="note">Plug in any number of controllers (stick + throttle + rudder pedals works). Press a button on each so the browser shows it. To set something up, click <b>Detect</b> and move that control. Your setup is saved for each device. Use Chrome or Edge: Safari on Mac doesn't see most joysticks, and Firefox on Mac can miss slider throttles.</p>
+      <div id="hwDevices"></div>
+      <div id="hwPrompt" class="hwprompt"></div>
+      <div id="hwAxes" class="hwlist"></div>
+      <details><summary class="note" style="cursor:pointer;margin:8px 0">Buttons</summary><div id="hwButtons" class="hwlist"></div></details>
+      <div class="row"><label>Dead zone</label><input type="range" id="hwDz" min="0" max="0.2" step="0.01"><span id="hwDzTxt" class="note"></span></div>
+      <div class="row"><label>Response curve</label><input type="range" id="hwCurve" min="0" max="1" step="0.05"><span id="hwCurveTxt" class="note"></span><span class="note">more = finer control near the centre</span></div>
+      <div class="row"><button class="ghost" id="hwHat"></button><button class="ghost" id="hwReset">Reset controller setup</button></div>
+      <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
       <h3 style="margin:0 0 6px">🌍 Photorealistic 3D cities</h3>
       <p class="note">Wabash Flight uses Cesium World Terrain and Google photorealistic 3D cities (real buildings in New York, London, Tokyo…). Turn them off on slower phones and tablets. Optional: paste your own <a href="https://ion.cesium.com/signup" target="_blank" rel="noopener">Cesium ion</a> token to use it instead of the built-in one.</p>
       <div class="row"><label>Own ion token</label><input type="password" id="ionToken" class="grow" placeholder="optional" autocomplete="off"><button class="ghost" id="ionSave">Save &amp; reload</button></div>
@@ -124,6 +142,7 @@
         <div><span>Map on/off · HUD on/off</span><span><kbd>M</kbd> · <kbd>U</kbd></span></div>
         <div><span>Pause · menu · restart</span><span><kbd>P</kbd> · <kbd>Esc</kbd> · <kbd>Backspace</kbd></span></div>
         <div><span>Gamepad</span><span>L-stick fly · RT/LT throttle · LB/RB rudder · A brake · Y gear · X flaps · B camera</span></div>
+        <div><span>Joystick / yoke / pedals</span><span>Settings → Joystick: Detect each control</span></div>
       </div>
       <p class="note" style="margin-top:14px"><b>First flight:</b> pick the Wabash Trainer at KLAF, hold <kbd>R</kbd> for full power, at 55 knots gently hold <kbd>S</kbd> to lift the nose, then let go. To land: line up with the runway, reduce power so the green VS number reads about −500, add flaps with <kbd>V</kbd>, and raise the nose just before touching down. Aim for a touchdown under 200 ft/min for a “Butter” landing!</p>
       <p class="note">Satellite imagery © Esri, Maxar, Earthstar Geographics. Terrain: AWS Open Data Terrain Tiles. Airports: OurAirports (public domain). Globe engine: CesiumJS (Apache-2.0). Wabash Flight is a fan-made project and is not affiliated with any flight-simulator company.</p>

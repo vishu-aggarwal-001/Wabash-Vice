@@ -85,3 +85,51 @@ matrix vs quaternion, great-circle distance/bearing/destination (incl. the date 
 | Restart, crash/retry, aircraft switch, place search, touch controls work | In-browser runs, no console errors | Held |
 | Runs smoothly on his devices | Not measurable here | Revised: mitigated, unverified |
 | As good as / better than MSFS | — | Dropped |
+
+---
+
+# Second pass (Nov 27 2026, evening)
+
+## 7. Flight-sim hardware (new `src/hardware.js`)
+Research (three parallel research threads; report: "Flight controllers in Gamepad API") found that browsers report
+joysticks, yokes, throttles and pedals with **no standard layout** (`mapping: ""`); Chrome/Edge/Firefox on
+Windows number axes by HID usage (X=0, Y=1, Z=2, Rx=3, Ry=4, Rz=5, Slider=6, hat=9); hats are one axis that reads
+about +1.29 when centred; axes read 0 until the device first reports; Safari misses most joysticks.
+
+| Flaw in the old code | Fix |
+|---|---|
+| Only ONE controller was read, so stick + throttle + pedals was impossible | Every connected device is read; a control in use overrides the keyboard |
+| Fixed Xbox layout applied to everything: on a joystick, axis 2 (often the throttle lever) became "look around" and the throttle was buttons 6/7 | Per-device bindings with known layouts (Extreme 3D Pro, T.16000M, X52, T.Flight HOTAS, Saitek yoke/quadrant/pedals, T-Rudder) and a guess for others |
+| No way to re-bind anything | Settings → Joystick: live axis bars, **Detect** (move the control), Reverse, Clear for 6 axes and 14 button actions; dead zone and response curve; saved per device name |
+| Throttle lever impossible (incremental only); an untouched lever would have jumped to 50% | Absolute throttle that takes over only once the lever moves; moving it hands the throttle back from the autothrottle |
+| No toe brakes | Left/right toe brakes with differential braking on the wheels |
+| Hat switch ignored (or read as an axis) | 8-way hat decoder, looks around; ignored until it reports |
+| Device slot changes broke setups | Bindings keyed by device name, not slot |
+| jsDelivr blocked (some school networks) = blank page | Falls back to the same Cesium build on unpkg |
+
+Tested with simulated devices in the real page (Extreme 3D + Saitek pedals + Xbox pad at once): 21/21 checks,
+plus `npm test` default-layout and hat-decoder checks.
+
+## 8. Every key, button and menu setting, driven in the browser
+52 keyboard/mouse checks (every key in the Controls list, Space after clicking a button, mouse look/zoom/reset,
+restart) and 14 menu checks (wind, turbulence, clouds, time of day, real time, haze, units, invert, Realistic,
+quality, volume, settings surviving a reload, inverted pitch actually inverting): all pass. Fixed: vertical-speed
+needle and number were frozen in metric units.
+
+## 9. Performance
+Frame-time readout added (press the ` key). Measured in the page: the game's own code costs about 0.6 ms (physics)
++ 0.2 ms (camera) + 1.6 ms (instruments) per frame; the rest is drawing the 3D world, which depends on the GPU.
+So on a real device the frame rate is set by graphics quality, which the governor already lowers automatically.
+
+## Duel, round 4–6 (critic simulated by Claude)
+**Critic:** "Your controller tests use fake devices you wrote yourself. Real hardware will disagree."
+**Defense (Revised):** true. The fake devices copy the layouts the browser source code produces, but most per-device
+numbers are inferred, not captured, and TCA, Honeycomb, TFRP and HOTAS 4 had no data at all. That is why every
+binding can be re-detected in two clicks. Unverified on real hardware.
+
+**Critic:** "Performance is still unmeasured on his devices."
+**Defense (Held, narrowed):** the game's own code is now measured at ~2.5 ms a frame; the rest is the GPU drawing
+Cesium's world, which the governor and quality settings control. The ` readout lets him see it on his own device.
+
+**Critic:** "Nothing changes for him until the pull request is merged."
+**Defense (Held):** correct, and stated plainly to him.

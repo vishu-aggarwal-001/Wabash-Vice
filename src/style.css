@@ -114,3 +114,21 @@ body.touchui #ap { top: 58px; transform: scale(0.88); transform-origin: top righ
   #tbtns { grid-template-columns: repeat(2, 48px); gap: 6px; }
   #tbtns button { height: 40px; font-size: 11px; }
 }
+
+/* ---------- controller setup */
+.hwdev { margin: 8px 0; }
+.hwraw { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+.hwraw span { position: relative; width: 22px; height: 46px; background: rgba(255,255,255,0.06); border-radius: 5px; overflow: hidden; display: inline-block; }
+.hwraw i { position: absolute; left: 0; right: 0; bottom: 0; background: var(--cy); opacity: 0.7; }
+.hwraw em { position: absolute; left: 0; right: 0; top: 2px; text-align: center; font: 700 10px ui-monospace, monospace; font-style: normal; }
+.hwlist { display: grid; gap: 4px; }
+.hwrow { display: grid; grid-template-columns: 150px 1fr 110px auto auto auto; gap: 8px; align-items: center; font-size: 13px; }
+.hwrow .lbl { color: var(--dim); }
+.hwrow .bind { font: 600 12px ui-monospace, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hwrow .bar { position: relative; height: 10px; background: rgba(255,255,255,0.08); border-radius: 5px; overflow: hidden; }
+.hwrow .bar i { position: absolute; top: 0; bottom: 0; background: var(--good); }
+.ghost.sm { padding: 5px 9px; font-size: 12px; border-radius: 9px; }
+.ghost:disabled { opacity: 0.35; }
+.hwprompt { color: var(--acc2); font-weight: 800; min-height: 20px; margin: 6px 0; }
+@media (max-width: 760px) { .hwrow { grid-template-columns: 1fr 1fr; } .hwrow .bar { grid-column: span 2; } }
+#perf { position: fixed; left: 10px; top: 46px; z-index: 6; font: 600 11px ui-monospace, monospace; background: var(--bg); padding: 4px 8px; border-radius: 8px; pointer-events: none; }

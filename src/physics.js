@@ -256,7 +256,9 @@ export class FlightModel {
       const vLat = vp[0] * side[0] + vp[1] * side[1];
       let muLong;
       if (pt.gear) {
-        const brake = pt.kind === 'main' ? Math.max(c.brake, c.parking ? 1 : 0) : 0;
+        // main wheels brake together, or separately with toe brakes (left gear is +y)
+        const toe = pt.p[1] > 0 ? c.brakeL || 0 : c.brakeR || 0;
+        const brake = pt.kind === 'main' ? Math.max(c.brake, toe, c.parking ? 1 : 0) : 0;
         muLong = 0.015 + brake * d.brake;
       } else muLong = 0.5;
       const fLong = -clamp(vLong * 8, -1, 1) * muLong * Nf;
