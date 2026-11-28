@@ -64,6 +64,7 @@
     </div>
 
     <section data-page="fly">
+      <div class="row picker"><div class="seg" id="famSeg"></div><input type="search" id="planeSearch" class="grow" placeholder="Search aircraft: 737, Cessna, fighter…" autocomplete="off"></div>
       <div class="grid3" id="planes"></div>
       <div class="row" style="margin-top:16px">
         <label>Start</label>
@@ -84,7 +85,7 @@
       <div class="results" id="destResults"></div>
       <div class="row" style="justify-content:space-between;margin-top:18px">
         <span class="note" id="flySummary"></span>
-        <div style="display:flex;gap:8px"><button class="ghost hidden" id="resume">Resume</button><button class="big" id="fly">FLY ▶</button></div>
+        <div style="display:flex;gap:8px"><button class="ghost hidden" id="fitOpen">Adjust model</button><button class="ghost hidden" id="resume">Resume</button><button class="big" id="fly">FLY ▶</button></div>
       </div>
     </section>
 
@@ -139,6 +140,7 @@
         <div><span>Autopilot on / off</span><span><kbd>Z</kbd></span></div>
         <div><span>Camera: cycle / chase / cockpit / fly-by / orbit</span><span><kbd>C</kbd> <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd></span></div>
         <div><span>Look around / zoom</span><span>drag mouse · wheel · double-click resets</span></div>
+        <div><span>Adjust your own 3D model (fit panel)</span><span><kbd>J</kbd></span></div>
         <div><span>Map on/off · map range · HUD on/off</span><span><kbd>M</kbd> · <kbd>Shift</kbd>+<kbd>M</kbd> or click the map · <kbd>U</kbd></span></div>
         <div><span>Pause · menu · restart</span><span><kbd>P</kbd> · <kbd>Esc</kbd> · <kbd>Backspace</kbd></span></div>
         <div><span>Gamepad</span><span>L-stick fly · RT/LT throttle · LB/RB rudder · A brake · Y gear · X flaps · B camera</span></div>
@@ -147,8 +149,39 @@
       </div>
       <p class="note" style="margin-top:14px"><b>First flight:</b> pick the Wabash Trainer at KLAF, hold <kbd>R</kbd> for full power, at 55 knots gently hold <kbd>S</kbd> to lift the nose, then let go. To land: line up with the runway, reduce power so the green VS number reads about −500, add flaps with <kbd>V</kbd>, and raise the nose just before touching down. Aim for a touchdown under 200 ft/min for a “Butter” landing!</p>
       <p class="note">Satellite imagery © Esri, Maxar, Earthstar Geographics. Terrain: AWS Open Data Terrain Tiles. Airports: OurAirports (public domain). Globe engine: CesiumJS (Apache-2.0). Wabash Flight is a fan-made project and is not affiliated with any flight-simulator company.</p>
+      <p class="note" id="modelCredits"></p>
     </section>
   </div>
+</div>
+
+<!-- your own 3D model for an aircraft type -->
+<div id="modelDlg" class="overlay see hidden">
+  <div class="panel narrow">
+    <h2 id="mdTitle" style="margin:0 0 4px">Your 3D model</h2>
+    <p class="note">Use a real 3D model for this aircraft. Download it as a <b>.glb</b> file (on Sketchfab: Download → “glTF Binary (.glb)”), then pick it here. It is fitted to the aircraft automatically and stays in this browser. You can fine-tune the fit in the air (menu → <b>Adjust model</b>).</p>
+    <div class="row"><label>Model file (.glb)</label><input type="file" id="mdFile" accept=".glb,model/gltf-binary" class="grow"></div>
+    <div class="row"><label>Model name</label><input type="text" id="mdName" class="grow" placeholder="e.g. Boeing 737-800 Southwest"></div>
+    <div class="row"><label>Made by</label><input type="text" id="mdAuthor" class="grow" placeholder="the artist’s name (needed for CC BY models)"></div>
+    <div class="row"><label>Licence</label><select id="mdLicense" class="grow"><option>CC BY 4.0</option><option>CC BY-SA 4.0</option><option>CC BY-NC 4.0</option><option>CC0 (public domain)</option><option>My own work</option><option>Other</option></select></div>
+    <div class="row"><label>Link</label><input type="text" id="mdLink" class="grow" placeholder="https://sketchfab.com/3d-models/…"></div>
+    <div id="mdStatus" class="hwprompt"></div>
+    <div class="row" style="justify-content:space-between">
+      <button class="ghost" id="mdRemove">Use the built-in model</button>
+      <div style="display:flex;gap:8px"><button class="ghost" id="mdClose">Close</button><button class="big" id="mdSave">Save</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- in-flight model fit -->
+<div id="fitPanel" class="hidden">
+  <div class="fhead"><b>Model fit</b><span id="fitHow" class="note"></span></div>
+  <span class="lbl">Turn</span><button data-fit="yaw-">↺ 90°</button><button data-fit="yaw+">↻ 90°</button><button data-fit="yawf-">−2°</button><button data-fit="yawf+">+2°</button>
+  <span class="lbl">Nose</span><button data-fit="pitch+">up</button><button data-fit="pitch-">down</button><button data-fit="roll-">roll ↺</button><button data-fit="roll+">roll ↻</button>
+  <span class="lbl">Size</span><button data-fit="scale-">smaller</button><button data-fit="scale+">bigger</button><button data-fit="flipup">upside-down</button><button data-fit="auto">auto-fit</button>
+  <span class="lbl">Move</span><button data-fit="z+">up</button><button data-fit="z-">down</button><button data-fit="x+">forward</button><button data-fit="x-">back</button>
+  <span class="lbl">Cockpit</span><button data-fit="interior" id="fitInterior" class="span2">3D cockpit: off</button><button data-fit="eyeL">eye ←</button><button data-fit="eyeR">eye →</button>
+  <span class="lbl">Eye</span><button data-fit="eyeU">up</button><button data-fit="eyeD">down</button><button data-fit="eyeF">forward</button><button data-fit="eyeB">back</button>
+  <button id="fitDone" class="wide">Done</button>
 </div>
 
 <div id="loading" class="hidden"><div class="spinner"></div><div id="loadingTxt">Loading the planet…</div></div>

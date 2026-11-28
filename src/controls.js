@@ -19,7 +19,7 @@ export class Controls {
     const actions = {
       KeyG: 'gear', KeyV: 'flapsDown', BracketRight: 'flapsDown', BracketLeft: 'flapsUp', Slash: 'spoilers',
       KeyB: 'parking', KeyC: 'camera', KeyZ: 'autopilot', KeyN: 'burner', KeyP: 'pause', Escape: 'menu', KeyH: 'help',
-      KeyM: 'map', KeyU: 'hud', Digit1: 'cam1', Digit2: 'cam2', Digit3: 'cam3', Digit4: 'cam4', KeyX: 'reverse', Backspace: 'restart',
+      KeyM: 'map', KeyU: 'hud', KeyJ: 'fit', Digit1: 'cam1', Digit2: 'cam2', Digit3: 'cam3', Digit4: 'cam4', KeyX: 'reverse', Backspace: 'restart',
       End: 'idle', Home: 'full', Backquote: 'perf',
     };
     window.addEventListener('keydown', (e) => {

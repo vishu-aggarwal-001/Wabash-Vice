@@ -12,6 +12,7 @@ import { Sound } from './audio.js';
 import { loadAirports, searchAirports, runwayEnds, findAirport, bestRunwayEnd, nearestAirports } from './airports.js';
 import { loadGeoid, geoidHeight } from './geoid.js';
 import { Lights } from './lights.js';
+import { customModel, glbInfo, autoFit, fitMatrix, animNodes, spinSetup, noseDirGltf, saveMeta, saveUpload, removeUpload, uploadedKeys, repoManifest } from './custom-models.js';
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -72,7 +73,16 @@ async function boot() {
 
 // ------------------------------------------------------------------ models
 async function getModel(key) {
-  if (models[key]) return models[key];
+  // your own .glb for this type (uploaded in the game or shipped in models/real/) replaces the built-in one
+  let cm = null;
+  try { cm = await customModel(key); } catch (e) { console.warn('custom model', e); }
+  const ck = cm ? `${key}:${cm.source}:${cm.meta.uploaded || cm.meta.file || ''}` : key;
+  if (models[ck]) { cm?.revoke(); return models[ck]; }
+  if (cm) {
+    try { return await loadCustomModel(key, ck, cm); }
+    catch (e) { console.error(e); toast(`Your model for the ${AIRCRAFT[key].name} could not be loaded (${e.message}). Using the built-in one.`, 7000); cm.revoke(); }
+    if (models[key]) return models[key];
+  }
   const m = await Cesium.Model.fromGltfAsync({
     url: AIRCRAFT[key].model, forwardAxis: Cesium.Axis.X, shadows: Cesium.ShadowMode.ENABLED,
     minimumPixelSize: 24, maximumScale: 400, backFaceCulling: false, scale: AIRCRAFT[key].modelScale ?? 1,
@@ -85,6 +95,42 @@ async function getModel(key) {
   models[key] = m;
   await new Promise((res) => { if (m.ready) res(); else m.readyEvent.addEventListener(res); });
   return m;
+}
+async function loadCustomModel(key, ck, cm) {
+  const def = AIRCRAFT[key];
+  const buf = await (await fetch(cm.url)).arrayBuffer();
+  const info = glbInfo(buf);
+  let fit = cm.meta.fit;
+  if (!fit) { fit = autoFit(info, def); cm.meta.fit = fit; saveMeta(key, cm.meta).catch(() => {}); }
+  const m = await Cesium.Model.fromGltfAsync({
+    url: cm.url, forwardAxis: Cesium.Axis.X, shadows: Cesium.ShadowMode.ENABLED,
+    minimumPixelSize: 24, maximumScale: 400, backFaceCulling: true,
+  });
+  m.show = false;
+  m.anim = null;
+  m.custom = { key, ck, info, meta: cm.meta, fit, source: cm.source };
+  setCustomFit(m, fit);
+  viewer.scene.primitives.add(m);
+  world.excludeFromPick.push(m);
+  // drop an older version of this type's model
+  for (const k of Object.keys(models)) if (k !== ck && k.split(':')[0] === key && models[k].custom) { viewer.scene.primitives.remove(models[k]); delete models[k]; }
+  models[ck] = m;
+  await new Promise((res, rej) => { if (m.ready) res(); else { m.readyEvent.addEventListener(res); m.errorEvent?.addEventListener((e) => rej(e)); } });
+  if (info.tris > 600000) toast(`Heads up: this model has ${(info.tris / 1e6).toFixed(1)} million triangles and may slow the game down.`, 6000);
+  return m;
+}
+// (re)apply a model fit: the matrix and which parts spin or hide with the gear
+function setCustomFit(m, fit) {
+  const c = m.custom; c.fit = fit;
+  // Cesium mishandles a scale inside modelMatrix (it shrinks the model twice), so the scale goes in model.scale
+  c.M = Cesium.Matrix4.fromArray(fitMatrix({ ...fit, scale: 1 }));
+  m.scale = fit.scale || 1;
+  const nodes = animNodes(c.info), nose = noseDirGltf(fit);
+  c.props = nodes.props.map((n) => ({ name: n.name, ...spinSetup(n, nose) })).filter((p) => p.axis);
+  c.gear = nodes.gear.map((n) => n.name);
+}
+function dropModels(key) {
+  for (const k of Object.keys(models)) if (k.split(':')[0] === key) { if (models[k] === plane) continue; viewer.scene.primitives.remove(models[k]); delete models[k]; }
 }
 
 // ------------------------------------------------------------------ spawning
@@ -488,12 +534,24 @@ function planeMatrix() {
 function updatePlane(dt) {
   if (!plane) return;
   const m = planeMatrix();
-  plane.modelMatrix = m;
+  const cu = plane.custom;
+  plane.modelMatrix = cu ? Cesium.Matrix4.multiply(m, cu.M, new Cesium.Matrix4()) : m;
   lights.updateAircraft(fm, null, m, simTime, true);
-  plane.show = camMode !== 1 && !fm.crashed;
+  plane.show = (camMode !== 1 || !!(cu && cu.fit.interior)) && !fm.crashed;
   // propeller
   propAngle += (8 + fm.N * 40) * dt * (fm.crashed ? 0 : 1);
-  for (const pn of ['prop', 'prop1', 'prop2', 'prop3', 'prop4']) {
+  if (cu) {
+    for (const p of cu.props) {
+      const node = plane.getNode(p.name); if (!node) continue;
+      const c = new Cesium.Cartesian3(...p.center), nc = Cesium.Cartesian3.negate(c, new Cesium.Cartesian3());
+      const R = Cesium.Matrix3.fromQuaternion(Cesium.Quaternion.fromAxisAngle(new Cesium.Cartesian3(...p.axis), propAngle * 1.3));
+      const T = Cesium.Matrix4.multiply(Cesium.Matrix4.fromTranslation(c), Cesium.Matrix4.multiply(Cesium.Matrix4.fromRotationTranslation(R), Cesium.Matrix4.fromTranslation(nc), new Cesium.Matrix4()), new Cesium.Matrix4());
+      node.matrix = Cesium.Matrix4.multiply(node.originalMatrix, T, new Cesium.Matrix4());
+    }
+    const up = fm.gearPos < 0.03 && fm.def.retractable !== false;
+    if (cu._gearUp !== up) { cu._gearUp = up; for (const g of cu.gear) { const n = plane.getNode(g); if (n) n.show = !up; } }
+  }
+  for (const pn of cu ? [] : ['prop', 'prop1', 'prop2', 'prop3', 'prop4']) {
     const prop = plane.getNode && plane.getNode(pn);
     if (prop) prop.matrix = Cesium.Matrix4.multiply(prop.originalMatrix, Cesium.Matrix4.fromRotationTranslation(Cesium.Matrix3.fromRotationX(propAngle)), new Cesium.Matrix4());
   }
@@ -512,14 +570,14 @@ function updatePlane(dt) {
       node.matrix = Cesium.Matrix4.multiply(node.originalMatrix, Cesium.Matrix4.fromRotationTranslation(rot), new Cesium.Matrix4());
     }
   }
-  const gear = plane.getNode && plane.getNode('gear');
+  const gear = !cu && plane.getNode && plane.getNode('gear');
   if (gear) {
     // gear retracts upward into the wells (smooth) and is hidden once stowed
     gear.show = fm.gearPos > 0.03;
     const lift = (1 - fm.gearPos) * (fm.restHeight * 0.8);
     if (gear._lift !== lift) { gear._lift = lift; gear.matrix = Cesium.Matrix4.multiply(gear.originalMatrix, Cesium.Matrix4.fromTranslation(new Cesium.Cartesian3(0, lift, 0)), new Cesium.Matrix4()); }
   }
-  const burner = plane.getNode && plane.getNode('burner');
+  const burner = !cu && plane.getNode && plane.getNode('burner');
   if (burner) burner.show = fm.ctrl.burner && fm.N > 0.5 && !fm.crashed;
   for (const c of contrail || []) {
     c.modelMatrix = m;
@@ -532,7 +590,7 @@ function updateCamera(dt) {
   const pos = Cesium.Cartesian3.fromRadians(fm.lon, fm.lat, fm.h);
   if (camMode === 1) {
     // cockpit: eye point, looking along the nose (plus mouse look)
-    const eyeEnu = qrot(fm.q, def.eye);
+    const eyeEnu = qrot(fm.q, (plane?.custom?.fit.interior && plane.custom.fit.eye) || def.eye);
     const enu = Cesium.Transforms.eastNorthUpToFixedFrame(pos);
     let q = qmul(fm.q, qaxis([0, 0, 1], -look.yaw * DEG));
     q = qmul(q, qaxis([0, 1, 0], -(look.pitch - (touchUI ? 4 : 8)) * DEG)); // look a little down so the runway shows over the panel
@@ -588,7 +646,7 @@ function updateHUD(dt) {
   const [vs1, vs0] = def._vs;
   const windFrom = S.windDir, windKt = S.windKt;
   hud.draw({
-    show: showHUD && !paused, cockpit: camMode === 1, showND, touch: touchUI,
+    show: showHUD && !paused, cockpit: camMode === 1 && !plane?.custom?.fit.interior, showND, touch: touchUI,
     pitch: hpr.pitch, roll: hpr.roll, heading: hpr.heading, track: fm.groundSpeed > 3 ? fm.track : hpr.heading,
     gamma: fm.groundSpeed > 3 ? gamma : hpr.pitch, drift: fm.groundSpeed > 3 ? wrap180(fm.track - hpr.heading) : 0, airborne: !fm.onGround,
     ias: unitsM ? ias * 3.6 : ias / KT, altFt: unitsM ? fm.h - (fm.geoidN || 0) : (fm.h - (fm.geoidN || 0)) / FT, vsFpm: unitsM ? fm.vs : fm.vs / FT * 60, agl: (fm.h - fm.groundH - fm.restHeight) / FT,
@@ -667,6 +725,7 @@ function onAction(a, pad) {
     case 'map': showND = !showND; break;
     case 'mapRange': toast(`Map range ${hud.cycleRange()} NM`, 900); break;
     case 'hud': showHUD = !showHUD; break;
+    case 'fit': if ($('#fitPanel').classList.contains('hidden')) openFit(); else { $('#fitPanel').classList.add('hidden'); saveFit(); } break;
     case 'idle': controls.throttle = 0; break;
     case 'full': controls.throttle = 1; break;
     case 'restart': startFlight(); break;
@@ -790,6 +849,7 @@ function showMenu(on, tab) {
   $('#menu').classList.toggle('hidden', !on);
   $('#menu').classList.toggle('see', started);
   $('#resume').classList.toggle('hidden', !started);
+  $('#fitOpen').classList.toggle('hidden', !(started && plane?.custom));
   if (on) { paused = true; if (tab) selectTab(tab); requestAnimationFrame(hardwareUILoop); }
   else if (started) { paused = false; lastT = performance.now(); }
   $('#touch').classList.toggle('hidden', on || !touchUI || !started);
@@ -817,18 +877,132 @@ function applyWeather() {
   if (fm) { fm.turbulence = [0, 0.6, 1.6, 3.2][S.turb]; fm.wind = windVec(); world.updateClouds(fm.latDeg, fm.lonDeg, groundFilt, S.clouds, S.cloudBase, true); }
   if (S.realTime) world.setRealTime(); else world.setTime(S.hour, fm ? fm.lonDeg : (findAirport(S.airport) || { lon: 0 }).lon);
 }
+// ------------------------------------------------------------------ your own 3D models
+async function refreshModelBadges() {
+  const up = new Set(await uploadedKeys()), repo = await repoManifest(), credits = [];
+  for (const c of $$('#planes .card')) {
+    const k = c.dataset.k, cm = up.has(k) ? (await customModel(k)) : null, meta = cm ? cm.meta : repo[k];
+    cm?.revoke();
+    const own = !!(cm || (repo[k] && repo[k].file));
+    c.querySelector('.mdl').classList.toggle('own', own);
+    c.querySelector('.mdl').textContent = own ? '3D model ✓' : '3D model';
+    c.querySelector('.credit').textContent = own && meta ? `Model: ${meta.name || 'custom'}${meta.author ? ' by ' + meta.author : ''}${meta.license ? ' (' + meta.license + ')' : ''}` : '';
+    if (own && meta && (meta.author || meta.name)) credits.push(`${AIRCRAFT[k].name}: “${meta.name || 'model'}”${meta.author ? ' by ' + meta.author : ''}${meta.license ? ', ' + meta.license : ''}${meta.link ? ' — ' + meta.link : ''}`);
+  }
+  $('#modelCredits').textContent = credits.length ? '3D aircraft models: ' + credits.join(' · ') : '';
+}
+let mdKey = null;
+async function openModelDlg(k) {
+  mdKey = k;
+  const d = AIRCRAFT[k];
+  $('#mdTitle').textContent = `Your 3D model: ${d.name}`;
+  $('#mdFile').value = '';
+  const cm = await customModel(k); cm?.revoke();
+  const m = cm ? cm.meta : {};
+  $('#mdName').value = m.name || ''; $('#mdAuthor').value = m.author || ''; $('#mdLink').value = m.link || '';
+  $('#mdLicense').value = m.license || 'CC BY 4.0';
+  $('#mdStatus').textContent = cm ? (cm.source === 'repo' ? 'Using the model shipped with the game (models/real/). Pick a file to replace it in this browser.' : `Using your model${m.fileName ? ' ' + m.fileName : ''}${m.tris ? ' · ' + Math.round(m.tris).toLocaleString() + ' triangles' : ''}.`) : 'Using the built-in model.';
+  $('#mdRemove').disabled = !cm || cm.source !== 'upload';
+  $('#modelDlg').classList.remove('hidden');
+}
+function setupModelDlg() {
+  const close = () => $('#modelDlg').classList.add('hidden');
+  $('#mdClose').onclick = close;
+  $('#modelDlg').onclick = (e) => { if (e.target.id === 'modelDlg') close(); };
+  $('#mdFile').onchange = () => {
+    const f = $('#mdFile').files[0]; if (!f) return;
+    if (!$('#mdName').value) $('#mdName').value = f.name.replace(/\.glb$/i, '').replace(/[_-]+/g, ' ');
+    $('#mdStatus').textContent = `${f.name} · ${(f.size / 1048576).toFixed(1)} MB — press Save.`;
+  };
+  $('#mdSave').onclick = async () => {
+    const k = mdKey, f = $('#mdFile').files[0], st = $('#mdStatus');
+    const credit = { name: $('#mdName').value.trim(), author: $('#mdAuthor').value.trim(), license: $('#mdLicense').value, link: $('#mdLink').value.trim() };
+    try {
+      if (f) {
+        st.textContent = 'Reading the model…';
+        const buf = await f.arrayBuffer(), info = glbInfo(buf), fit = autoFit(info, AIRCRAFT[k]);
+        await saveUpload(k, new Blob([buf], { type: 'model/gltf-binary' }), { ...credit, fileName: f.name, tris: info.tris, uploaded: Date.now(), fit });
+        dropModels(k);
+        st.textContent = `Saved. ${Math.round(info.tris).toLocaleString()} triangles · facing ${fit.how}.${info.compressed ? ' (compressed model: if it faces the wrong way, fix it in the air with Adjust model.)' : ''}`;
+        if (k === S.aircraft && started) toast('Press Fly (or restart) to use the new model.', 4000);
+      } else {
+        const cm = await customModel(k); cm?.revoke();
+        if (!cm) { st.textContent = 'Pick a .glb file first.'; return; }
+        await saveMeta(k, { ...cm.meta, ...credit });
+        st.textContent = 'Credits saved.';
+      }
+      refreshModelBadges();
+    } catch (e) { st.textContent = 'Could not use this file: ' + e.message; }
+  };
+  $('#mdRemove').onclick = async () => { await removeUpload(mdKey); dropModels(mdKey); $('#mdStatus').textContent = 'Back to the built-in model.'; $('#mdRemove').disabled = true; refreshModelBadges(); };
+  // in-flight fit panel
+  const fp = $('#fitPanel');
+  $('#fitOpen').onclick = () => { showMenu(false); paused = false; openFit(); };
+  $('#fitDone').onclick = () => { fp.classList.add('hidden'); saveFit(); };
+  for (const b of fp.querySelectorAll('[data-fit]')) b.onclick = () => nudgeFit(b.dataset.fit);
+}
+function openFit() {
+  if (!plane?.custom) { toast('This aircraft uses the built-in model. Add your own with the “3D model” button on its card.', 4000); return; }
+  $('#fitPanel').classList.remove('hidden'); paintFit();
+}
+function paintFit() {
+  const f = plane.custom.fit;
+  $('#fitInterior').textContent = '3D cockpit: ' + (f.interior ? 'on' : 'off');
+  $('#fitInterior').classList.toggle('on', !!f.interior);
+  $('#fitHow').textContent = `scale ${f.scale.toPrecision(3)} · turn ${Math.round(f.yaw)}°`;
+}
+let fitSaveT = 0;
+function saveFit() {
+  const c = plane?.custom; if (!c) return;
+  c.meta.fit = c.fit; saveMeta(c.key, c.meta).catch(() => {});
+}
+function nudgeFit(a) {
+  const c = plane?.custom; if (!c) return;
+  const f = { ...c.fit, offset: [...c.fit.offset] }, L = fm.def.length || 10, st = L * 0.01;
+  const eye = [...(f.eye || fm.def.eye)];
+  const ops = {
+    'yaw-': () => (f.yaw -= 90), 'yaw+': () => (f.yaw += 90), 'yawf-': () => (f.yaw -= 2), 'yawf+': () => (f.yaw += 2),
+    'pitch+': () => (f.pitch += 2), 'pitch-': () => (f.pitch -= 2), 'roll-': () => (f.roll -= 90), 'roll+': () => (f.roll += 90), flipup: () => (f.roll += 180),
+    'scale-': () => (f.scale /= 1.03), 'scale+': () => (f.scale *= 1.03),
+    'z+': () => (f.offset[2] += st), 'z-': () => (f.offset[2] -= st), 'x+': () => (f.offset[0] += st), 'x-': () => (f.offset[0] -= st),
+    interior: () => { f.interior = !f.interior; f.eye = eye; if (f.interior) setCam(1); },
+    eyeU: () => { eye[2] += 0.05; f.eye = eye; }, eyeD: () => { eye[2] -= 0.05; f.eye = eye; }, eyeF: () => { eye[0] += 0.1; f.eye = eye; }, eyeB: () => { eye[0] -= 0.1; f.eye = eye; },
+    eyeL: () => { eye[1] += 0.05; f.eye = eye; }, eyeR: () => { eye[1] -= 0.05; f.eye = eye; },
+  };
+  if (a === 'auto') { const nf = autoFit(c.info, fm.def); nf.interior = f.interior; nf.eye = f.eye; setCustomFit(plane, nf); }
+  else { ops[a]?.(); f.yaw = ((f.yaw % 360) + 540) % 360 - 180; setCustomFit(plane, f); }
+  paintFit();
+  clearTimeout(fitSaveT); fitSaveT = setTimeout(saveFit, 800);
+}
+
 function buildMenu() {
   for (const b of $$('#tabs button')) b.onclick = () => selectTab(b.dataset.tab);
-  // planes
-  const pl = $('#planes');
-  const paintPlanes = () => { for (const c of pl.children) c.classList.toggle('sel', c.dataset.k === S.aircraft); summary(); };
+  // planes: category chips, search, and each card's own-model button
+  const pl = $('#planes'), fams = ['All', ...new Set(Object.values(AIRCRAFT).map((d) => d.family))];
+  let fam = 'All';
+  const fs = $('#famSeg');
+  for (const f of fams) { const b = document.createElement('button'); b.textContent = f; b.onclick = () => { fam = f; paintPlanes(); }; fs.appendChild(b); }
+  $('#planeSearch').oninput = () => paintPlanes();
+  const paintPlanes = () => {
+    const q = $('#planeSearch').value.trim().toLowerCase();
+    for (const b of fs.children) b.classList.toggle('active', b.textContent === fam);
+    for (const c of pl.children) {
+      const d = AIRCRAFT[c.dataset.k], txt = `${d.name} ${d.type} ${d.maker} ${d.family} ${c.dataset.k}`.toLowerCase();
+      c.classList.toggle('sel', c.dataset.k === S.aircraft);
+      c.classList.toggle('hidden', (fam !== 'All' && d.family !== fam) || (q && !q.split(/\s+/).every((w) => txt.includes(w))));
+    }
+    summary();
+  };
   for (const [k, d] of Object.entries(AIRCRAFT)) {
-    const b = document.createElement('button'); b.className = 'card'; b.dataset.k = k;
-    b.innerHTML = `<img src="assets/plane-${k}.jpg" alt="" loading="lazy"><span class="tag">${d.type}</span><h3>${d.name}</h3><p>${d.blurb}</p><p class="spec">Cruise ${Math.round(d.cruise / KT)} kt · rotate ${Math.round(d.vr / KT)} kt · stall ${Math.round(stallSpeed(d, 0) / KT)} kt</p>`;
+    const b = document.createElement('div'); b.className = 'card'; b.dataset.k = k; b.tabIndex = 0; b.setAttribute('role', 'button');
+    b.innerHTML = `<img src="assets/plane-${k}.jpg" alt="" loading="lazy" onerror="this.onerror=null;this.src='assets/plane-${d.base || k}.jpg'"><button class="mdl" title="Use your own 3D model (.glb) for this aircraft">3D model</button><span class="tag">${d.type}</span><h3>${d.name}</h3><p>${d.blurb}</p><p class="spec">Cruise ${Math.round(d.cruise / KT)} kt · rotate ${Math.round(d.vr / KT)} kt · stall ${Math.round(stallSpeed(d, 0) / KT)} kt</p><p class="credit"></p>`;
     b.onclick = () => { S.aircraft = k; save(); paintPlanes(); };
+    b.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); b.onclick(); } };
+    b.querySelector('.mdl').onclick = (e) => { e.stopPropagation(); openModelDlg(k); };
     pl.appendChild(b);
   }
   paintPlanes();
+  refreshModelBadges();
   seg('#startMode', 'startMode', () => { $('#airportPick').classList.toggle('hidden', S.startMode === 'place'); $('#placePick').classList.toggle('hidden', S.startMode !== 'place'); summary(); }, false);
   $('#airportPick').classList.toggle('hidden', S.startMode === 'place'); $('#placePick').classList.toggle('hidden', S.startMode !== 'place');
   // airport search
@@ -901,6 +1075,7 @@ function buildMenu() {
   slider('#haze', 'haze', () => '', applyWeather);
   // settings
   setupHardwareUI();
+  setupModelDlg();
   seg('#quality', 'quality', () => { S.autoQuality = false; save(); gov.step = 0; world.applyQuality(S.quality); });
   seg('#assist', 'assist'); seg('#invert', 'invert'); seg('#units', 'units');
   seg('#touchMode', 'touchMode', updateTouchVisibility, false);
